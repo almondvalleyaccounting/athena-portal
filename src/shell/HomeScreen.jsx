@@ -1557,13 +1557,6 @@ export default function HomeScreen() {
           onClick={() => navigate('/planner/tasks')}
         />
         <OpsStat
-          label="Issues log"
-          value={data.issuesOpen}
-          detail="open"
-          tone={data.issuesOpen > 0 ? 'warn' : 'default'}
-          onClick={() => navigate('/issues')}
-        />
-        <OpsStat
           label="Triage"
           value={triageCount}
           detail={strikeOffCount > 0 ? `${strikeOffCount} strike-off` : 'open cases'}

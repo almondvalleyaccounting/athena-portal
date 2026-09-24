@@ -69,7 +69,8 @@ export default function ClientDetailView() {
           supabase.from('quick_tasks').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('scheduled_tasks').select('*').eq('entity_id', id).order('title'),
           supabase.from('completed_tasks').select('*').eq('entity_id', id).order('completed_at', { ascending: false }),
-          supabase.from('issues_log').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
+          // "Open issues" = this client's Triage cases (the Issues Log merged into Triage, sql/293).
+          supabase.from('triage_cases').select('id, category, title, description, status, stage, priority, created_at').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('billing_items').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('staff_profiles').select('id, name, email, is_active').order('name'),
           supabase.from('client_service_allocations').select('*').eq('entity_id', id),
@@ -224,7 +225,7 @@ export default function ClientDetailView() {
   const { monthly: totalMonthly, annual: totalAnnualFees } = feeTotals(billing);
   const totalAnnual = totalMonthly * 12 + totalAnnualFees;
   const activeQuotes = quotes.filter((q) => ['accepted', 'sent', 'approved'].includes(q.status));
-  const openIssues = issues.filter((i) => !['resolved', 'closed'].includes(i.status));
+  const openIssues = issues.filter((i) => i.status === 'open');
   const totalCompleted = filteredCompleted.reduce((s, t) => s + (t.completion_mins || 0), 0);
   const pendingBilling = billingItems.filter((b) => b.status === 'draft' || b.status === 'pending_approval');
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
@@ -594,18 +595,19 @@ export default function ClientDetailView() {
         <div style={{ ...cardStyle, marginBottom: 20 }}>
           <h3 style={sectionTitle}>Issues ({openIssues.length} open / {issues.length} total)</h3>
           {issues.slice(0, 10).map((iss) => {
-            const isOpen = !['resolved', 'closed'].includes(iss.status);
+            const isOpen = iss.status === 'open';
             return (
               <div key={iss.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontWeight: 500, color: isOpen ? '#0f172a' : '#94a3b8', textDecoration: isOpen ? 'none' : 'line-through' }}>{iss.title}</span>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <Badge bg={isOpen ? '#fef2f2' : '#f0fdf4'} color={isOpen ? '#dc2626' : '#059669'}>{iss.status?.replace('_', ' ')}</Badge>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>{iss.priority}</span>
+                <span style={{ fontWeight: 500, color: isOpen ? '#0f172a' : '#94a3b8', textDecoration: isOpen ? 'none' : 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{iss.title || iss.description}</span>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <Badge bg={isOpen ? '#fef2f2' : '#f0fdf4'} color={isOpen ? '#dc2626' : '#059669'}>{(iss.stage || iss.status)?.replace(/_/g, ' ')}</Badge>
+                  {iss.priority && <span style={{ fontSize: 10, color: '#94a3b8' }}>{iss.priority}</span>}
                 </div>
               </div>
             );
           })}
           {issues.length === 0 && <p style={{ fontSize: 13, color: '#cbd5e1' }}>No issues.</p>}
+          <a href="/triage/list" onClick={(e) => { e.preventDefault(); navigate('/triage/list'); }} style={{ display: 'inline-block', marginTop: 8, fontSize: 12, color: '#0e7fe0', fontWeight: 600, textDecoration: 'none' }}>Open Triage →</a>
         </div>
       )}
 

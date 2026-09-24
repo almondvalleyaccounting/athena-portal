@@ -1,54 +1,51 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  LifeBuoy, Plus, X, AlertTriangle, PauseCircle, ClipboardList, Send,
-  CheckCircle2, CalendarDays, ExternalLink,
-} from 'lucide-react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { LifeBuoy, Plus, X, Send, CheckCircle2, ExternalLink, Rows3, Rows2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import ActionPlanSection from './ActionPlanSection';
 import TemplateManagerModal from './TemplateManagerModal';
+import CaseCard from './CaseCard';
+import KanbanView from './KanbanView';
+import ListView from './ListView';
 import {
-  font, card, btn, iconBtn, backdrop, modal, fieldLabel, input, fmtDate, fmtDateShort,
-  ACTION_TYPE_MAP, sortActions, nextOpenAction, isOverdueAction,
+  font, card, btn, iconBtn, backdrop, modal, fieldLabel, input, fmtDate,
+  sortActions, CATEGORIES, CATEGORY_MAP, STAGES, PRIORITIES, daysOpen,
 } from './triageShared';
 
 /*
-  Triage Board — clients with an active problem, in three lanes:
-  strike-off watch (auto-fed by nightly Companies House status changes),
-  on hold (do no work for this client), and general. Tiles open a case
-  drawer with timestamped notes, a typed action plan (email / call / meeting,
-  who and when — template-driven or manual) and a target date. Automation
-  of the actions themselves (email sends, diary invites) comes later.
+  Triage — clients with an active problem. Since sql/293 it also holds what
+  used to be the Issues Log, and every case has a stage as well as a type.
+  Three views of the same cases:
+    /triage         Board — lanes by type (strike-off, on hold, issues, general)
+    /triage/kanban  Kanban — columns by stage; drag to move
+    /triage/list    List — one sortable, filterable table
+  Board and Kanban each have a compact / expanded toggle. Tiles open a case
+  drawer with notes, a typed action plan and a target date.
 */
 
-const CATEGORIES = [
-  {
-    key: 'strike_off', label: 'Strike-off watch', icon: AlertTriangle,
-    tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
-    hint: 'Status changed at Companies House — fed automatically by the nightly refresh.',
-  },
-  {
-    key: 'on_hold', label: 'On hold', icon: PauseCircle,
-    tone: { fg: '#b45309', bg: '#fffbeb', border: '#fde68a' },
-    hint: 'Do not carry out any work for these clients while the case is open. Tick a tile to take a client off hold.',
-  },
-  {
-    key: 'general', label: 'General', icon: ClipboardList,
-    tone: { fg: '#0369a1', bg: '#f0f9ff', border: '#bae6fd' },
-    hint: 'Anything else that needs eyes on it.',
-  },
+const VIEWS = [
+  { key: 'board', label: 'Board', path: '/triage', hint: 'By type' },
+  { key: 'kanban', label: 'Kanban', path: '/triage/kanban', hint: 'By stage' },
+  { key: 'list', label: 'List', path: '/triage/list', hint: 'Every case' },
 ];
+
+// Completed cases stay on the Kanban for a month so a drop can be undone;
+// the checkbox brings back the rest.
+const RECENT_COMPLETED_DAYS = 30;
+
+function readDensity(view) {
+  try { return localStorage.getItem(`triage_density_${view}`) === 'compact'; } catch { return false; }
+}
+function writeDensity(view, compact) {
+  try { localStorage.setItem(`triage_density_${view}`, compact ? 'compact' : 'expanded'); } catch { /* per-viewer nicety only */ }
+}
 
 function fmtNoteTime(iso) {
   const d = new Date(iso);
   return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
     d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-}
-function daysOpen(iso) {
-  const ms = Date.now() - new Date(iso).getTime();
-  return Math.max(0, Math.floor(ms / 86400000));
 }
 // Closing a case is "resolve" everywhere, but on the on-hold lane what people
 // are actually doing is releasing the client back to work — say that instead.
@@ -58,6 +55,14 @@ function resolveLabel(category) {
 
 export default function TriageBoardPage() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const view = pathname.startsWith('/triage/kanban') ? 'kanban' : pathname.startsWith('/triage/list') ? 'list' : 'board';
+  const [compactByView, setCompactByView] = useState(() => ({ board: readDensity('board'), kanban: readDensity('kanban') }));
+  const compact = !!compactByView[view];
+  function setCompact(v) {
+    setCompactByView((prev) => ({ ...prev, [view]: v }));
+    writeDensity(view, v);
+  }
   const { profile } = useAuth();
   const [cases, setCases] = useState(null);
   const [notesByCase, setNotesByCase] = useState({});
@@ -122,15 +127,48 @@ export default function TriageBoardPage() {
 
   useEffect(() => { load(); loadTemplates(); }, [load, loadTemplates]);
 
-  async function addCase({ entityId, category, description }) {
+  async function addCase({ entityId, category, description, title, priority, assigneeId }) {
     const { data, error: err } = await supabase.from('triage_cases').insert({
       entity_id: entityId, category, description, created_by: profile?.id || null,
+      title: title || null, priority: priority || null, assignee_id: assigneeId || null,
+      stage: category === 'on_hold' ? 'on_hold' : 'not_started',
     }).select('*, entity:entities(id, name, company_status, company_status_detail)').single();
     if (err) { setError(err.message); return false; }
+    notifyAssignee(assigneeId, data);
     setCases((prev) => [data, ...(prev || [])]);
     setAdding(false);
     setOpenCaseId(data.id);
     return true;
+  }
+
+  // Ownership is only real if the owner finds out (carried over from the
+  // Issues Log).
+  function notifyAssignee(assigneeId, c) {
+    if (!assigneeId || assigneeId === profile?.id) return;
+    supabase.rpc('notify_staff', {
+      p_recipient: assigneeId, p_kind: 'issue_assigned',
+      p_title: `Triage case assigned to you: ${c?.title || c?.entity?.name || 'a client'}`, p_link: '/triage/list',
+    }).then(({ error: nErr }) => { if (nErr) console.error('[Triage] notify', nErr); });
+  }
+
+  // Mirror what the sql/293 trigger does, so the screen agrees with the
+  // database before the round trip comes back.
+  function withStatusSync(c, patch) {
+    const next = { ...patch };
+    if (patch.stage && patch.stage !== c.stage) {
+      if (patch.stage === 'completed') {
+        next.status = 'resolved';
+        next.resolved_at = c.resolved_at || new Date().toISOString();
+        next.resolved_by = profile?.id || null;
+      } else if (c.stage === 'completed') {
+        next.status = 'open'; next.resolved_at = null; next.resolved_by = null;
+      }
+    }
+    return next;
+  }
+
+  async function moveStage(c, stage) {
+    await patchCase(c.id, withStatusSync(c, { stage }));
   }
 
   async function patchCase(id, patch) {
@@ -145,13 +183,13 @@ export default function TriageBoardPage() {
       : `Resolve the triage case for "${c.entity?.name}"?`;
     if (!window.confirm(prompt)) return;
     await patchCase(c.id, {
-      status: 'resolved', resolved_at: new Date().toISOString(), resolved_by: profile?.id || null,
+      status: 'resolved', stage: 'completed', resolved_at: new Date().toISOString(), resolved_by: profile?.id || null,
     });
     setOpenCaseId(null);
   }
 
   async function reopenCase(c) {
-    await patchCase(c.id, { status: 'open', resolved_at: null, resolved_by: null });
+    await patchCase(c.id, { status: 'open', stage: 'not_started', resolved_at: null, resolved_by: null });
   }
 
   async function addNote(caseId, body) {
@@ -182,11 +220,16 @@ export default function TriageBoardPage() {
 
   const visible = useMemo(() => {
     const list = cases || [];
-    return list.filter((c) => (showResolved ? true : c.status === 'open'));
-  }, [cases, showResolved]);
+    if (showResolved) return list;
+    if (view === 'kanban') {
+      const cutoff = Date.now() - RECENT_COMPLETED_DAYS * 86400000;
+      return list.filter((c) => c.status === 'open' || new Date(c.resolved_at || c.created_at).getTime() >= cutoff);
+    }
+    return list.filter((c) => c.status === 'open');
+  }, [cases, showResolved, view]);
 
   const byCategory = useMemo(() => {
-    const buckets = { strike_off: [], on_hold: [], general: [] };
+    const buckets = Object.fromEntries(CATEGORIES.map((c) => [c.key, []]));
     for (const c of visible) (buckets[c.category] || buckets.general).push(c);
     return buckets;
   }, [visible]);
@@ -195,10 +238,10 @@ export default function TriageBoardPage() {
   const openCount = (cases || []).filter((c) => c.status === 'open').length;
 
   return (
-    <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+    <div style={{ maxWidth: view === 'board' ? 1400 : 1600, margin: '0 auto', padding: '24px 32px 48px', fontFamily: font }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <LifeBuoy size={20} color="#0e7fe0" />
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Triage Board</h1>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Triage</h1>
         <span style={{ fontSize: 13, color: '#64748b' }}>{openCount} open case{openCount === 1 ? '' : 's'}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => setManagingTemplates(true)}
@@ -208,24 +251,54 @@ export default function TriageBoardPage() {
             }}>
             Manage templates
           </button>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)}
-              style={{ width: 13, height: 13, accentColor: '#0e7fe0' }} />
-            Show resolved
-          </label>
           <button onClick={() => setAdding(true)} style={btn('primary')}><Plus size={13} /> Add to triage</button>
         </div>
       </div>
-      <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 20px' }}>
-        Clients with an active problem. Strike-off cases are raised automatically when the nightly
-        Companies House refresh sees a status change; on-hold means no work should be done for the client.
+      <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 14px' }}>
+        Clients with an active problem — strike-off risks, clients on hold, and client issues.
       </p>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'inline-flex', background: '#f1f5f9', borderRadius: 9, padding: 3 }}>
+          {VIEWS.map((v) => (
+            <Link key={v.key} to={v.path} title={v.hint}
+              style={{
+                padding: '6px 14px', fontSize: 12.5, fontWeight: 600, borderRadius: 7, textDecoration: 'none',
+                background: view === v.key ? '#fff' : 'transparent',
+                color: view === v.key ? '#0f172a' : '#64748b',
+                boxShadow: view === v.key ? '0 1px 2px rgba(15,23,42,0.08)' : 'none',
+              }}>
+              {v.label}
+            </Link>
+          ))}
+        </div>
+        {view !== 'list' && (
+          <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+            {[{ v: false, label: 'Expanded', Icon: Rows2 }, { v: true, label: 'Compact', Icon: Rows3 }].map(({ v, label, Icon }) => (
+              <button key={label} onClick={() => setCompact(v)} aria-pressed={compact === v}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 12, fontWeight: 600,
+                  fontFamily: font, border: 'none', cursor: 'pointer',
+                  background: compact === v ? '#0f172a' : '#fff', color: compact === v ? '#fff' : '#475569',
+                }}>
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b', cursor: 'pointer', marginLeft: 'auto' }}>
+          <input type="checkbox" checked={showResolved} onChange={(e) => setShowResolved(e.target.checked)}
+            style={{ width: 13, height: 13, accentColor: '#0e7fe0' }} />
+          {view === 'kanban' ? `Show all completed (not just the last ${RECENT_COMPLETED_DAYS} days)` : 'Show resolved'}
+        </label>
+      </div>
+
       {error && <div style={{ fontSize: 13, color: '#b91c1c', marginBottom: 12 }}>{error}</div>}
 
       {cases === null && <div style={{ ...card, padding: 18, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>}
 
-      {cases !== null && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+      {cases !== null && view === 'board' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
           {CATEGORIES.map((cat) => {
             const items = byCategory[cat.key] || [];
             const Icon = cat.icon;
@@ -237,80 +310,25 @@ export default function TriageBoardPage() {
                     {cat.label} ({items.length})
                   </span>
                 </div>
-                <div style={{ padding: '10px 10px 6px', fontSize: 11.5, color: '#94a3b8' }}>{cat.hint}</div>
-                <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {!compact && <div style={{ padding: '10px 10px 6px', fontSize: 11.5, color: '#94a3b8' }}>{cat.hint}</div>}
+                <div style={{ padding: compact ? 8 : '0 10px 10px', display: 'flex', flexDirection: 'column', gap: compact ? 5 : 8 }}>
                   {items.length === 0 && (
-                    <div style={{ fontSize: 12.5, color: '#cbd5e1', textAlign: 'center', padding: '14px 0' }}>Nothing here. 🎉</div>
+                    <div style={{ fontSize: 12.5, color: '#cbd5e1', textAlign: 'center', padding: '14px 0' }}>Nothing here</div>
                   )}
-                  {items.map((c) => {
-                    const notes = notesByCase[c.id] || [];
-                    const overdue = c.target_date && c.target_date < new Date().toISOString().slice(0, 10);
-                    const acts = actionsByCase[c.id] || [];
-                    const activeActs = acts.filter((a) => a.status !== 'cancelled');
-                    const doneActs = activeActs.filter((a) => a.status === 'done').length;
-                    const nextAct = nextOpenAction(acts);
-                    const NextIcon = nextAct ? (ACTION_TYPE_MAP[nextAct.action_type] || ACTION_TYPE_MAP.other).icon : null;
-                    return (
-                      <div key={c.id} onClick={() => setOpenCaseId(c.id)}
-                        style={{
-                          border: `1px solid ${c.status === 'resolved' ? '#e5e7eb' : cat.tone.border}`,
-                          borderLeft: `3px solid ${c.status === 'resolved' ? '#cbd5e1' : cat.tone.fg}`,
-                          borderRadius: 10, padding: '10px 12px', cursor: 'pointer',
-                          background: c.status === 'resolved' ? '#f8fafc' : '#fff',
-                          opacity: c.status === 'resolved' ? 0.75 : 1,
-                        }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {c.entity?.name || 'Client'}
-                          </span>
-                          {c.status === 'resolved' && <CheckCircle2 size={13} color="#16a34a" />}
-                          <span style={{ fontSize: 10.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{daysOpen(c.created_at)}d</span>
-                          {c.status === 'open' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); resolveCase(c); }}
-                              title={resolveLabel(c.category)}
-                              style={{
-                                ...iconBtn, padding: '2px 4px', borderColor: '#e2e8f0', color: '#94a3b8',
-                              }}>
-                              <CheckCircle2 size={12} />
-                            </button>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {c.description}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
-                          {nextAct ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#475569', minWidth: 0 }}>
-                              <NextIcon size={11} style={{ flexShrink: 0 }} />
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
-                                Next: {nextAct.title}
-                              </span>
-                              {nextAct.target_date && (
-                                <span style={{ color: isOverdueAction(nextAct) ? '#dc2626' : '#94a3b8', whiteSpace: 'nowrap' }}>
-                                  · {fmtDateShort(nextAct.target_date)}
-                                </span>
-                              )}
-                              {nextAct.assigned_to && staffMap[nextAct.assigned_to] && (
-                                <span style={{ whiteSpace: 'nowrap' }}>· {staffMap[nextAct.assigned_to].split(' ')[0]}</span>
-                              )}
-                            </span>
-                          ) : acts.length === 0 && c.next_action ? (
-                            <span style={{ color: '#475569' }}>Next: {c.next_action}</span>
-                          ) : null}
-                          {activeActs.length > 0 && (
-                            <span>{doneActs}/{activeActs.length} action{activeActs.length === 1 ? '' : 's'} done</span>
-                          )}
-                          {c.target_date && (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: overdue ? '#dc2626' : '#94a3b8' }}>
-                              <CalendarDays size={11} /> {fmtDate(c.target_date)}
-                            </span>
-                          )}
-                          {notes.length > 0 && <span>{notes.length} note{notes.length === 1 ? '' : 's'}</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {items.map((c) => (
+                    <CaseCard
+                      key={c.id}
+                      c={c}
+                      notes={notesByCase[c.id] || []}
+                      actions={actionsByCase[c.id] || []}
+                      staffMap={staffMap}
+                      compact={compact}
+                      badge="stage"
+                      onOpen={(x) => setOpenCaseId(x.id)}
+                      onResolve={resolveCase}
+                      resolveLabel={resolveLabel(c.category)}
+                    />
+                  ))}
                 </div>
               </div>
             );
@@ -318,9 +336,32 @@ export default function TriageBoardPage() {
         </div>
       )}
 
+      {cases !== null && view === 'kanban' && (
+        <KanbanView
+          cases={visible}
+          notesByCase={notesByCase}
+          actionsByCase={actionsByCase}
+          staffMap={staffMap}
+          compact={compact}
+          onOpen={(x) => setOpenCaseId(x.id)}
+          onMove={moveStage}
+        />
+      )}
+
+      {cases !== null && view === 'list' && (
+        <ListView
+          cases={visible}
+          actionsByCase={actionsByCase}
+          staffMap={staffMap}
+          staffList={staffList}
+          onOpen={(x) => setOpenCaseId(x.id)}
+        />
+      )}
+
       {adding && (
         <AddCaseModal
           entityList={allEntities}
+          staffList={staffList}
           onClose={() => setAdding(false)}
           onAdd={addCase}
         />
@@ -335,7 +376,10 @@ export default function TriageBoardPage() {
           staffList={staffList}
           templates={templates.filter((t) => t.active)}
           onClose={() => setOpenCaseId(null)}
-          onPatch={(patch) => patchCase(openCase.id, patch)}
+          onPatch={(patch) => {
+            if (patch.assignee_id && patch.assignee_id !== openCase.assignee_id) notifyAssignee(patch.assignee_id, openCase);
+            patchCase(openCase.id, withStatusSync(openCase, patch));
+          }}
           onResolve={() => resolveCase(openCase)}
           onReopen={() => reopenCase(openCase)}
           onAddNote={(body) => addNote(openCase.id, body)}
@@ -357,22 +401,28 @@ export default function TriageBoardPage() {
   );
 }
 
-function AddCaseModal({ entityList, onClose, onAdd }) {
+function AddCaseModal({ entityList, staffList, onClose, onAdd }) {
   const [entityId, setEntityId] = useState('');
   const [category, setCategory] = useState('general');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
+  const [priority, setPriority] = useState('');
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     if (!entityId || !description.trim() || saving) return;
     setSaving(true);
-    await onAdd({ entityId, category, description: description.trim() });
+    await onAdd({
+      entityId, category, description: description.trim(),
+      title: category === 'issue' ? title.trim() : '', assigneeId, priority,
+    });
     setSaving(false);
   }
 
   return (
     <div onClick={onClose} style={backdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 460 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 520 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <LifeBuoy size={16} color="#0e7fe0" /> Add a client to triage
         </div>
@@ -393,10 +443,34 @@ function AddCaseModal({ entityList, onClose, onAdd }) {
           ))}
         </div>
 
-        <label style={{ ...fieldLabel, marginTop: 12 }}>Brief description</label>
+        {category === 'issue' && (
+          <>
+            <label style={{ ...fieldLabel, marginTop: 12 }}>Title</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="One line — what's wrong?" style={input} />
+          </>
+        )}
+
+        <label style={{ ...fieldLabel, marginTop: 12 }}>{category === 'issue' ? 'Details' : 'Brief description'}</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
           placeholder="What's the issue?"
           style={{ ...input, resize: 'vertical' }} />
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={fieldLabel}>Owner</label>
+            <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={input}>
+              <option value="">Nobody yet</option>
+              {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div style={{ width: 150 }}>
+            <label style={fieldLabel}>Priority</label>
+            <select value={priority} onChange={(e) => setPriority(e.target.value)} style={input}>
+              <option value="">—</option>
+              {PRIORITIES.map((pr) => <option key={pr.key} value={pr.key}>{pr.label}</option>)}
+            </select>
+          </div>
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
@@ -412,7 +486,7 @@ function AddCaseModal({ entityList, onClose, onAdd }) {
 
 function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose, onPatch, onResolve, onReopen, onAddNote, onAddActions, onPatchAction, onOpenClient }) {
   const [noteDraft, setNoteDraft] = useState('');
-  const cat = CATEGORIES.find((x) => x.key === c.category) || CATEGORIES[2];
+  const cat = CATEGORY_MAP[c.category] || CATEGORY_MAP.general;
 
   function submitNote() {
     if (!noteDraft.trim()) return;
@@ -462,10 +536,44 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
             {c.status === 'resolved' && ` · resolved ${fmtDate(c.resolved_at)}`}
           </div>
 
-          <div style={{ marginTop: 16, width: 170 }}>
-            <label style={fieldLabel}>Case target date</label>
-            <input type="date" value={c.target_date || ''} onChange={(e) => onPatch({ target_date: e.target.value || null })}
-              style={input} />
+          {c.category === 'issue' && (
+            <div style={{ marginTop: 14 }}>
+              <label style={fieldLabel}>Title</label>
+              <input defaultValue={c.title || ''} key={c.id}
+                onBlur={(e) => { const v = e.target.value.trim(); if (v !== (c.title || '')) onPatch({ title: v || null }); }}
+                style={input} />
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+            <div>
+              <label style={fieldLabel}>Stage</label>
+              <select value={c.stage || 'not_started'} onChange={(e) => onPatch({ stage: e.target.value })} style={input}>
+                {STAGES.map((st) => <option key={st.key} value={st.key}>{st.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabel}>Owner</label>
+              <select value={c.assignee_id || ''} onChange={(e) => onPatch({ assignee_id: e.target.value || null })} style={input}>
+                <option value="">Nobody yet</option>
+                {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {c.assignee_id && !staffList.some((s) => s.id === c.assignee_id) && (
+                  <option value={c.assignee_id}>{staffMap[c.assignee_id] || 'Former staff'}</option>
+                )}
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabel}>Priority</label>
+              <select value={c.priority || ''} onChange={(e) => onPatch({ priority: e.target.value || null })} style={input}>
+                <option value="">—</option>
+                {PRIORITIES.map((pr) => <option key={pr.key} value={pr.key}>{pr.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabel}>Case target date</label>
+              <input type="date" value={c.target_date || ''} onChange={(e) => onPatch({ target_date: e.target.value || null })}
+                style={input} />
+            </div>
           </div>
 
           <ActionPlanSection

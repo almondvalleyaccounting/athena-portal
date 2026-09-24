@@ -1,4 +1,4 @@
-import { Mail, Phone, Users, ClipboardList } from 'lucide-react';
+import { Mail, Phone, Users, ClipboardList, AlertTriangle, PauseCircle, MessageSquareWarning } from 'lucide-react';
 
 // Shared styles + action-plan helpers for the Triage module.
 
@@ -96,4 +96,68 @@ export function nextOpenAction(list) {
 
 export function isOverdueAction(a) {
   return isOpenAction(a) && !!a.target_date && a.target_date < localDateStr();
+}
+
+// ---- Case types and stages ------------------------------------------------
+
+// Board lanes (by type). 'issue' is what the Issues Log became when it merged
+// into Triage (sql/293).
+export const CATEGORIES = [
+  {
+    key: 'strike_off', label: 'Strike-off watch', short: 'Strike-off', icon: AlertTriangle,
+    tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },
+    hint: 'Status changed at Companies House — fed automatically by the nightly refresh.',
+  },
+  {
+    key: 'on_hold', label: 'On hold', short: 'On hold', icon: PauseCircle,
+    tone: { fg: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+    hint: 'Do not carry out any work for these clients while the case is open.',
+  },
+  {
+    key: 'issue', label: 'Client issues', short: 'Issue', icon: MessageSquareWarning,
+    tone: { fg: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+    hint: 'A problem with a client that someone needs to own.',
+  },
+  {
+    key: 'general', label: 'General', short: 'General', icon: ClipboardList,
+    tone: { fg: '#0369a1', bg: '#f0f9ff', border: '#bae6fd' },
+    hint: 'Anything else that needs eyes on it.',
+  },
+];
+export const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+
+// Kanban columns (by stage). Completed is the same thing as status 'resolved' —
+// a trigger keeps the two in step (sql/293).
+export const STAGES = [
+  { key: 'on_hold', label: 'On Hold', tone: { fg: '#b45309', bg: '#fffbeb', border: '#fde68a' } },
+  { key: 'not_started', label: 'Not Started', tone: { fg: '#475569', bg: '#f8fafc', border: '#e2e8f0' } },
+  { key: 'with_client', label: 'With Client', tone: { fg: '#0369a1', bg: '#f0f9ff', border: '#bae6fd' } },
+  { key: 'action_needed', label: 'Action Needed', tone: { fg: '#b91c1c', bg: '#fef2f2', border: '#fecaca' } },
+  { key: 'completed', label: 'Completed', tone: { fg: '#166534', bg: '#f0fdf4', border: '#bbf7d0' } },
+];
+export const STAGE_MAP = Object.fromEntries(STAGES.map((s) => [s.key, s]));
+
+export const PRIORITIES = [
+  { key: 'critical', label: 'Critical', fg: '#b91c1c' },
+  { key: 'high', label: 'High', fg: '#c2410c' },
+  { key: 'medium', label: 'Medium', fg: '#a16207' },
+  { key: 'low', label: 'Low', fg: '#15803d' },
+];
+export const PRIORITY_MAP = Object.fromEntries(PRIORITIES.map((p) => [p.key, p]));
+
+export function daysOpen(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+
+// What the card leads with: an issue's own title, else the client.
+export function caseHeadline(c) {
+  return c.entity?.name || 'Client';
+}
+
+export function chip(tone) {
+  return {
+    fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 999, whiteSpace: 'nowrap',
+    background: tone.bg, color: tone.fg, border: `1px solid ${tone.border}`,
+  };
 }

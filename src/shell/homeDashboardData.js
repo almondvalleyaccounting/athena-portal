@@ -90,7 +90,6 @@ export function useDirectorDashboard(enabled) {
         serviceReqRes,
         chCodesRes,
         adminTasksRes,
-        issuesRes,
         freshnessRes,
         snapshotRes,
         qboMappingRes,
@@ -173,10 +172,6 @@ export function useDirectorDashboard(enabled) {
           .is('done_at', null)
           .is('dismissed_at', null)
           .is('confirmed_at', null),
-        supabase
-          .from('issues_log')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'open'),
         supabase
           .from('bm_task_schedule')
           .select('last_seen_at')
@@ -344,7 +339,6 @@ export function useDirectorDashboard(enabled) {
           },
           serviceRequests: serviceReqRes.data || [],
           adminTasksOpen: adminTasksRes.count ?? 0,
-          issuesOpen: issuesRes.count ?? 0,
           qboUnmapped: qboMappingRes.count ?? 0,
           feeGaps: {
             priority: feeGapsPriorityRes.count ?? 0,

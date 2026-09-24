@@ -39,7 +39,6 @@ import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import JobReviewModule from './modules/job-review/JobReviewModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
-import IssuesPage from './modules/issues/IssuesPage';
 import BugReportPage from './modules/bugs/BugReportPage';
 import PlanningModule from './modules/planning/PlanningModule';
 import ForecastModule from './modules/forecast/ForecastModule';
@@ -98,7 +97,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           {/* HMRC — what the agent-services scrape says about our clients (sql/197). */}
           <Route path="/hmrc/*" element={<HmrcModule />} />
           <Route path="/working-papers/*" element={<WorkingPapersModule />} />
-          <Route path="/triage" element={<TriageBoardPage />} />
+          <Route path="/triage/*" element={<TriageBoardPage />} />
           {/* Client Reminders moved under Communications (/comms/reminders).
               Keep old links, digest emails and bookmarks working. */}
           <Route path="/reminders" element={<Navigate to="/comms/reminders" replace />} />
@@ -158,7 +157,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/review/*" element={<Navigate to="/planner/review" replace />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />
           <Route path="/billing" element={<BillingPage />} />
-          <Route path="/issues" element={<IssuesPage />} />
+          {/* The Issues Log merged into Triage (sql/293); old links land on its list. */}
+          <Route path="/issues" element={<Navigate to="/triage/list" replace />} />
           <Route path="/planning/*" element={<PlanningModule />} />
           <Route path="/forecast/*" element={<ForecastModule />} />
           <Route path="/team/pd/*" element={<PDTrackerModule />} />
