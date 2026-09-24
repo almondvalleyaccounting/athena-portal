@@ -187,7 +187,7 @@ export default function BugReportPage() {
           { id: 'report', label: 'Report a bug' },
           { id: 'mine', label: `My reports (${myBugs.length})` },
           ...(canTriage
-            ? [{ id: 'triage', label: 'Triage board' }]
+            ? [{ id: 'triage', label: 'Bug queue' }]
             : [{ id: 'all', label: `All bugs (${bugs.length})` }]),
         ].map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} style={tabBtn(tab === t.id)}>{t.label}</button>
