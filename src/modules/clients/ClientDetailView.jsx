@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, CheckCircle, Clock, AlertTriangle, FileText, Receipt, Clipboard } from 'lucide-react';
+import { ChevronLeft, ChevronDown, Copy, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import { Btn } from '../../components/ui';
 import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
 import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
@@ -57,7 +58,8 @@ export default function ClientDetailView() {
   const [offboardResult, setOffboardResult] = useState(null);
   const [fieldOverrides, setFieldOverrides] = useState({}); // field -> { value, bm_value } pending BM sync
   const [people, setPeople] = useState([]); // entity_people (directors / PSCs / contacts)
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTab, setActiveTab] = useState('overview');
+  const raiseInputRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -85,7 +87,7 @@ export default function ClientDetailView() {
             .select('id, service, bm_task_name, bm_deadline, bm_status')
             .eq('entity_id', id).eq('state', 'planned').is('excluded_at', null).order('bm_deadline'),
           supabase.from('entity_people')
-            .select('role, role_pct, started_on, source, is_primary_contact, person:people(id, name, dob_year, dob_month, ch_personal_code, ch_officer_id, ch_psc_id)')
+            .select('role, role_pct, started_on, source, is_primary_contact, person:people(id, name, email, phone, dob_year, dob_month, ch_personal_code, ch_officer_id, ch_psc_id)')
             .eq('entity_id', id),
         ]);
         const get = (i) => results[i]?.value?.data;
@@ -231,456 +233,471 @@ export default function ClientDetailView() {
   const fmt = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n || 0);
   const durFmt = (mins) => (mins == null ? '0m' : `${Math.round(Number(mins) || 0)}m`);
 
-  const toggleSection = (s) => setActiveSection(activeSection === s ? null : s);
+  // Header "More" menu edits — status, cadence, expedite. Each is optimistic
+  // with a rollback, and status changes are audited as before.
+  const changeStatus = async (next) => {
+    const prev = entity.entity_status || 'active';
+    if (next === prev) return;
+    let reason = '';
+    if (next === 'nlac' || next === 'archived') {
+      reason = window.prompt(`Reason for marking as ${next.toUpperCase()}? (optional)`, '') || '';
+    }
+    setEntity({ ...entity, entity_status: next });
+    const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
+    if (error) {
+      alert('Could not update status: ' + error.message);
+      setEntity({ ...entity, entity_status: prev });
+      return;
+    }
+    await supabase.from('audit_log').insert({
+      user_id: profile?.id || null,
+      action: 'entity_status_change',
+      entity_type: 'entity',
+      entity_id: entity.id,
+      detail: { from: prev, to: next, reason: reason || null },
+    });
+  };
+  const changeCadence = async (next) => {
+    const prev = entity.cadence_preference;
+    setEntity({ ...entity, cadence_preference: next });
+    const { error } = await supabase.from('entities').update({ cadence_preference: next }).eq('id', entity.id);
+    if (error) {
+      alert('Could not update cadence: ' + error.message);
+      setEntity({ ...entity, cadence_preference: prev });
+    }
+  };
+  const changeExpedite = async (next) => {
+    const prev = !!entity.expedite;
+    setEntity({ ...entity, expedite: next });
+    const { error } = await supabase.from('entities').update({ expedite: next }).eq('id', entity.id);
+    if (error) {
+      alert('Could not update expedite flag: ' + error.message);
+      setEntity({ ...entity, expedite: prev });
+    }
+  };
 
-  // Limited companies get tabbed views (Full Details / Directors / PSCs /
-  // Communications). Directors = officer links; PSCs = the ch_psc links.
-  // Plain consts (NOT hooks) — this is below the loading/!entity early returns,
-  // so a useMemo here would break the Rules of Hooks (blank page).
+  // Layout (UI audit, Sprint 4): header with the actions, tabs for the
+  // record's areas, and a right rail — contact, references, fees — that stays
+  // put on every tab, so the facts you reach for are never a tab away.
   const isLtd = entity?.type === 'limited_company';
   const directors = people.filter((p) => p.role === 'director');
   const pscs = people.filter((p) => p.source === 'ch_psc');
-  // Every client now gets a tab bar (Full Details + Communications). Directors
-  // and PSCs are limited-company concepts, so they're appended only for Ltds.
-  const detailsVisible = activeTab === 'details';
+  const otherPeople = people.filter((p) => p.role !== 'director' && p.source !== 'ch_psc');
+  const showBillingTab = canSeeFees || canSeeQuotes;
   const CLIENT_TABS = [
-    { id: 'details', label: 'Full Details' },
-    ...(isLtd ? [
-      { id: 'directors', label: `Directors${directors.length ? ` (${directors.length})` : ''}` },
-      { id: 'pscs', label: `PSCs${pscs.length ? ` (${pscs.length})` : ''}` },
-    ] : []),
+    { id: 'overview', label: 'Overview' },
+    { id: 'work', label: 'Work', count: tasks.length },
+    ...(showBillingTab ? [{ id: 'billing', label: canSeeFees && canSeeQuotes ? 'Billing & quotes' : canSeeFees ? 'Billing' : 'Quotes' }] : []),
+    { id: 'people', label: 'People', count: people.length },
     { id: 'comms', label: 'Communications' },
   ];
+  const tab = CLIENT_TABS.some((t) => t.id === activeTab) ? activeTab : 'overview';
+
+  const primary = people.find((p) => p.is_primary_contact)?.person || null;
+  const contactEmail = primary?.email || entity.billing_email || entity.prospect_email || null;
+  const contactPhone = primary?.phone || entity.prospect_phone || null;
+  const address = [entity.billing_line1, entity.billing_line2, entity.billing_city, entity.billing_postcode].filter(Boolean);
+  const staffName = (sid) => staffList.find((s) => s.id === sid)?.name || null;
+  const feeEarners = [...new Set(allocations.map((a) => staffName(a.fee_earner_id)).filter(Boolean))];
+  const deadlineJobs = bmJobs.filter((j) => j.bm_deadline);
+
+  const goRaiseAction = () => {
+    setActiveTab('work');
+    setTimeout(() => raiseInputRef.current?.focus(), 0);
+  };
+
+  const rowStyle = { display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13.5, padding: '6px 0', borderBottom: '1px solid #f1f5f9' };
+  const emptyStyle = { fontSize: 14, color: '#94a3b8', margin: 0 };
+  const linkStyle = { display: 'inline-block', marginTop: 10, fontSize: 13, color: '#1E4560', fontWeight: 600, textDecoration: 'none' };
+  const dateShort = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+  const billingCard = canSeeFees && (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Active billing</h3>
+        <Btn variant="secondary" onClick={() => navigate(`/manage/billing/change?client=${encodeURIComponent(entity.name)}`)}>
+          Manage billing
+        </Btn>
+      </div>
+      {approvedServices.length > 0 ? (
+        <>
+          <div style={{ display: 'flex', gap: 28, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div><div style={{ fontSize: 12, color: '#94a3b8' }}>Monthly</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalMonthly)}</div></div>
+            <div><div style={{ fontSize: 12, color: '#94a3b8' }}>Annual-only fees</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnualFees)}</div></div>
+            <div><div style={{ fontSize: 12, color: '#94a3b8' }}>Total a year</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnual)}</div></div>
+          </div>
+          {approvedServices.map((s, idx) => (
+            <div key={`${s.row_id}-${idx}`} style={rowStyle}>
+              <span style={{ color: '#1e293b' }}>
+                {s.service_id || s.description || 'Service'}
+                {s.fromTemplate && <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: '#ccfbf1', color: '#115e59' }}>QuickBooks template</span>}
+                {(() => {
+                  const ub = underBillingOf(s);
+                  return ub && (
+                    <span
+                      style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+                      title={`Below the standard minimum of ${fmt(ub.min)}/yr — under by ${fmt(ub.under)}/yr`}
+                    >
+                      Under {fmt(ub.under)}/yr
+                    </span>
+                  );
+                })()}
+              </span>
+              <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>
+                {s.cadence === 'annual' ? `${fmt(s.monthly_amount)}/yr` : `${fmt(s.monthly_amount)}/mo`}
+              </span>
+            </div>
+          ))}
+
+          {/* Fee earner allocation — per service_id, drives practice-wide
+              attribution reports. Source of service_ids: live_billing.services
+              jsonb (union across all billing rows) ∪ existing allocations. */}
+          <AllocationEditor
+            entityId={entity.id}
+            billing={billing}
+            allocations={allocations}
+            staff={staffList}
+            onChange={setAllocations}
+          />
+        </>
+      ) : <p style={emptyStyle}>No active billing.</p>}
+    </div>
+  );
+
+  const quotesCard = canSeeQuotes && (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+        <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Quotes ({quotes.length}{activeQuotes.length ? ` · ${activeQuotes.length} active` : ''})</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn variant="secondary" onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}&seed=source`)}>
+            Copy another client's pricing
+          </Btn>
+          <Btn onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}`)}>New quote</Btn>
+        </div>
+      </div>
+      {quotes.map((q) => (
+        <div key={q.id} onClick={() => navigate(`/manage/quotes/${q.id}`)} style={{ ...rowStyle, cursor: 'pointer' }}>
+          <span style={{ fontWeight: 500, color: '#0f172a' }}>{q.quote_ref}</span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: '#64748b' }}>{fmt(q.monthly_gross)}/mo</span>
+            <Badge bg={q.status === 'accepted' ? '#f0fdf4' : q.status === 'sent' ? '#f5f3ff' : '#f1f5f9'} color={q.status === 'accepted' ? '#059669' : q.status === 'sent' ? '#7c3aed' : '#64748b'}>{q.status}</Badge>
+          </div>
+        </div>
+      ))}
+      {quotes.length === 0 && <p style={emptyStyle}>No quotes.</p>}
+    </div>
+  );
 
   return (
     <div style={wrapStyle}>
-      <button onClick={() => navigate('/clients')} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 14, fontFamily: "'Outfit', sans-serif", marginBottom: 16, padding: 0 }}>
-        <ChevronLeft size={16} /> Back to Clients
-      </button>
+      <a href="/clients" onClick={(e) => { e.preventDefault(); navigate('/clients'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#64748b', fontSize: 14, marginBottom: 14, textDecoration: 'none' }}>
+        <ChevronLeft size={16} /> Clients
+      </a>
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <EditableName entity={entity} setEntity={setEntity} profile={profile} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <EditableName entity={entity} setEntity={setEntity} profile={profile} />
+            <StatusChip value={entity.entity_status || 'active'} />
+          </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: '#64748b', flexWrap: 'wrap' }}>
             <span style={{ textTransform: 'capitalize' }}>{entity.type?.replace('_', ' ')}</span>
             {entity.company_number && <span>· {entity.company_number}</span>}
             {entity.manager && <span>· Managed by {entity.manager}</span>}
-            {entity.source === 'athena' && <Badge bg="#dbeafe" color="#0e7fe0">Athena</Badge>}
-            <StatusEditor
-              value={entity.entity_status || 'active'}
-              onChange={async (next) => {
-                const prev = entity.entity_status || 'active';
-                if (next === prev) return;
-                let reason = '';
-                if (next === 'nlac' || next === 'archived') {
-                  reason = window.prompt(`Reason for marking as ${next.toUpperCase()}? (optional)`, '') || '';
-                }
-                setEntity({ ...entity, entity_status: next });
-                const { error } = await supabase.from('entities').update({ entity_status: next }).eq('id', entity.id);
-                if (error) {
-                  alert('Could not update status: ' + error.message);
-                  setEntity({ ...entity, entity_status: prev });
-                  return;
-                }
-                await supabase.from('audit_log').insert({
-                  user_id: profile?.id || null,
-                  action: 'entity_status_change',
-                  entity_type: 'entity',
-                  entity_id: entity.id,
-                  detail: { from: prev, to: next, reason: reason || null },
-                });
-              }}
-            />
-            <CadenceEditor
-              value={entity.cadence_preference || 'normal'}
-              onChange={async (next) => {
-                const prev = entity.cadence_preference;
-                setEntity({ ...entity, cadence_preference: next });
-                const { error } = await supabase.from('entities').update({ cadence_preference: next }).eq('id', entity.id);
-                if (error) {
-                  alert('Could not update cadence: ' + error.message);
-                  setEntity({ ...entity, cadence_preference: prev });
-                }
-              }}
-            />
-            <ExpediteToggle
-              value={!!entity.expedite}
-              onChange={async (next) => {
-                const prev = !!entity.expedite;
-                setEntity({ ...entity, expedite: next });
-                const { error } = await supabase.from('entities').update({ expedite: next }).eq('id', entity.id);
-                if (error) {
-                  alert('Could not update expedite flag: ' + error.message);
-                  setEntity({ ...entity, expedite: prev });
-                }
-              }}
-            />
-            {entity.grade && (
-              <span style={{
-                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-                background: '#eef2ff', color: '#4338ca', border: '1px solid #c7d2fe',
-                fontFamily: "'Outfit', sans-serif",
-              }} title="Client grade (imported)">Grade {entity.grade}</span>
+            {entity.grade && <span>· Grade {entity.grade}</span>}
+            {entity.expedite && <Badge bg="#fef3c7" color="#b45309">Expedite</Badge>}
+            {entity.cadence_preference && entity.cadence_preference !== 'normal' && (
+              <Badge bg="#f1f5f9" color="#475569">Scheduled {entity.cadence_preference}</Badge>
             )}
+            {entity.source === 'athena' && <Badge bg="#dbeafe" color="#1E4560">Added in Athena</Badge>}
           </div>
         </div>
-        {/* Client actions (the time-period control moved to the Time Logged panel) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {entity.entity_status === 'nlac' ? (
-            <button
-              onClick={handleReinstate}
-              disabled={offboarding}
-              title="Reinstate this former client as active"
-              style={{
-                fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
-                background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe',
-                cursor: offboarding ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
-              }}
-            >
-              {offboarding ? '…' : 'Reinstate client'}
-            </button>
-          ) : (
-            <button
-              onClick={handleOffboard}
-              disabled={offboarding}
-              title="Mark as no longer a client — removes them from views and queues the BrightManager change for Sophie"
-              style={{
-                fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
-                background: '#fff', color: '#b91c1c', border: '1px solid #fecaca',
-                cursor: offboarding ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
-              }}
-            >
-              {offboarding ? '…' : 'No longer a client'}
-            </button>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Btn onClick={goRaiseAction}>Raise action</Btn>
+          {canSeeQuotes && <Btn variant="secondary" onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}`)}>New quote</Btn>}
+          <MoreMenu
+            entity={entity}
+            busy={offboarding || archiving}
+            onStatus={changeStatus}
+            onCadence={changeCadence}
+            onExpedite={changeExpedite}
+            onOffboard={handleOffboard}
+            onReinstate={handleReinstate}
+            onArchive={handleArchive}
+          />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 20, flexWrap: 'wrap' }}>
+        {CLIENT_TABS.map((t) => (
           <button
-            onClick={handleArchive}
-            disabled={archiving}
-            title={entity.entity_status === 'archived' ? 'Restore this client to the active list' : 'Archive this client — hides it from the list, keeps its records'}
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
             style={{
-              fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8,
-              background: '#fff', color: entity.entity_status === 'archived' ? '#0e7fe0' : '#b91c1c',
-              border: '1px solid ' + (entity.entity_status === 'archived' ? '#bfdbfe' : '#fecaca'),
-              cursor: archiving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif",
+              padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
+              fontFamily: "'Outfit', sans-serif", fontSize: 14.5, fontWeight: tab === t.id ? 700 : 500,
+              color: tab === t.id ? '#0f172a' : '#64748b',
+              borderBottom: tab === t.id ? '2px solid #1E4560' : '2px solid transparent',
+              marginBottom: -1,
             }}
           >
-            {archiving ? '…' : entity.entity_status === 'archived' ? 'Restore' : 'Archive'}
+            {t.label}
+            {t.count > 0 && <span style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}>{t.count}</span>}
           </button>
-        </div>
+        ))}
       </div>
 
-      {/* Tabs — every client (Directors/PSCs appended for limited companies) */}
-      {(
-        <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb', marginBottom: 20, flexWrap: 'wrap' }}>
-          {CLIENT_TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id)}
+      <div className="grid gap-6 items-start min-[1000px]:grid-cols-[minmax(0,1fr)_300px]">
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {tab === 'overview' && (<>
+        {offboardResult && (
+          <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px' }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
+              Marked no longer a client
+            </div>
+            <div style={{ fontSize: 13.5, color: '#7f1d1d' }}>
+              Removed from the clients list and billing views.
+              {offboardResult.ch_stalled > 0 && ` ${offboardResult.ch_stalled} Companies House chase${offboardResult.ch_stalled === 1 ? '' : 's'} stopped.`}
+              {offboardResult.onboardings_archived > 0 && ` ${offboardResult.onboardings_archived} onboarding${offboardResult.onboardings_archived === 1 ? '' : 's'} archived.`}
+              {offboardResult.bm_task_created
+                ? ' A task has been added to Sophie’s admin list to archive them in BrightManager — it clears itself on the next BM import.'
+                : ' No BrightManager record to mirror.'}
+            </div>
+          </div>
+        )}
+
+        {/* Active onboarding banner — click through to the workflow */}
+        {onboardings.map((ob) => {
+          const applicable = (ob.steps || []).filter((s) => s.status !== 'na');
+          const done = applicable.filter((s) => s.status === 'complete').length;
+          const pct = applicable.length ? Math.round((done / applicable.length) * 100) : 0;
+          return (
+            <a
+              key={ob.id}
+              href={`/onboarding/${ob.id}`}
+              onClick={(e) => { e.preventDefault(); navigate(`/onboarding/${ob.id}`); }}
               style={{
-                padding: '9px 16px', border: 'none', background: 'none', cursor: 'pointer',
-                fontFamily: "'Outfit', sans-serif", fontSize: 14.5, fontWeight: activeTab === t.id ? 700 : 500,
-                color: activeTab === t.id ? '#0f172a' : '#64748b',
-                borderBottom: activeTab === t.id ? '2px solid #0e7fe0' : '2px solid transparent',
-                marginBottom: -1,
+                display: 'flex', alignItems: 'center', gap: 14, textDecoration: 'none',
+                border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 12, padding: '13px 16px',
               }}
             >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {isLtd && activeTab === 'directors' && <PeopleList people={directors} kind="director" />}
-      {isLtd && activeTab === 'pscs' && <PeopleList people={pscs} kind="psc" />}
-      {activeTab === 'comms' && <ClientCommsTab entityId={id} />}
-
-      {detailsVisible && (<>
-
-      {offboardResult && (
-        <div style={{ border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 12, padding: '12px 16px', marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#b91c1c', marginBottom: 4 }}>
-            Marked no longer a client
-          </div>
-          <div style={{ fontSize: 13.5, color: '#7f1d1d' }}>
-            Removed from the clients list and billing views.
-            {offboardResult.ch_stalled > 0 && ` ${offboardResult.ch_stalled} Companies House chase${offboardResult.ch_stalled === 1 ? '' : 's'} stopped.`}
-            {offboardResult.onboardings_archived > 0 && ` ${offboardResult.onboardings_archived} onboarding${offboardResult.onboardings_archived === 1 ? '' : 's'} archived.`}
-            {offboardResult.bm_task_created
-              ? ' A task has been added to Sophie’s admin list to archive them in BrightManager — it clears itself on the next BM import.'
-              : ' No BrightManager record to mirror.'}
-          </div>
-        </div>
-      )}
-
-      {/* Active onboarding banner — click through to the workflow */}
-      {onboardings.map((ob) => {
-        const applicable = (ob.steps || []).filter((s) => s.status !== 'na');
-        const done = applicable.filter((s) => s.status === 'complete').length;
-        const pct = applicable.length ? Math.round((done / applicable.length) * 100) : 0;
-        return (
-          <div
-            key={ob.id}
-            onClick={() => navigate(`/onboarding/${ob.id}`)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20, cursor: 'pointer',
-              border: '1px solid #bfdbfe', background: 'linear-gradient(100deg, #eff6ff, #f0fdfa)',
-              borderRadius: 12, padding: '13px 16px',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(14,127,224,0.12)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <span style={{ fontSize: 20 }}>🚀</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>
-                Onboarding in progress
-                {ob.status !== 'active' && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#92400e' }}>{ob.status.replace('_', ' ')}</span>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>
+                  Onboarding in progress
+                  {ob.status !== 'active' && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#92400e' }}>{ob.status.replace('_', ' ')}</span>}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+                  {ob.template?.name || 'Onboarding'} · {done} of {applicable.length} steps ({pct}%)
+                </div>
               </div>
-              <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
-                {ob.template?.name || 'Onboarding'} · {done}/{applicable.length} steps ({pct}%)
+              <div style={{ width: 120, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', flexShrink: 0 }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#059669' : '#1E4560' }} />
               </div>
-            </div>
-            <div style={{ width: 120, height: 6, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', flexShrink: 0 }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#059669' : '#0e7fe0' }} />
-            </div>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', whiteSpace: 'nowrap' }}>View onboarding →</span>
-          </div>
-        );
-      })}
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: '#1E4560', whiteSpace: 'nowrap' }}>View onboarding →</span>
+            </a>
+          );
+        })}
 
-      {/* Email reconciliation: BM contact email (1:1) vs QBO billing email(s) (1:many) */}
-      {recon && recon.status !== 'ok' && (
-        <EmailReconPanel recon={recon} />
+        {/* Email reconciliation: BM contact email (1:1) vs QBO billing email(s) (1:many) */}
+        {recon && recon.status !== 'ok' && <EmailReconPanel recon={recon} />}
+
+        {/* What HMRC's own records say about this client (sql/197). Renders
+            nothing unless they hold a PAYE scheme on our agent list. */}
+        <ClientHmrcPanel entityId={id} />
+
+        {/* Next deadlines — open BrightManager jobs. The home-screen deadline
+            alerts link here, so the thing that was clicked must be visible
+            on arrival. */}
+        <CompliancePanel jobs={deadlineJobs} navigate={navigate} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+          <div style={cardStyle}>
+            <h3 style={sectionTitle}>Open issues ({openIssues.length})</h3>
+            {openIssues.slice(0, 6).map((iss) => (
+              <div key={iss.id} style={rowStyle}>
+                <span style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{iss.title || iss.description}</span>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  <Badge bg="#fef2f2" color="#dc2626">{(iss.stage || iss.status)?.replace(/_/g, ' ')}</Badge>
+                  {iss.priority && <span style={{ fontSize: 12, color: '#94a3b8' }}>{iss.priority}</span>}
+                </div>
+              </div>
+            ))}
+            {openIssues.length === 0 && <p style={emptyStyle}>No open issues.</p>}
+            <a href="/triage/list" onClick={(e) => { e.preventDefault(); navigate('/triage/list'); }} style={linkStyle}>Open Triage →</a>
+          </div>
+
+          <div style={cardStyle}>
+            <h3 style={sectionTitle}>Open actions ({tasks.length})</h3>
+            {tasks.slice(0, 6).map((t) => (
+              <div key={t.id} style={rowStyle}>
+                <span style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{t.title}</span>
+                <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>{t.due_date ? `due ${dateShort(t.due_date)}` : dateShort(t.created_at)}</span>
+              </div>
+            ))}
+            {tasks.length === 0 && <p style={emptyStyle}>No open actions.</p>}
+            <button onClick={() => setActiveTab('work')} style={{ ...linkStyle, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>All work →</button>
+          </div>
+        </div>
+      </>)}
+
+      {tab === 'work' && (<>
+        {/* Raise Action */}
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>Raise an action</h3>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 10px' }}>Creates a task in the Work Planner for this client, due in five days.</p>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input ref={raiseInputRef} value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseAction(); }} placeholder="e.g. Chase outstanding documents, review fees…" disabled={taskCreating} style={{ flex: 1, minWidth: 220, padding: '9px 14px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
+            <select value={actionAssignee} onChange={(e) => setActionAssignee(e.target.value)} style={{ padding: '9px 10px', fontSize: 13.5, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
+              <option value="">Assign to…</option>
+              {staffList.filter((s) => s.is_active !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <Btn onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating}>
+              {taskCreating ? 'Creating…' : 'Raise action'}
+            </Btn>
+          </div>
+          {taskCreated && <div style={{ marginTop: 8, fontSize: 13, color: '#059669', fontWeight: 500 }}>✓ Action created in the Work Planner</div>}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+          <div style={cardStyle}>
+            <h3 style={sectionTitle}>Outstanding actions ({tasks.length})</h3>
+            {tasks.map((t) => (
+              <div key={t.id} style={rowStyle}>
+                <span style={{ fontWeight: 500, color: '#0f172a', minWidth: 0 }}>{t.title}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, fontSize: 12.5 }}>
+                  {staffName(t.assignee_id) && <span style={{ color: '#64748b' }}>{staffName(t.assignee_id)}</span>}
+                  <span style={{ color: '#94a3b8' }}>{t.due_date ? `due ${dateShort(t.due_date)}` : dateShort(t.created_at)}</span>
+                </div>
+              </div>
+            ))}
+            {tasks.length === 0 && <p style={emptyStyle}>No outstanding actions.</p>}
+            <a href="/planner" onClick={(e) => { e.preventDefault(); navigate('/planner'); }} style={linkStyle}>Open the Work Planner →</a>
+          </div>
+
+          <div style={cardStyle}>
+            <h3 style={sectionTitle}>Scheduled tasks ({scheduledTasks.length})</h3>
+            {scheduledTasks.map((t) => (
+              <div key={t.id} style={rowStyle}>
+                <span style={{ color: '#0f172a', minWidth: 0 }}>{t.title}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0, fontSize: 12.5 }}>
+                  {t.service && <span style={{ color: '#64748b' }}>{t.service}</span>}
+                  {t.planned_date && <span style={{ color: '#94a3b8' }}>{dateShort(t.planned_date)}</span>}
+                </div>
+              </div>
+            ))}
+            {scheduledTasks.length === 0 && <p style={emptyStyle}>Nothing scheduled.</p>}
+            <a href="/planner/scheduled" onClick={(e) => { e.preventDefault(); navigate('/planner/scheduled'); }} style={linkStyle}>Scheduled work →</a>
+          </div>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Time logged · {durFmt(totalCompleted)} across {filteredCompleted.length} task{filteredCompleted.length === 1 ? '' : 's'}</h3>
+            <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} aria-label="Period" style={{ padding: '5px 8px', fontSize: 13.5, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
+              {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            {filteredCompleted.length > 0 ? filteredCompleted.slice(0, 20).map((t) => (
+              <div key={t.id} style={rowStyle}>
+                <span style={{ color: '#1e293b', minWidth: 0 }}>{t.title}</span>
+                <div style={{ display: 'flex', gap: 10, flexShrink: 0, fontSize: 12.5 }}>
+                  <span style={{ color: '#64748b' }}>{t.service}</span>
+                  <span style={{ fontWeight: 500 }}>{durFmt(t.completion_mins)}</span>
+                  <span style={{ color: '#94a3b8' }}>{dateShort(t.completed_at)}</span>
+                </div>
+              </div>
+            )) : <p style={emptyStyle}>No completed work in this period.</p>}
+          </div>
+        </div>
+
+        {canSeeBillingQueue && pendingBilling.length > 0 && (
+          <div style={cardStyle}>
+            <h3 style={sectionTitle}>Waiting to be billed</h3>
+            <p style={{ fontSize: 14, color: '#0f172a', margin: 0 }}>
+              {pendingBilling.length} item{pendingBilling.length === 1 ? '' : 's'} · {fmt(pendingBilling.reduce((s, b) => s + (b.gross_amount || 0), 0))}
+            </p>
+            <a href="/billing" onClick={(e) => { e.preventDefault(); navigate('/billing'); }} style={linkStyle}>Open Billing →</a>
+          </div>
+        )}
+      </>)}
+
+      {tab === 'billing' && (<>
+        {billingCard}
+        {quotesCard}
+      </>)}
+
+      {tab === 'people' && (
+        isLtd ? (<>
+          <PeopleSection title={`Directors (${directors.length})`}><PeopleList people={directors} kind="director" /></PeopleSection>
+          <PeopleSection title={`Persons with significant control (${pscs.length})`}><PeopleList people={pscs} kind="psc" /></PeopleSection>
+          {otherPeople.length > 0 && <PeopleSection title={`Other contacts (${otherPeople.length})`}><PeopleList people={otherPeople} kind="contact" /></PeopleSection>}
+        </>) : <PeopleList people={people} kind="contact" />
       )}
 
-      {/* What HMRC's own records say about this client (sql/197). Renders
-          nothing unless they hold a PAYE scheme on our agent list, so it sits
-          above the compliance panel without pushing it down for the majority
-          who have no scheme. */}
-      <ClientHmrcPanel entityId={id} />
-
-      {/* Compliance & deadlines — open BrightManager jobs for this client.
-          The home-screen deadline alerts link here, so the thing that was
-          clicked must be visible on arrival. */}
-      <CompliancePanel jobs={bmJobs} navigate={navigate} />
-
-      {/* Summary cards — all clickable. Money tiles are permission-gated. */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${3 + (canSeeFees ? 1 : 0) + (canSeeQuotes ? 1 : 0)}, 1fr)`, gap: 12, marginBottom: 24 }}>
-        {canSeeFees && <SummaryCard icon={Receipt} label="Monthly Billing" value={fmt(totalMonthly)} accent="#0e7fe0" onClick={() => toggleSection('billing')} active={activeSection === 'billing'} />}
-        {canSeeQuotes && <SummaryCard icon={FileText} label="Quotes" value={`${quotes.length} (${activeQuotes.length} active)`} accent="#059669" onClick={() => toggleSection('quotes')} active={activeSection === 'quotes'} />}
-        <SummaryCard icon={Clock} label="Time Logged" value={durFmt(totalCompleted)} accent="#d97706" onClick={() => toggleSection('time')} active={activeSection === 'time'} />
-        <SummaryCard icon={AlertTriangle} label="Open Issues" value={openIssues.length} accent={openIssues.length > 0 ? '#dc2626' : '#059669'} onClick={() => toggleSection('issues')} active={activeSection === 'issues'} />
-        <SummaryCard icon={Clipboard} label="Outstanding Actions" value={tasks.length} accent={tasks.length > 0 ? '#d97706' : '#059669'} onClick={() => toggleSection('actions')} active={activeSection === 'actions'} />
+      {tab === 'comms' && <ClientCommsTab entityId={id} />}
       </div>
 
-      {/* Expandable detail sections — shown when tile clicked */}
-      {activeSection === 'billing' && canSeeFees && (
-        <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={sectionTitle}>Active Billing</h3>
-            <button
-              onClick={() => navigate(`/manage/billing/change?client=${encodeURIComponent(entity.name)}`)}
-              style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0e7fe0', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", fontWeight: 600 }}
-              title="Open this client in the billing Change matrix"
-            >
-              Manage billing
-            </button>
-          </div>
-          {approvedServices.length > 0 ? (
-            <>
-              <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
-                <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Monthly</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalMonthly)}</div></div>
-                <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Annual fees (pure)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f766e' }}>{fmt(totalAnnualFees)}</div></div>
-                <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Annualised (×12 + annual)</div><div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{fmt(totalAnnual)}</div></div>
-              </div>
-              {approvedServices.map((s, idx) => (
-                <div key={`${s.row_id}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: '#1e293b' }}>
-                    {s.service_id || s.description || 'Service'}
-                    {s.fromTemplate && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 4, background: '#ccfbf1', color: '#115e59' }}>QBO TEMPLATE</span>}
-                    {(() => {
-                      const ub = underBillingOf(s);
-                      return ub && (
-                        <span
-                          style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
-                          title={`Below the standard minimum of ${fmt(ub.min)}/yr — under by ${fmt(ub.under)}/yr`}
-                        >
-                          Under {fmt(ub.under)}/yr
-                        </span>
-                      );
-                    })()}
-                  </span>
-                  <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>
-                    {s.cadence === 'annual'
-                      ? `${fmt(s.monthly_amount)}/yr`
-                      : `${fmt(s.monthly_amount)}/mo`}
-                  </span>
-                </div>
-              ))}
-
-              {/* Fee earner allocation — per service_id, drives practice-wide
-                  attribution reports. Source of service_ids: live_billing.services
-                  jsonb (union across all billing rows) ∪ existing allocations. */}
-              <AllocationEditor
-                entityId={entity.id}
-                billing={billing}
-                allocations={allocations}
-                staff={staffList}
-                onChange={setAllocations}
-              />
-            </>
-          ) : <p style={{ fontSize: 14, color: '#cbd5e1' }}>No active billing.</p>}
-        </div>
-      )}
-
-      {activeSection === 'quotes' && canSeeQuotes && (
-        <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Quotes ({quotes.length})</h3>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}`)}
-                style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
-              >
-                New quote
-              </button>
-              <button
-                onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}&seed=source`)}
-                style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
-                title="Start a quote seeded from another client's recurring bill pricing"
-              >
-                New quote from another client's pricing
-              </button>
-            </div>
-          </div>
-          {quotes.map((q) => (
-            <div key={q.id} onClick={() => navigate(`/manage/quotes/${q.id}`)} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
-              <span style={{ fontWeight: 500, color: '#0f172a' }}>{q.quote_ref}</span>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: 12, color: '#64748b' }}>{fmt(q.monthly_gross)}/mo</span>
-                <Badge bg={q.status === 'accepted' ? '#f0fdf4' : q.status === 'sent' ? '#f5f3ff' : '#f1f5f9'} color={q.status === 'accepted' ? '#059669' : q.status === 'sent' ? '#7c3aed' : '#64748b'}>{q.status}</Badge>
-              </div>
-            </div>
-          ))}
-          {quotes.length === 0 && <p style={{ fontSize: 14, color: '#cbd5e1' }}>No quotes.</p>}
-        </div>
-      )}
-
-      {activeSection === 'time' && (
-        <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Time Logged</h3>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b' }}>
-              Period
-              <select value={timePeriod} onChange={(e) => setTimePeriod(e.target.value)} style={{ padding: '4px 8px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
-                {TIME_PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              </select>
-            </label>
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#d97706', marginTop: 12, marginBottom: 12 }}>{durFmt(totalCompleted)}</div>
-          {filteredCompleted.length > 0 ? filteredCompleted.slice(0, 20).map((t) => (
-            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ color: '#1e293b' }}>{t.title}</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <span style={{ color: '#64748b' }}>{t.service}</span>
-                <span style={{ fontWeight: 500 }}>{durFmt(t.completion_mins)}</span>
-                <span style={{ color: '#94a3b8', fontSize: 12 }}>{new Date(t.completed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-              </div>
-            </div>
-          )) : <p style={{ fontSize: 14, color: '#cbd5e1' }}>No completed work in this period.</p>}
-        </div>
-      )}
-
-      {activeSection === 'issues' && (
-        <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <h3 style={sectionTitle}>Issues ({openIssues.length} open / {issues.length} total)</h3>
-          {issues.slice(0, 10).map((iss) => {
-            const isOpen = iss.status === 'open';
-            return (
-              <div key={iss.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontWeight: 500, color: isOpen ? '#0f172a' : '#94a3b8', textDecoration: isOpen ? 'none' : 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{iss.title || iss.description}</span>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                  <Badge bg={isOpen ? '#fef2f2' : '#f0fdf4'} color={isOpen ? '#dc2626' : '#059669'}>{(iss.stage || iss.status)?.replace(/_/g, ' ')}</Badge>
-                  {iss.priority && <span style={{ fontSize: 11, color: '#94a3b8' }}>{iss.priority}</span>}
-                </div>
-              </div>
-            );
-          })}
-          {issues.length === 0 && <p style={{ fontSize: 14, color: '#cbd5e1' }}>No issues.</p>}
-          <a href="/triage/list" onClick={(e) => { e.preventDefault(); navigate('/triage/list'); }} style={{ display: 'inline-block', marginTop: 8, fontSize: 13, color: '#0e7fe0', fontWeight: 600, textDecoration: 'none' }}>Open Triage →</a>
-        </div>
-      )}
-
-      {activeSection === 'actions' && (
-        <div style={{ ...cardStyle, marginBottom: 20 }}>
-          <h3 style={sectionTitle}>Outstanding Actions ({tasks.length})</h3>
-          {tasks.map((t) => (
-            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontWeight: 500, color: '#0f172a' }}>{t.title}</span>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ color: '#64748b' }}>{t.service}</span>
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(t.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-              </div>
-            </div>
-          ))}
-          {tasks.length === 0 && <p style={{ fontSize: 14, color: '#cbd5e1' }}>No outstanding actions.</p>}
-        </div>
-      )}
-
-      {/* Always-visible sections */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      {/* Right rail — the same on every tab */}
+      <aside style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={cardStyle}>
-          <h3 style={sectionTitle}>Client Details</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 14 }}>
-            <DetailRow label="Name" value={entity.name} />
-            <DetailRow label="Type" value={entity.type?.replace('_', ' ')} />
-            <EditableRow label="Company No." field="company_number" entity={entity} setEntity={setEntity} profile={profile} placeholder="e.g. SC123456" overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+          <h3 style={sectionTitle}>Contact</h3>
+          {primary?.name && <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>{primary.name}</div>}
+          {contactEmail
+            ? <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, marginBottom: 3, minWidth: 0 }}>
+                <a href={`mailto:${contactEmail}`} style={{ color: '#1E4560', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contactEmail}</a>
+                <CopyButton value={contactEmail} />
+              </div>
+            : <EditableContactEmail entity={entity} setEntity={setEntity} profile={profile} />}
+          {contactPhone && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, marginBottom: 3 }}>
+              <a href={`tel:${contactPhone}`} style={{ color: '#1E4560', textDecoration: 'none' }}>{contactPhone}</a>
+              <CopyButton value={contactPhone} />
+            </div>
+          )}
+          {address.length > 0 && (
+            <div style={{ fontSize: 13.5, color: '#475569', marginTop: 8, lineHeight: 1.45 }}>
+              {address.map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+          )}
+          {!primary && !contactPhone && address.length === 0 && (
+            <p style={{ ...emptyStyle, fontSize: 13, marginTop: 6 }}>No primary contact set.</p>
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <h3 style={sectionTitle}>References</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '8px 14px', alignItems: 'center' }}>
+            <EditableRow label="Company no." field="company_number" entity={entity} setEntity={setEntity} profile={profile} placeholder="e.g. SC123456" overrides={fieldOverrides} setOverrides={setFieldOverrides} />
             <EditableRow label="UTR" field="utr" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
-            <EditableRow label="VAT Number" field="vat_number" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
-            <EditableRow label="PAYE Ref" field="paye_ref" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            <EditableRow label="VAT" field="vat_number" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
+            <EditableRow label="PAYE" field="paye_ref" entity={entity} setEntity={setEntity} profile={profile} overrides={fieldOverrides} setOverrides={setFieldOverrides} />
             {/* Presence only, and read-only. Athena does not hold the code —
                 sql/257 coerces any write to the marker 'held' and a CHECK
                 constraint refuses a real one. BrightManager is the system of
                 record; a code is a filing credential we have no use for. */}
-            <DetailRow label="CH Auth Code" value={entity.ch_auth_code ? 'Held on BrightManager' : 'Not held'} />
-            {entity.manager && <DetailRow label="Manager" value={entity.manager} />}
-            {entity.grade && <DetailRow label="Grade" value={entity.grade} />}
-            <DetailRow label="Expedite" value={entity.expedite ? 'Yes — prioritise post-period-end' : 'No'} />
-            <EditableRow label="Email" field="prospect_email" entity={entity} setEntity={setEntity} profile={profile} placeholder="client@example.com" />
-            <DetailRow label="Source" value={entity.source === 'athena' ? 'Athena (manual)' : 'BrightManager'} />
+            <DetailRow label="CH auth code" value={entity.ch_auth_code ? 'Held on BrightManager' : 'Not held'} />
+            <DetailRow label="Source" value={entity.source === 'athena' ? 'Added in Athena' : 'BrightManager'} />
           </div>
         </div>
 
-        <div style={cardStyle}>
-          <h3 style={sectionTitle}>Work Overview</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <WorkStat icon={Clipboard} label="Quick tasks" count={tasks.length} onClick={() => navigate('/planner')} />
-            <WorkStat icon={Clock} label="Scheduled tasks" count={scheduledTasks.length} onClick={() => navigate('/planner/scheduled')} />
-            <WorkStat icon={CheckCircle} label="Completed" count={filteredCompleted.length} sub={durFmt(totalCompleted)} onClick={() => navigate('/planner/completed')} />
-            {canSeeBillingQueue && pendingBilling.length > 0 && (
-              <WorkStat icon={Receipt} label="Pending billing" count={pendingBilling.length} sub={fmt(pendingBilling.reduce((s, b) => s + (b.gross_amount || 0), 0))} onClick={() => navigate('/billing')} />
-            )}
+        {canSeeFees && (
+          <div style={cardStyle}>
+            <h3 style={sectionTitle}>Fees</h3>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>{fmt(totalMonthly)}<span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}> /month</span></div>
+            <div style={{ fontSize: 13.5, color: '#64748b', marginTop: 4 }}>
+              {approvedServices.length} service{approvedServices.length === 1 ? '' : 's'}
+              {totalAnnualFees > 0 && ` · ${fmt(totalAnnualFees)} annual-only`}
+            </div>
+            {feeEarners.length > 0 && <div style={{ fontSize: 13.5, color: '#475569', marginTop: 4 }}>Fee earner: {feeEarners.join(', ')}</div>}
+            <button onClick={() => setActiveTab('billing')} style={{ ...linkStyle, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Billing &amp; quotes →</button>
           </div>
-        </div>
+        )}
+      </aside>
       </div>
-
-      {/* Raise Action */}
-      <div style={cardStyle}>
-        <h3 style={sectionTitle}>Raise Action</h3>
-        <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>Create a task in the Work Planner linked to this client.</p>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseAction(); }} placeholder="e.g. Chase outstanding documents, review fees..." disabled={taskCreating} style={{ flex: 1, minWidth: 200, padding: '9px 14px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
-          <select value={actionAssignee} onChange={(e) => setActionAssignee(e.target.value)} style={{ padding: '9px 10px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
-            <option value="">Assign to...</option>
-            {staffList.filter((s) => s.is_active !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <button onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#1E4560', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
-            {taskCreating ? 'Creating...' : 'Raise Action'}
-          </button>
-        </div>
-        {taskCreated && <div style={{ marginTop: 8, fontSize: 13, color: '#059669', fontWeight: 500 }}>✓ Action created in Work Planner</div>}
-      </div>
-      </>)}
     </div>
   );
 }
@@ -700,7 +717,9 @@ function PeopleList({ people, kind }) {
       <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 14 }}>
         {kind === 'psc'
           ? 'No persons with significant control recorded. These come from the Companies House refresh.'
-          : 'No directors recorded. These come from the Companies House refresh.'}
+          : kind === 'contact'
+            ? 'No people recorded for this client.'
+            : 'No directors recorded. These come from the Companies House refresh.'}
       </div>
     );
   }
@@ -716,7 +735,7 @@ function PeopleList({ people, kind }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{person.name || 'Unnamed'}</div>
               <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-                <span style={{ textTransform: 'capitalize' }}>{p.role || (kind === 'psc' ? 'PSC' : 'officer')}</span>
+                <span style={{ textTransform: 'capitalize' }}>{p.role || (kind === 'psc' ? 'PSC' : kind === 'contact' ? 'contact' : 'officer')}</span>
                 {kind === 'psc' && p.role_pct != null && <span>· {p.role_pct}%+ control</span>}
                 {dob && <span>· b. {dob}</span>}
                 {p.started_on && <span>· appointed {new Date(p.started_on).toLocaleDateString('en-GB')}</span>}
@@ -861,10 +880,10 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
         onBlur={(e) => save(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') save(e.currentTarget.value); if (e.key === 'Escape') setEditing(false); }}
         disabled={saving}
-        style={{ fontSize: 14, padding: '3px 8px', border: '1px solid #0e7fe0', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif", maxWidth: 220 }}
+        style={{ fontSize: 14, padding: '3px 8px', border: '1px solid #0e7fe0', borderRadius: 6, outline: 'none', fontFamily: "'Outfit', sans-serif", width: '100%', boxSizing: 'border-box' }}
       />
     ) : (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0 }}>
         <span
           onClick={() => { setVal(current); setEditing(true); }}
           title={`Click to ${current ? 'edit' : 'add'} ${label}`}
@@ -876,6 +895,7 @@ function EditableRow({ label, field, entity, setEntity, profile, placeholder, ov
         >
           {current || '+ add'}
         </span>
+        {current && <CopyButton value={current} />}
         {bmDiffers && (
           <span
             title={`BrightManager still shows "${ov.bm_value || '(blank)'}" — on Sophie's admin list to update in BM. Clears automatically once BM matches.`}
@@ -910,24 +930,24 @@ function CompliancePanel({ jobs, navigate }) {
     return null;
   };
 
-  const visible = showAll ? jobs : jobs.slice(0, 8);
+  const visible = showAll ? jobs : jobs.slice(0, 5);
 
   return (
-    <div style={{ ...cardStyle, marginBottom: 20, ...(overdue.length > 0 ? { border: '1px solid #fecaca' } : {}) }}>
+    <div style={{ ...cardStyle, ...(overdue.length > 0 ? { border: '1px solid #fecaca' } : {}) }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: jobs.length > 0 ? 12 : 0 }}>
-        <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Compliance &amp; Deadlines</h3>
+        <h3 style={{ ...sectionTitle, marginBottom: 0 }}>Next deadlines</h3>
         {overdue.length > 0 && (
           <Badge bg="#fef2f2" color="#dc2626">{overdue.length} overdue</Badge>
         )}
         {jobs.length > 0 && overdue.length === 0 && (
           <Badge bg="#f0fdf4" color="#059669">on track</Badge>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#cbd5e1', fontFamily: "'Outfit', sans-serif" }}>
-          {jobs.length > 0 ? `${jobs.length} open BrightManager job${jobs.length === 1 ? '' : 's'}` : 'from BrightManager'}
+        <span style={{ marginLeft: 'auto', fontSize: 12.5, color: '#94a3b8', fontFamily: "'Outfit', sans-serif" }}>
+          {jobs.length > 0 ? `${jobs.length} open job${jobs.length === 1 ? '' : 's'} in BrightManager` : 'from BrightManager'}
         </span>
       </div>
       {jobs.length === 0 && (
-        <p style={{ fontSize: 14, color: '#cbd5e1', margin: 0 }}>No open BrightManager jobs for this client.</p>
+        <p style={{ fontSize: 14, color: '#94a3b8', margin: 0 }}>No open deadlines for this client.</p>
       )}
       {visible.map((j) => {
         const late = j.bm_deadline ? daysLate(j.bm_deadline) : null;
@@ -942,15 +962,15 @@ function CompliancePanel({ jobs, navigate }) {
               fontSize: 13, padding: '5px 0', borderBottom: '1px solid #f1f5f9',
               cursor: svc ? 'pointer' : 'default',
             }}
-            title={svc ? 'Open in the planner (Ready Now)' : undefined}
+            title={svc ? 'Open in Ready Now' : undefined}
           >
             <span style={{ color: '#1e293b', fontWeight: isLate ? 600 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {j.bm_task_name}
-              {svc && <span style={{ marginLeft: 6, fontSize: 11, color: '#0e7fe0' }}>→ planner</span>}
+              
             </span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
               {j.service && <span style={{ color: '#94a3b8', fontSize: 12 }}>{j.service}</span>}
-              {j.bm_status && <Badge bg="#f1f5f9" color="#64748b">{j.bm_status}</Badge>}
+              {j.bm_status && !/^no latest action$/i.test(j.bm_status) && <Badge bg="#f1f5f9" color="#64748b">{j.bm_status}</Badge>}
               <span style={{ color: isLate ? '#dc2626' : '#64748b', fontWeight: isLate ? 700 : 400, fontFamily: 'monospace', fontSize: 12 }}>
                 {j.bm_deadline
                   ? isLate
@@ -965,7 +985,7 @@ function CompliancePanel({ jobs, navigate }) {
       {jobs.length > 8 && (
         <button
           onClick={() => setShowAll((v) => !v)}
-          style={{ marginTop: 8, fontSize: 13, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'Outfit', sans-serif" }}
+          style={{ marginTop: 8, fontSize: 13, color: '#1E4560', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'Outfit', sans-serif" }}
         >
           {showAll ? 'Show fewer' : `Show all ${jobs.length}`}
         </button>
@@ -986,9 +1006,9 @@ function EmailReconPanel({ recon }) {
   const m = META[recon.status] || META.gap_both;
   const qbo = recon.qbo_billing_emails || [];
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, marginBottom: 20, fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px', background: '#fffbeb', borderColor: '#fde68a', fontFamily: "'Outfit', sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: 0 }}>Email reconciliation</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', margin: 0 }}>Needs a look: contact email</h3>
         <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: m.bg, color: m.fg }}>{m.label}</span>
       </div>
       <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 10px 0' }}>{m.msg}</p>
@@ -1116,116 +1136,112 @@ const STATUS_OPTIONS = [
   { value: 'third_party', label: 'Third party', bg: '#f5f3ff', color: '#6d28d9' },
   { value: 'archived',    label: 'Archived',    bg: '#f1f5f9', color: '#64748b' },
 ];
-function StatusEditor({ value, onChange }) {
-  const current = STATUS_OPTIONS.find((o) => o.value === value) || STATUS_OPTIONS[0];
-  return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        title="Change entity status"
-        style={{
-          appearance: 'none', WebkitAppearance: 'none',
-          fontSize: 11, fontWeight: 600,
-          padding: '2px 22px 2px 8px', borderRadius: 6,
-          background: current.bg, color: current.color,
-          border: '1px solid transparent',
-          fontFamily: "'Outfit', sans-serif",
-          textTransform: 'capitalize', cursor: 'pointer',
-        }}
-      >
-        {STATUS_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-      <span style={{
-        position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-        pointerEvents: 'none', color: current.color, fontSize: 10,
-      }}>▾</span>
-    </div>
-  );
-}
-
 const CADENCE_OPTIONS = [
   { value: 'early',  label: 'Early',  bg: '#ecfdf5', color: '#15803d', hint: 'Shift scheduled work one week earlier than the task-type default' },
   { value: 'normal', label: 'Normal', bg: '#f1f5f9', color: '#475569', hint: 'Use the task-type default slot as-is' },
   { value: 'late',   label: 'Late',   bg: '#fffbeb', color: '#b45309', hint: 'Shift scheduled work one week later than the task-type default' },
 ];
 
-function CadenceEditor({ value, onChange }) {
-  const current = CADENCE_OPTIONS.find((o) => o.value === value) || CADENCE_OPTIONS[1];
+function StatusChip({ value }) {
+  const s = STATUS_OPTIONS.find((o) => o.value === value) || STATUS_OPTIONS[0];
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }} title={`Scheduling cadence — ${current.hint}`}>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          appearance: 'none', WebkitAppearance: 'none',
-          fontSize: 11, fontWeight: 600,
-          padding: '2px 22px 2px 8px', borderRadius: 6,
-          background: current.bg, color: current.color,
-          border: '1px solid transparent',
-          fontFamily: "'Outfit', sans-serif",
-          cursor: 'pointer',
-        }}
-      >
-        {CADENCE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{`Cadence: ${o.label}`}</option>
-        ))}
-      </select>
-      <span style={{
-        position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-        pointerEvents: 'none', color: current.color, fontSize: 10,
-      }}>▾</span>
+    <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999, background: s.bg, color: s.color, whiteSpace: 'nowrap' }}>
+      {s.label}
+    </span>
+  );
+}
+
+// "More" menu in the header: the settings that used to be tiny chips beside
+// the name (status, cadence, expedite) as labelled controls, plus the two
+// rarely-used, consequential actions (no longer a client, archive).
+function MoreMenu({ entity, busy, onStatus, onCadence, onExpedite, onOffboard, onReinstate, onArchive }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+
+  const cadence = CADENCE_OPTIONS.find((o) => o.value === (entity.cadence_preference || 'normal')) || CADENCE_OPTIONS[1];
+  const isArchived = entity.entity_status === 'archived';
+  const label = { display: 'block', fontSize: 12.5, fontWeight: 600, color: '#64748b', marginBottom: 5 };
+  const select = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif", background: '#fff' };
+  const action = (danger) => ({
+    display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', fontSize: 14, fontWeight: 500,
+    border: 'none', borderRadius: 8, background: 'none', cursor: busy ? 'wait' : 'pointer',
+    color: danger ? '#b91c1c' : '#1E4560', fontFamily: "'Outfit', sans-serif",
+  });
+  const run = (fn) => { setOpen(false); fn(); };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <Btn variant="secondary" onClick={() => setOpen((v) => !v)}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>More <ChevronDown size={15} /></span>
+      </Btn>
+      {open && (
+        <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 30, width: 290, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 12px 32px rgba(15,23,42,0.14)', padding: 14 }}>
+          <label style={label}>Status</label>
+          <select value={entity.entity_status || 'active'} onChange={(e) => onStatus(e.target.value)} style={{ ...select, marginBottom: 12 }}>
+            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+
+          <label style={label}>Scheduling</label>
+          <select value={cadence.value} onChange={(e) => onCadence(e.target.value)} style={select}>
+            {CADENCE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <p style={{ fontSize: 12.5, color: '#94a3b8', margin: '5px 0 12px' }}>{cadence.hint}.</p>
+
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: '#0f172a', cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!entity.expedite} onChange={(e) => onExpedite(e.target.checked)} style={{ marginTop: 3 }} />
+            <span>Expedite<span style={{ display: 'block', fontSize: 12.5, color: '#94a3b8' }}>Prioritise their work after period end.</span></span>
+          </label>
+
+          <div style={{ borderTop: '1px solid #f1f5f9', margin: '12px -14px 8px' }} />
+          {entity.entity_status === 'nlac'
+            ? <button disabled={busy} onClick={() => run(onReinstate)} style={action(false)}>Reinstate as a client</button>
+            : <button disabled={busy} onClick={() => run(onOffboard)} style={action(true)} title="Removes them from views and queues the BrightManager change for Sophie">No longer a client…</button>}
+          <button disabled={busy} onClick={() => run(onArchive)} style={action(!isArchived)} title={isArchived ? 'Restore this client to the active list' : 'Hides it from the list, keeps its records'}>
+            {isArchived ? 'Restore from archive' : 'Archive…'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function ExpediteToggle({ value, onChange }) {
-  const on = !!value;
+function CopyButton({ value }) {
+  const [done, setDone] = useState(false);
+  if (!value) return null;
+  const copy = async (e) => {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1400); } catch { /* clipboard blocked */ }
+  };
   return (
-    <button
-      onClick={() => onChange(!on)}
-      title={on ? 'Expedite ON — work prioritised post-period-end. Click to turn off.' : 'Expedite OFF. Click to flag this client for fast turnaround.'}
-      style={{
-        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-        background: on ? '#fef3c7' : '#f1f5f9',
-        color: on ? '#b45309' : '#64748b',
-        border: '1px solid ' + (on ? '#fcd34d' : '#cbd5e1'),
-        fontFamily: "'Outfit', sans-serif",
-        cursor: 'pointer', }}
-    >
-      {on ? '⚡ Expedite' : 'Expedite off'}
+    <button onClick={copy} title={done ? 'Copied' : 'Copy'} aria-label="Copy" style={{ display: 'inline-flex', padding: 3, border: 'none', background: 'none', cursor: 'pointer', color: done ? '#059669' : '#94a3b8', flexShrink: 0 }}>
+      {done ? <Check size={14} /> : <Copy size={14} />}
     </button>
   );
 }
 
-function SummaryCard({ icon: Icon, label, value, accent, onClick, active }) {
+function PeopleSection({ title, children }) {
   return (
-    <div onClick={onClick} style={{
-      background: '#fff', borderRadius: 12,
-      border: active ? `2px solid ${accent}` : '1px solid #e5e7eb',
-      padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s',
-    }}
-    onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)'; }}
-    onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <Icon size={14} style={{ color: accent }} />
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8' }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color: accent, fontFamily: "'Outfit', sans-serif" }}>{value}</div>
-    </div>
+    <section>
+      <h3 style={sectionTitle}>{title}</h3>
+      {children}
+    </section>
   );
 }
 
-function WorkStat({ icon: Icon, label, count, sub, onClick }) {
+// No contact email from BrightManager or QuickBooks — let staff add one
+// (stored on entities.prospect_email, as the old Details card did).
+function EditableContactEmail({ entity, setEntity, profile }) {
   return (
-    <div onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: onClick ? 'pointer' : 'default', borderBottom: '1px solid #f1f5f9' }}>
-      <Icon size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: '#1e293b', flex: 1 }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{count}</span>
-      {sub && <span style={{ fontSize: 12, color: '#64748b' }}>{sub}</span>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: '6px 12px', alignItems: 'center' }}>
+      <EditableRow label="Email" field="prospect_email" entity={entity} setEntity={setEntity} profile={profile} placeholder="client@example.com" />
     </div>
   );
 }
