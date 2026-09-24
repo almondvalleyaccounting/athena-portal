@@ -414,11 +414,11 @@ export default function BillingUpliftReviewPage() {
     },
     { key: 'lines', label: 'Lines', width: 60, firstDir: 'desc', sortValue: (r) => r._pendingLines || 0, render: (r) => r._pendingLines },
     {
-      key: 'old', label: 'Old monthly', width: 100, align: 'right', firstDir: 'desc', sortValue: (r) => r._oldTotal || 0,
+      key: 'old', label: 'Old monthly', width: 95, align: 'right', firstDir: 'desc', sortValue: (r) => r._oldTotal || 0,
       render: (r) => <span style={{ fontFamily: 'monospace' }}>£{r._oldTotal.toFixed(2)}</span>,
     },
     {
-      key: 'new', label: 'New monthly', width: 100, align: 'right', firstDir: 'desc', sortValue: (r) => r._newTotal || 0,
+      key: 'new', label: 'New monthly', width: 95, align: 'right', firstDir: 'desc', sortValue: (r) => r._newTotal || 0,
       render: (r) => <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{r._newTotal.toFixed(2)}</span>,
     },
     {
@@ -430,7 +430,7 @@ export default function BillingUpliftReviewPage() {
       ),
     },
     {
-      key: 'goLive', label: 'Go-live', width: 100, firstDir: 'desc', sortValue: (r) => r._goLive || '',
+      key: 'goLive', label: 'Go-live', width: 115, firstDir: 'desc', sortValue: (r) => r._goLive || '',
       render: (r) => <span style={{ color: '#475569' }}>{r._goLive || '—'}</span>,
     },
     {
