@@ -280,7 +280,7 @@ export default function Sidebar() {
     <div
       className="flex flex-col shrink-0 border-r"
       style={{
-        width: collapsed ? '56px' : '240px',
+        width: collapsed ? '56px' : '256px',
         backgroundColor: '#ffffff',
         borderColor: '#e5e7eb',
         transition: 'width 0.2s ease',
