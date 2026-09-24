@@ -481,7 +481,10 @@ export default function QuoteFormPage({ mode = 'new' }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 min-[900px]:grid-cols-2 gap-x-3 items-start">
+      {/* One column (a grid, so ticked sections can float up) on a phone;
+          two newspaper-style columns on a wide screen so tall open sections
+          don't leave gaps beside them. */}
+      <div className="grid grid-cols-1 min-[900px]:block min-[900px]:columns-2 min-[900px]:gap-3">
       {/* Setup Fees */}
       <Section title="One-Off Setup Fees" enabled={f.setupTotal > 0 || f.suFormation || f.suHmrc} onToggle={() => { if (!f.suFormation && !f.suHmrc) f.setSuFormation(true); else { f.setSuFormation(false); f.setSuHmrc(false); f.setSuRegFee(0); f.setSuOthers([]); } }} annual={f.setupTotal}>
         <TabRow cells={['Item', 'Qty', 'Rate', 'Total']} header />
@@ -641,7 +644,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
       </Section>
 
       {/* Software */}
-      <div className="bg-white rounded-lg border border-ocean-300 p-3 mb-3">
+      <div className="bg-white rounded-lg border border-ocean-300 p-3 mb-3 break-inside-avoid">
         <h2 className="text-xs font-semibold text-ocean-600 mb-2">Software</h2>
         <div className="grid gap-1 items-center text-xs text-gray-700 mb-1" style={{ gridTemplateColumns: '2fr 1fr 1fr' }}>
           <select value={f.swId} onChange={(e) => f.setSwId(e.target.value)} className="text-xs border border-gray-200 rounded px-1.5 py-1 bg-white">
