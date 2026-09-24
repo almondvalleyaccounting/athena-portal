@@ -187,9 +187,12 @@ export async function listOnboardings() {
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
       steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, milestone, auto_completed_at),
-      handovers:onboarding_handovers(area, due, done_at)
+      handovers:onboarding_handovers(area, due, done_at),
+      notes:onboarding_activity(id, kind, body, created_at, author:staff_profiles!onboarding_activity_created_by_fkey(id, name))
     `)
-    .order('created_at', { ascending: false });
+    .eq('notes.kind', 'note')
+    .order('created_at', { ascending: false })
+    .order('created_at', { referencedTable: 'notes', ascending: false });
   if (error) throw error;
   return data || [];
 }

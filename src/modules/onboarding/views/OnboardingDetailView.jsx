@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, Send, UserPlus } from 'lucide-react';
-import { Btn } from '../../../components/ui';
+import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import PortalAccessPanel from '../components/PortalAccessPanel';
@@ -12,8 +11,9 @@ import ServicesPanel from '../components/ServicesPanel';
 import HandoverPanel from '../components/HandoverPanel';
 import CheckinPanel from '../components/CheckinPanel';
 import DateField from '../components/DateField';
+import NotesThread from '../components/NotesThread';
 import {
-  getOnboarding, listStaff, updateOnboarding, updateStep, addNote, addDirectorSa,
+  getOnboarding, listStaff, updateOnboarding, updateStep, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus,
   outstandingSteps, autoCompletedSteps,
 } from '../api';
@@ -44,8 +44,6 @@ export default function OnboardingDetailView() {
   const [staff, setStaff] = useState([]);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState({});
-  const [noteText, setNoteText] = useState('');
-  const [savingNote, setSavingNote] = useState(false);
   const [taskFilter, setTaskFilter] = useState('all'); // all | client | staff
 
   const load = useCallback(() => {
@@ -142,20 +140,11 @@ export default function OnboardingDetailView() {
     try { await updateOnboarding(ob.id, patch); } catch (e) { setError(e.message); load(); }
   }
 
-  async function submitNote() {
-    if (!noteText.trim()) return;
-    setSavingNote(true);
-    try {
-      await addNote(ob.id, noteText.trim(), { actorId: profile?.id });
-      setNoteText('');
-      load();
-    } catch (e) { setError(e.message); }
-    setSavingNote(false);
-  }
-
   if (error && !ob) return <div style={{ padding: 28, fontFamily: font, color: tones.danger.fg, fontSize: 13 }}>Failed to load: {error}</div>;
   if (!ob) return <div style={{ padding: 28, fontFamily: font, color: '#64748b', fontSize: 13 }}>Loading…</div>;
 
+  const notes = ob.activity.filter((a) => a.kind === 'note');
+  const log = ob.activity.filter((a) => a.kind !== 'note');
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
 
   return (
@@ -371,48 +360,42 @@ export default function OnboardingDetailView() {
           })}
         </div>
 
-        {/* Right column: portal access + activity */}
+        {/* Right column: notes first, then services, portal access + activity */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', paddingRight: 2 }}>
         <EscalationPanel ob={ob} onChanged={load} />
-        <ServicesPanel ob={ob} staff={staff} onChanged={load} />
-        <CompaniesHousePanel ob={ob} onChanged={load} />
-        <HandoverPanel ob={ob} staff={staff} onChanged={load} />
-        <CheckinPanel ob={ob} staff={staff} onChanged={load} />
+        {/* Notes — the same thread the pipeline row's comments write to */}
         <div style={{ ...card, padding: '14px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-            Notes &amp; background
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+            Notes
+          </div>
+          <NotesThread onboardingId={ob.id} notes={notes} onAdded={load} maxHeight={320} />
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, margin: '14px 0 6px' }}>
+            Background
           </div>
           <textarea
             key={`notes-${ob.id}`}
             defaultValue={ob.notes || ''}
             placeholder="Internal notes / imported background…"
             onBlur={(e) => { if (e.target.value !== (ob.notes || '')) handleObField({ notes: e.target.value || null }); }}
-            style={{ ...selectStyle, width: '100%', minHeight: 90, resize: 'vertical', boxSizing: 'border-box', whiteSpace: 'pre-wrap' }}
+            style={{ ...selectStyle, width: '100%', minHeight: 60, resize: 'vertical', boxSizing: 'border-box', whiteSpace: 'pre-wrap' }}
           />
         </div>
+        <ServicesPanel ob={ob} staff={staff} onChanged={load} />
+        <CompaniesHousePanel ob={ob} onChanged={load} />
+        <HandoverPanel ob={ob} staff={staff} onChanged={load} />
+        <CheckinPanel ob={ob} staff={staff} onChanged={load} />
         <PortalAccessPanel entityId={ob.entity_id} onboardingId={ob.id} entityEmail={ob.entity?.prospect_email || ob.entity?.billing_email} />
         <DocumentsPanel onboarding={ob} documents={ob.documents || []} onChanged={load} />
         <div style={{ ...card, padding: '16px 18px' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
             Activity
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <textarea
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              placeholder="Add a note…"
-              style={{ ...selectStyle, flex: 1, minHeight: 40, resize: 'vertical', boxSizing: 'border-box' }}
-            />
-            <Btn onClick={submitNote} disabled={savingNote || !noteText.trim()} className="self-start">
-              <Send size={14} />
-            </Btn>
-          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 560, overflowY: 'auto' }}>
-            {ob.activity.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Nothing yet.</div>}
-            {ob.activity.map((a) => (
+            {log.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Nothing yet.</div>}
+            {log.map((a) => (
               <div key={a.id} style={{ fontSize: 12.5 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
-                  <span style={chipStyle(a.kind === 'note' ? 'info' : a.kind === 'system' ? 'accent' : 'neutral')}>
+                  <span style={chipStyle(a.kind === 'system' ? 'accent' : 'neutral')}>
                     {KIND_LABEL[a.kind] || a.kind}
                   </span>
                   <span style={{ color: '#94a3b8' }}>

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Clock, AlertTriangle, Hourglass } from 'lucide-react';
+import { UserPlus, Clock, AlertTriangle, Hourglass, MessageSquare } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
+import NotesThread, { fmtNoteTime } from '../components/NotesThread';
 import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES, setOnboardingStatus, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -45,6 +46,7 @@ export default function PipelineView() {
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [hoverIssue, setHoverIssue] = useState(null);
+  const [openNotes, setOpenNotes] = useState(null); // onboarding id whose comments are expanded
 
   useEffect(() => {
     let cancelled = false;
@@ -196,24 +198,36 @@ export default function PipelineView() {
           const s = summarise(r);
           const meta = statusMeta(r.status);
           const age = daysSince(r.started_at);
+          const notes = r.notes || [];
+          const latest = notes[0];
+          const notesOpen = openNotes === r.id;
           return (
+            <div key={r.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, opacity: busyId === r.id ? 0.55 : 1 }}>
             <div
-              key={r.id}
               onClick={() => navigate(`/onboarding/${r.id}`)}
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'minmax(180px, 2fr) 110px minmax(140px, 1.4fr) minmax(180px, 1.4fr) 90px auto',
                 gap: 14, alignItems: 'center',
-                background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
                 padding: '14px 18px', cursor: 'pointer',
-                opacity: busyId === r.id ? 0.55 : 1,
               }}
             >
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
                 <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
                   {r.template?.name || '—'} · {r.owner?.name ? `Owner: ${r.owner.name}` : 'No owner'}
                 </div>
+                {latest && (
+                  <div
+                    title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
+
+${latest.body}`}
+                    style={{ fontSize: 12, color: '#475569', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    <MessageSquare size={10} style={{ verticalAlign: -1, marginRight: 4, color: '#94a3b8' }} />
+                    {latest.body}
+                  </div>
+                )}
               </div>
               {r.status === 'issues' ? (
                 <span
@@ -278,6 +292,13 @@ export default function PipelineView() {
                 {r.target_date ? <div>due {new Date(r.target_date).toLocaleDateString('en-GB')}</div> : null}
               </div>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenNotes(notesOpen ? null : r.id); }}
+                  title={notesOpen ? 'Hide comments' : 'Comments'}
+                  style={{ ...actionBtnStyle(notesOpen ? 'info' : 'neutral'), display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <MessageSquare size={12} /> {notes.length || ''}
+                </button>
                 {r.archived_at ? (
                   <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
                     Restore
@@ -299,6 +320,12 @@ export default function PipelineView() {
                   </>
                 )}
               </div>
+            </div>
+            {notesOpen && (
+              <div style={{ borderTop: '1px solid #f1f5f9', padding: '12px 18px 14px' }}>
+                <NotesThread onboardingId={r.id} notes={notes} onAdded={reload} maxHeight={260} autoFocus />
+              </div>
+            )}
             </div>
           );
         })}
