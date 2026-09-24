@@ -1,3 +1,7 @@
+// `section` is the sidebar heading a module sits under (Bobby, 2026-09-24).
+// Headings appear where the section changes, so keep a section's modules
+// together in this list.
+//
 // `inDevelopment: true` marks a module or sub-item Bobby has said is only
 // partly built (2026-09-24). It stays in the nav, tagged, so the team can tell
 // what to rely on. Everything unmarked is trusted. Re-ask as modules graduate —
@@ -5,6 +9,7 @@
 export const MODULES = [
   {
     id: 'fee-engine',
+    section: 'Clients & Money',
     label: 'Fee Engine',
     route: '/manage',
     icon: 'receipt',
@@ -23,6 +28,7 @@ export const MODULES = [
   },
   {
     id: 'billing',
+    section: 'Clients & Money',
     label: 'Billing',
     route: '/billing',
     icon: 'file-text',
@@ -32,6 +38,7 @@ export const MODULES = [
   },
   {
     id: 'clients',
+    section: 'Clients & Money',
     label: 'Clients',
     route: '/clients',
     icon: 'users',
@@ -41,6 +48,7 @@ export const MODULES = [
   },
   {
     id: 'onboarding',
+    section: 'Clients & Money',
     label: 'Onboarding',
     route: '/onboarding',
     icon: 'user-plus',
@@ -56,6 +64,7 @@ export const MODULES = [
   },
   {
     id: 'communications',
+    section: 'Clients & Money',
     label: 'Communications',
     route: '/comms',
     icon: 'inbox',
@@ -72,6 +81,7 @@ export const MODULES = [
   },
   {
     id: 'work-planner',
+    section: 'Work',
     label: 'Work',
     route: '/planner',
     icon: 'clock',
@@ -127,6 +137,7 @@ export const MODULES = [
   },
   {
     id: 'client-work',
+    section: 'Client Insight',
     label: 'Client Work',
     route: '/client-dashboard',
     icon: 'briefcase',
@@ -156,6 +167,7 @@ export const MODULES = [
   },
   {
     id: 'working-papers',
+    section: 'Client Insight',
     label: 'Working Papers',
     route: '/working-papers',
     icon: 'file-spreadsheet',
@@ -174,6 +186,7 @@ export const MODULES = [
   },
   {
     id: 'planning',
+    section: 'Client Insight',
     label: 'Practice Planning',
     route: '/planning',
     icon: 'trending-up',
@@ -184,6 +197,7 @@ export const MODULES = [
   },
   {
     id: 'pd-tracker',
+    section: 'Team',
     label: 'CPD Tracker',
     route: '/team/pd',
     icon: 'graduation-cap',
@@ -193,6 +207,7 @@ export const MODULES = [
   },
   {
     id: 'recruitment',
+    section: 'Team',
     label: 'Recruitment',
     route: '/recruitment',
     icon: 'user-check',
@@ -207,6 +222,7 @@ export const MODULES = [
   },
   {
     id: 'bugs',
+    section: 'Athena',
     label: 'Bug Reports',
     route: '/bugs',
     icon: 'bug',
@@ -216,6 +232,7 @@ export const MODULES = [
   },
   {
     id: 'ideas',
+    section: 'Athena',
     label: 'Ideas',
     route: '/ideas',
     icon: 'lightbulb',

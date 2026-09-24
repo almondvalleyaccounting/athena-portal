@@ -267,6 +267,15 @@ export default function Sidebar() {
     });
   };
 
+  // The main modules that will actually be drawn: a parent with children but
+  // none visible to this user is skipped (Work always has Admin Task List for
+  // anyone who can see it).
+  const shownMain = mainModules.filter((mod) => {
+    if (!mod.children || mod.children.length === 0) return true;
+    if (mod.id === 'work-planner' && canAdminTasks) return true;
+    return visibleChildren(mod.children).length > 0;
+  });
+
   return (
     <div
       className="flex flex-col shrink-0 border-r"
@@ -350,8 +359,14 @@ export default function Sidebar() {
           the h-screen shell and made the whole document scroll, which dragged
           viewport-height pages (the email panes) up out of view. */}
       <nav className="flex-1 min-h-0 overflow-y-auto px-0" style={{ padding: collapsed ? '0' : '0 8px' }}>
-        {/* Main modules */}
+        {/* Main modules, under a heading wherever the section changes */}
         {mainModules.map((mod) => {
+          // Headings follow what is actually drawn, so a parent hidden for
+          // lack of child permissions doesn't take its section's heading away.
+          const shownIdx = shownMain.indexOf(mod);
+          const heading = shownIdx >= 0 && mod.section && mod.section !== shownMain[shownIdx - 1]?.section
+            ? <SectionHeading key={`h-${mod.section}`} label={mod.section} collapsed={collapsed} first={shownIdx === 0} />
+            : null;
           const IconComp = ICON_MAP[mod.icon] || Receipt;
           const active = moduleMatches(mod);
           const clickable = isModuleClickable(mod);
@@ -372,6 +387,7 @@ export default function Sidebar() {
 
           return (
             <React.Fragment key={mod.id}>
+              {heading}
               <NavItem
                 icon={IconComp}
                 label={mod.label}
@@ -452,15 +468,8 @@ export default function Sidebar() {
           );
         })}
 
-        {/* Separator */}
         {metaModules.length > 0 && (
-          <div
-            style={{
-              height: '1px',
-              backgroundColor: '#f1f5f9',
-              margin: collapsed ? '8px 12px' : '8px 8px',
-            }}
-          />
+          <SectionHeading label={metaModules[0].section || 'Athena'} collapsed={collapsed} />
         )}
 
         {/* Meta modules (Ideas) */}
@@ -747,6 +756,22 @@ function ContextMenu({ menu, onClose }) {
 }
 
 /* ─── Nav item sub-component ───────────────────────────────────── */
+// A light label over a group of modules; a thin rule when the sidebar is
+// collapsed to icons.
+function SectionHeading({ label, collapsed, first }) {
+  if (collapsed) {
+    return first ? null : <div style={{ height: 1, backgroundColor: '#f1f5f9', margin: '8px 12px' }} />;
+  }
+  return (
+    <div style={{
+      fontFamily: "'Outfit', sans-serif", fontSize: 10.5, fontWeight: 600, letterSpacing: 0.6,
+      textTransform: 'uppercase', color: '#94a3b8', padding: first ? '2px 12px 6px' : '14px 12px 6px',
+    }}>
+      {label}
+    </div>
+  );
+}
+
 function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planned, beta, inDevelopment, hasChevron, chevronOpen, onClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
 
