@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Check, Zap } from 'lucide-react';
+import { ArrowLeft, Check, Zap, EyeOff, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
@@ -8,6 +8,7 @@ import NewClientModal from '../../components/NewClientModal';
 import { insertEntity } from '../work-planner/lib/supabaseQueries';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import DataTable from '../../components/DataTable';
+import RowMenu from '../../components/RowMenu';
 
 const font = "'Outfit', sans-serif";
 
@@ -379,7 +380,7 @@ export default function QboMappingPage() {
                 title={`Accept — ${Math.round(top.score * 100)}% match`}
                 style={suggestionChip(top.score)}
               >
-                <Check size={10} /> {top.entity_name}
+                <Check size={10} /> Accept {top.entity_name}
                 <span style={{ opacity: 0.7, fontWeight: 400 }}> · {Math.round(top.score * 100)}%</span>
               </button>
               {rowSuggestions.length > 1 && (
@@ -387,7 +388,7 @@ export default function QboMappingPage() {
                   <summary style={{
                     fontSize: 11, color: '#64748b', cursor: 'pointer',
                     listStyle: 'none', padding: '2px 4px',
-                  }}>+{rowSuggestions.length - 1}</summary>
+                  }}>+{rowSuggestions.length - 1} more</summary>
                   <div style={{
                     position: 'absolute', background: '#fff',
                     border: '1px solid #e5e7eb', borderRadius: 6,
@@ -409,6 +410,7 @@ export default function QboMappingPage() {
             </div>
           );
         }
+        if (r.role === 'not_a_client') return <span style={{ fontSize: 12, color: '#64748b' }}>Ignored: not a client</span>;
         return isUnmapped
           ? <span style={{ fontSize: 11, color: '#94a3b8' }}>No close match</span>
           : <span style={{ fontSize: 12, color: '#cbd5e1' }}>—</span>;
@@ -427,31 +429,35 @@ export default function QboMappingPage() {
       ),
     },
     {
-      key: 'actions', label: '', width: 110, wrap: true, sortable: false,
+      key: 'actions', label: '', width: 120, sortable: false,
+      // One main action per row (UI audit, Sprint 4): the match itself — the
+      // suggestion chip or the picker — is the row's action, so Ignore and
+      // Delete move into the ⋮ menu, Delete last in red with its confirm.
+      // Restore stays a button on ignored rows. Same handlers as before.
       render: (r) => {
         const isIgnored = r.role === 'not_a_client';
+        const busy = saving === r.qbo_customer_id;
+        const items = [
+          !isIgnored && {
+            label: 'Ignore: not a client', icon: EyeOff,
+            title: r.entity_id ? 'Exclude from billing — this also unlinks the Athena client' : 'Exclude from billing',
+            onClick: () => { if (!busy) toggleIgnore(r); },
+          },
+          { label: 'Delete mapping row…', icon: Trash2, danger: true, onClick: () => remove(r.qbo_customer_id) },
+        ].filter(Boolean);
         return (
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => toggleIgnore(r)}
-              disabled={saving === r.qbo_customer_id}
-              title={isIgnored ? 'Restore' : 'Ignore — exclude from billing'}
-              style={{
-                fontSize: 12, padding: '3px 10px', borderRadius: 6,
-                border: '1px solid ' + (isIgnored ? '#cbd5e1' : '#fca5a5'),
-                background: isIgnored ? '#f8fafc' : '#fff',
-                color: isIgnored ? '#475569' : '#991b1b',
-                cursor: 'pointer', fontFamily: font,
-              }}
-            >
-              {isIgnored ? 'Restore' : 'Ignore'}
-            </button>
-            <button onClick={() => remove(r.qbo_customer_id)}
-              title="Delete this mapping row"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 14.5, padding: '0 4px' }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = '#991b1b'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#cbd5e1'; }}
-            >✕</button>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+            {isIgnored && (
+              <button
+                onClick={() => toggleIgnore(r)}
+                disabled={busy}
+                title="Restore"
+                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', fontFamily: font }}
+              >
+                Restore
+              </button>
+            )}
+            <RowMenu items={items} compact />
           </div>
         );
       },
