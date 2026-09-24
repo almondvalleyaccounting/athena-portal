@@ -1,14 +1,45 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Building2, User } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
+import SearchInput from '../../components/SearchInput';
+import DataTable from '../../components/DataTable';
+import { Btn } from '../../components/ui';
 import { fmtGbp } from '../../lib/money';
 import { feeTotals } from './feeRollup';
 
+const font = "'Outfit', sans-serif";
+
+const TYPE_LABELS = {
+  limited_company: 'Ltd', llp: 'LLP', partnership: 'Partnership', sole_trader: 'Sole trader', personal: 'Personal',
+};
+
+// The four views of the list. Former (nlac) and archived clients sit in
+// their own view rather than behind a "show" link; third_party etc. are Other.
+const VIEWS = [
+  { id: 'clients', label: 'Clients', match: (s) => s === 'active' },
+  { id: 'prospects', label: 'Prospects', match: (s) => s === 'prospect' },
+  { id: 'other', label: 'Other', match: (s) => !['active', 'prospect', 'archived', 'nlac'].includes(s) },
+  { id: 'former', label: 'Former', match: (s) => s === 'archived' || s === 'nlac' },
+];
+
+const STATUS_STYLES = {
+  active: { bg: '#f0fdf4', color: '#15803d', label: 'Active' },
+  prospect: { bg: '#eff6ff', color: '#1E4560', label: 'Prospect' },
+  archived: { bg: '#f1f5f9', color: '#64748b', label: 'Archived' },
+  nlac: { bg: '#fef2f2', color: '#b91c1c', label: 'Former client' },
+  third_party: { bg: '#f5f3ff', color: '#6d28d9', label: 'Third party' },
+};
+
+const dateLabel = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
 /* ─── Clients list page ────────────────────────────────────── */
+// A standard table (UI audit, Sprint 4): search, view, filters, the A–Z row,
+// sortable columns and paging. Every choice lives in the URL, so Back returns
+// to the same view and a link to it can be shared.
 export default function ClientsPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
@@ -16,24 +47,47 @@ export default function ClientsPage() {
   // the flag, and we hide the column rather than show a misleading "—".
   const canSeeFees = profile?.can_view_client_fees === true;
   const [entities, setEntities] = useState([]);
-  const [billingByEntity, setBillingByEntity] = useState({}); // entity_id → { monthly, annual, hasTemplate }
-  const [search, setSearch] = useState('');
-  const [letter, setLetter] = useState(null);
+  const [billingByEntity, setBillingByEntity] = useState({}); // entity_id → { monthly, annual }
+  const [summary, setSummary] = useState({}); // entity_id → v_client_list_summary row
   const [loading, setLoading] = useState(true);
   const [showNewClient, setShowNewClient] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
+
+  const [params, setParams] = useSearchParams();
+  const q = params.get('q') || '';
+  const view = VIEWS.some((v) => v.id === params.get('view')) ? params.get('view') : 'clients';
+  const manager = params.get('manager') || '';
+  const type = params.get('type') || '';
+  const overdueOnly = params.get('overdue') === '1';
+  const letter = params.get('letter') || null;
+  const sort = { key: params.get('sort') || 'name', dir: params.get('dir') === 'desc' ? 'desc' : 'asc' };
+  const page = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+
+  // Any filter change returns to page 1; typing replaces history rather than
+  // adding an entry per keystroke.
+  const setParam = (patch, { keepPage = false, replace = false } = {}) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === undefined || v === '' || v === false) next.delete(k);
+      else next.set(k, v === true ? '1' : String(v));
+    }
+    if (!keepPage) next.delete('page');
+    setParams(next, { replace });
+  };
 
   const loadEntities = async () => {
     try {
-      const [entitiesResp, billingResp] = await Promise.all([
+      const [entitiesResp, billingResp, summaryResp] = await Promise.all([
         supabase
           .from('entities')
-          .select('id, name, type, entity_status, company_number, manager, prospect_email, source, created_at')
+          .select('id, name, type, entity_status, company_number, utr, manager, prospect_email, source, created_at')
           .order('name', { ascending: true }),
         supabase
           .from('live_billing')
           .select('entity_id, services, qbo_recurring_txn_id')
           .eq('status', 'active'),
+        // Totals per client are computed in SQL (sql/297): the open-jobs table
+        // is past PostgREST's silent 1,000-row cap, so the browser can't count.
+        supabase.from('v_client_list_summary').select('entity_id, next_deadline, next_task, overdue_count, open_actions'),
       ]);
       if (entitiesResp.error) {
         console.error('[Clients] entities load error:', entitiesResp.error.message);
@@ -51,6 +105,10 @@ export default function ClientsPage() {
       const map = {};
       for (const [id, rows] of Object.entries(rowsByEntity)) map[id] = feeTotals(rows);
       setBillingByEntity(map);
+
+      const sm = {};
+      for (const r of summaryResp.data || []) sm[r.entity_id] = r;
+      setSummary(sm);
     } catch (e) {
       console.error('[Clients] load threw:', e);
       setEntities([]);
@@ -60,28 +118,53 @@ export default function ClientsPage() {
 
   useEffect(() => { loadEntities(); }, []);
 
-  const filtered = entities.filter((e) => {
-    if (letter && firstCharBucket(e.name) !== letter) return false;
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      e.name?.toLowerCase().includes(q) ||
-      e.company_number?.toLowerCase().includes(q) ||
-      e.manager?.toLowerCase().includes(q)
-    );
-  });
-
-  // Group by lifecycle status so prospects and signed-up clients are
-  // visually separated. Archived clients are hidden unless toggled on.
   const statusOf = (e) => e.entity_status || 'active';
-  const clientRows = filtered.filter((e) => statusOf(e) === 'active');
-  const prospectRows = filtered.filter((e) => statusOf(e) === 'prospect');
-  // Former (nlac) and archived clients are hidden by default — surfaced together
-  // under the toggle. third_party etc. stay visible in "Other".
-  const otherRows = filtered.filter((e) => !['active', 'prospect', 'archived', 'nlac'].includes(statusOf(e)));
-  const hiddenRows = filtered.filter((e) => ['archived', 'nlac'].includes(statusOf(e)));
-  const athenaCount = filtered.filter((e) => e.source === 'athena').length;
-  const visibleCount = clientRows.length + prospectRows.length + otherRows.length + (showArchived ? hiddenRows.length : 0);
+
+  // Rows joined with their summary and fees, once.
+  const allRows = useMemo(() => entities.map((e) => {
+    const s = summary[e.id] || {};
+    const f = billingByEntity[e.id] || {};
+    return {
+      ...e,
+      next_deadline: s.next_deadline || null,
+      next_task: s.next_task || null,
+      overdue_count: s.overdue_count || 0,
+      open_actions: s.open_actions || 0,
+      monthly: f.monthly || 0,
+      annual: f.annual || 0,
+    };
+  }), [entities, summary, billingByEntity]);
+
+  const viewCounts = useMemo(() => {
+    const c = {};
+    for (const v of VIEWS) c[v.id] = allRows.filter((r) => v.match(statusOf(r))).length;
+    return c;
+  }, [allRows]);
+
+  const managers = useMemo(() => [...new Set(entities.map((e) => e.manager).filter(Boolean))].sort(), [entities]);
+  const types = useMemo(() => [...new Set(entities.map((e) => e.type).filter(Boolean))].sort(), [entities]);
+
+  // Everything except the letter, so the A–Z row greys out letters with no
+  // match under the current search and filters.
+  const beforeLetter = useMemo(() => {
+    const v = VIEWS.find((x) => x.id === view);
+    const needle = q.trim().toLowerCase();
+    return allRows.filter((r) => {
+      if (!v.match(statusOf(r))) return false;
+      if (manager && r.manager !== manager) return false;
+      if (type && r.type !== type) return false;
+      if (overdueOnly && !r.overdue_count) return false;
+      if (!needle) return true;
+      return (
+        r.name?.toLowerCase().includes(needle) ||
+        r.company_number?.toLowerCase().includes(needle) ||
+        r.utr?.toLowerCase().includes(needle) ||
+        r.manager?.toLowerCase().includes(needle)
+      );
+    });
+  }, [allRows, view, q, manager, type, overdueOnly]);
+
+  const rows = letter ? beforeLetter.filter((r) => firstCharBucket(r.name) === letter) : beforeLetter;
 
   const handleNewClient = async (fields) => {
     const { data, error } = await supabase
@@ -104,198 +187,167 @@ export default function ClientsPage() {
     return data;
   };
 
-  const typeIcon = (type) => {
-    if (type === 'sole_trader') return <User size={14} style={{ color: '#94a3b8' }} />;
-    return <Building2 size={14} style={{ color: '#94a3b8' }} />;
-  };
-
-  const statusBadge = (status) => {
-    const s = status || 'active';
-    const styles = {
-      active: { bg: '#f0fdf4', color: '#15803d' },
-      prospect: { bg: '#eff6ff', color: '#0e7fe0' },
-      inactive: { bg: '#f1f5f9', color: '#64748b' },
-      archived: { bg: '#f1f5f9', color: '#64748b' },
-      nlac: { bg: '#fef2f2', color: '#b91c1c' },
-      third_party: { bg: '#f5f3ff', color: '#6d28d9' },
-    };
-    const st = styles[s] || styles.active;
-    const label = s === 'nlac' ? 'Former client' : s.replace('_', ' ');
-    return (
-      <span style={{
-        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
-        background: st.bg, color: st.color, fontFamily: "'Outfit', sans-serif",
-        textTransform: 'capitalize',
-      }}>
-        {label}
-      </span>
-    );
-  };
-
-  const FeesBlock = ({ fees }) => {
-    const monthly = fees?.monthly || 0;
-    const annual = fees?.annual || 0;
-    if (monthly === 0 && annual === 0) {
-      return (
-        <div style={{ textAlign: 'right', minWidth: 100 }}>
-          <div style={{ fontSize: 12, color: '#cbd5e1' }}>—</div>
-        </div>
-      );
-    }
-    return (
-      <div style={{ textAlign: 'right', minWidth: 110 }} title="Approved fees, ex VAT">
-        {monthly > 0 && (
-          <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
-            {fmtGbp(monthly)}<span style={{ fontSize: 11, fontWeight: 500, color: '#94a3b8' }}> /mo</span>
-          </div>
-        )}
-        {annual > 0 && (
-          <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#0f766e' }}>
-            {fmtGbp(annual)}<span style={{ fontSize: 11, color: '#94a3b8' }}> /yr</span>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const sourceBadge = (source) => {
-    if (source === 'athena') {
-      return (
-        <span style={{
-          fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4,
-          background: '#dbeafe', color: '#0e7fe0', fontFamily: "'Outfit', sans-serif",
-        }}>
-          Athena
+  const muted = { color: '#94a3b8' };
+  const columns = [
+    {
+      key: 'name', label: 'Client', width: '30%',
+      sortValue: (r) => r.name,
+      render: (r) => (
+        <span title={r.name}>
+          <span style={{ fontWeight: 600 }}>{r.name}</span>
+          <span style={{ ...muted, fontSize: 13, marginLeft: 8 }}>{TYPE_LABELS[r.type] || r.type?.replace('_', ' ')}</span>
+          {r.source === 'athena' && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: '#dbeafe', color: '#1E4560' }}>Added in Athena</span>}
         </span>
-      );
-    }
-    return null;
-  };
+      ),
+    },
+    { key: 'company_number', label: 'Company no.', width: '11%', render: (r) => r.company_number || <span style={muted}>—</span> },
+    { key: 'manager', label: 'Manager', width: '11%', render: (r) => r.manager || <span style={muted}>—</span> },
+    {
+      key: 'next_deadline', label: 'Next deadline', width: canSeeFees ? '28%' : '38%',
+      // Overdue first, then soonest deadline.
+      sortValue: (r) => (r.overdue_count ? `0-${String(999 - Math.min(r.overdue_count, 999)).padStart(3, '0')}` : r.next_deadline ? `1-${r.next_deadline}` : null),
+      render: (r) => (
+        <span title={r.next_task ? `${r.next_task} · due ${dateLabel(r.next_deadline)}` : undefined}>
+          {r.overdue_count > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fef2f2', color: '#b91c1c', marginRight: 8 }}>
+              {r.overdue_count} overdue
+            </span>
+          )}
+          {r.next_deadline
+            ? <><span style={{ fontWeight: 500 }}>{dateLabel(r.next_deadline)}</span><span style={{ color: '#64748b' }}> · {r.next_task}</span></>
+            : !r.overdue_count && <span style={muted}>—</span>}
+        </span>
+      ),
+    },
+    { key: 'open_actions', label: 'Actions', width: '8%', align: 'right', render: (r) => (r.open_actions ? r.open_actions : <span style={muted}>0</span>) },
+    ...(canSeeFees ? [{
+      key: 'monthly', label: 'Fees /mo', width: '12%', align: 'right',
+      sortValue: (r) => (r.monthly || r.annual ? r.monthly : null),
+      render: (r) => (r.monthly || r.annual
+        ? <span title="Approved fees, ex VAT" style={{ fontFamily: 'monospace' }}>
+            {r.monthly > 0 ? fmtGbp(r.monthly) : ''}
+            {r.annual > 0 && <span style={{ fontSize: 12, color: '#0f766e' }}>{r.monthly > 0 ? ' + ' : ''}{fmtGbp(r.annual)}/yr</span>}
+          </span>
+        : <span style={muted}>—</span>),
+    }] : []),
+    ...(view === 'other' || view === 'former' ? [{
+      key: 'entity_status', label: 'Status', width: '10%',
+      render: (r) => {
+        const st = STATUS_STYLES[statusOf(r)] || { bg: '#f1f5f9', color: '#64748b', label: statusOf(r).replace('_', ' ') };
+        return <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: st.bg, color: st.color }}>{st.label}</span>;
+      },
+    }] : []),
+  ];
 
-  const renderRow = (e) => (
-    <div
-      key={e.id}
-      onClick={() => navigate(`/clients/${e.id}`)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 14,
-        padding: '14px 18px', background: '#fff', borderRadius: 12,
-        border: '1px solid #e5e7eb', cursor: 'pointer',
-        transition: 'all 0.2s ease',
-      }}
-      onMouseEnter={(ev) => { ev.currentTarget.style.transform = 'translateY(-1px)'; ev.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}
-      onMouseLeave={(ev) => { ev.currentTarget.style.transform = 'none'; ev.currentTarget.style.boxShadow = 'none'; }}
-    >
-      {typeIcon(e.type)}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a' }}>{e.name}</span>
-          {sourceBadge(e.source)}
-        </div>
-        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
-          {e.type?.replace('_', ' ')}
-          {e.company_number && ` · ${e.company_number}`}
-          {e.manager && ` · ${e.manager}`}
-        </div>
-      </div>
-      {canSeeFees && <FeesBlock fees={billingByEntity[e.id]} />}
-      {statusBadge(e.entity_status)}
-    </div>
-  );
+  const chips = [
+    manager && { key: 'manager', label: `Manager: ${manager}` },
+    type && { key: 'type', label: `Type: ${TYPE_LABELS[type] || type}` },
+    overdueOnly && { key: 'overdue', label: 'Overdue only' },
+    letter && { key: 'letter', label: `Starts with ${letter}` },
+    q && { key: 'q', label: `“${q}”` },
+  ].filter(Boolean);
+
+  const selectStyle = { padding: '8px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', fontFamily: font, color: '#0f172a', outline: 'none' };
 
   return (
-    <div style={{ margin: '0 auto', padding: '32px 24px', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ margin: '0 auto', padding: '32px 24px', fontFamily: font }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 4 }}>
             Clients
           </h1>
-          <p style={{ fontSize: 14, color: '#64748b' }}>
-            {clientRows.length} clients · {prospectRows.length} prospects{athenaCount > 0 && ` · ${athenaCount} created in Athena`}
+          <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+            {viewCounts.clients || 0} clients · {viewCounts.prospects || 0} prospects
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => navigate('/clients/qbo-mapping')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              backgroundColor: '#fff', color: '#0f172a',
-              fontSize: 14, fontWeight: 500, border: '1px solid #e5e7eb', borderRadius: 10,
-              padding: '10px 14px', cursor: 'pointer',
-              fontFamily: "'Outfit', sans-serif",
-            }}
-          >
-            QBO mapping
-          </button>
-          <button
-            onClick={() => setShowNewClient(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              backgroundColor: '#1E4560', color: '#fff',
-              fontSize: 14, fontWeight: 600, border: 'none', borderRadius: 10,
-              padding: '10px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
-              fontFamily: "'Outfit', sans-serif",
-            }}
-          >
-            <Plus size={15} /> New Client
-          </button>
+          <Btn variant="secondary" onClick={() => navigate('/clients/qbo-mapping')}>QuickBooks mapping</Btn>
+          <Btn onClick={() => setShowNewClient(true)}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Plus size={15} /> New client</span>
+          </Btn>
         </div>
       </div>
 
-      {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 20 }}>
-        <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, company number, or manager..."
-          style={{
-            width: '100%', padding: '11px 16px 11px 40px', fontSize: 14.5,
-            border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none',
-            fontFamily: "'Outfit', sans-serif", transition: 'border-color 0.2s ease',
-            boxSizing: 'border-box',
-          }}
-          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
-          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+      {/* Toolbar: search, view, filters */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+        <SearchInput
+          value={q}
+          onChange={(v) => setParam({ q: v }, { replace: true })}
+          placeholder="Name, company no., UTR or manager"
+          style={{ flex: '1 1 280px', maxWidth: 360 }}
+          inputStyle={{ padding: '8px 28px 8px 12px', fontSize: 14, borderRadius: 8 }}
         />
+        <div role="tablist" style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+          {VIEWS.map((v, i) => {
+            const on = v.id === view;
+            return (
+              <button
+                key={v.id}
+                role="tab"
+                aria-selected={on}
+                onClick={() => setParam({ view: v.id === 'clients' ? null : v.id })}
+                style={{
+                  padding: '8px 14px', fontSize: 14, fontFamily: font, cursor: 'pointer', border: 'none',
+                  borderLeft: i ? '1px solid #e5e7eb' : 'none',
+                  background: on ? '#1E4560' : '#fff', color: on ? '#fff' : '#334155', fontWeight: on ? 600 : 500,
+                }}
+              >
+                {v.label} <span style={{ opacity: on ? 0.8 : 0.6, fontWeight: 500 }}>{viewCounts[v.id] || 0}</span>
+              </button>
+            );
+          })}
+        </div>
+        <select aria-label="Manager" value={manager} onChange={(e) => setParam({ manager: e.target.value })} style={selectStyle}>
+          <option value="">All managers</option>
+          {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select aria-label="Type" value={type} onChange={(e) => setParam({ type: e.target.value })} style={selectStyle}>
+          <option value="">All types</option>
+          {types.map((t) => <option key={t} value={t}>{TYPE_LABELS[t] || t}</option>)}
+        </select>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#334155', cursor: 'pointer' }}>
+          <input type="checkbox" checked={overdueOnly} onChange={(e) => setParam({ overdue: e.target.checked })} />
+          Overdue only
+        </label>
       </div>
 
-      <AlphabetFilter items={entities} selected={letter} onChange={setLetter} />
+      <AlphabetFilter items={beforeLetter} selected={letter} onChange={(l) => setParam({ letter: l })} />
 
-      {loading ? (
-        <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>Loading clients...</p>
-      ) : visibleCount === 0 ? (
-        <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
-          <p style={{ fontSize: 15.5, fontWeight: 500, color: '#94a3b8', marginBottom: 4 }}>
-            {entities.length === 0 ? 'No clients yet' : 'No matches'}
-          </p>
-          <p style={{ fontSize: 14, color: '#cbd5e1' }}>
-            {entities.length === 0 ? 'Add a client or import from BrightManager.' : 'Try a different search term.'}
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <Section title="Clients" count={clientRows.length} rows={clientRows} renderRow={renderRow} />
-          <Section title="Prospects" count={prospectRows.length} rows={prospectRows} renderRow={renderRow} />
-          <Section title="Other" count={otherRows.length} rows={otherRows} renderRow={renderRow} />
-          {showArchived && (
-            <Section title="Former & archived" count={hiddenRows.length} rows={hiddenRows} renderRow={renderRow} />
-          )}
+      {chips.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0 10px' }}>
+          {chips.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => setParam({ [c.key]: null })}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, padding: '3px 10px', borderRadius: 999, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1E4560', cursor: 'pointer', fontFamily: font }}
+            >
+              {c.label} <X size={13} />
+            </button>
+          ))}
+          <button
+            onClick={() => setParam({ manager: null, type: null, overdue: null, letter: null, q: null })}
+            style={{ fontSize: 13, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: font }}
+          >
+            Clear all
+          </button>
         </div>
       )}
 
-      {/* Former & archived toggle */}
-      {hiddenRows.length > 0 && (
-        <button
-          onClick={() => setShowArchived((v) => !v)}
-          style={{
-            marginTop: 20, fontSize: 13, color: '#64748b', background: 'none',
-            border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-            textDecoration: 'underline',
-          }}
-        >
-          {showArchived ? 'Hide former & archived' : `Show former & archived (${hiddenRows.length})`}
-        </button>
+      {loading ? (
+        <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14, padding: 40 }}>Loading clients…</p>
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={rows}
+          sort={sort}
+          onSort={(s) => setParam({ sort: s.key === 'name' ? null : s.key, dir: s.dir === 'asc' ? null : 'desc' }, { keepPage: false })}
+          page={page}
+          onPage={(p) => setParam({ page: p > 1 ? p : null }, { keepPage: true })}
+          rowHref={(r) => `/clients/${r.id}`}
+          onOpen={(href) => navigate(href)}
+          empty={entities.length === 0 ? 'No clients yet. Add one, or import from BrightManager.' : 'No clients match. Try a different search or clear a filter.'}
+        />
       )}
 
       <NewClientModal
@@ -303,25 +355,6 @@ export default function ClientsPage() {
         onClose={() => setShowNewClient(false)}
         onSave={handleNewClient}
       />
-    </div>
-  );
-}
-
-// A titled group of client rows. Renders nothing when the group is empty
-// so sections only appear when they have members.
-function Section({ title, count, rows, renderRow }) {
-  if (!rows || rows.length === 0) return null;
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-        <h2 style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: 0 }}>
-          {title}
-        </h2>
-        <span style={{ fontSize: 13, color: '#94a3b8' }}>{count}</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {rows.map(renderRow)}
-      </div>
     </div>
   );
 }
