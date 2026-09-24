@@ -379,7 +379,7 @@ export default function BillingUpliftReviewPage() {
   // direction is ignored and cycleSort decides.
   const columns = [
     {
-      key: 'client', label: 'Client', width: '22%', wrap: true,
+      key: 'client', label: 'Client', wrap: true,
       sortValue: (r) => (r.entity?.name || '').toLowerCase(),
       render: (r) => {
         const hasTemplate = !!r.qbo_recurring_txn_id;
@@ -412,17 +412,17 @@ export default function BillingUpliftReviewPage() {
         );
       },
     },
-    { key: 'lines', label: 'Lines', width: 70, firstDir: 'desc', sortValue: (r) => r._pendingLines || 0, render: (r) => r._pendingLines },
+    { key: 'lines', label: 'Lines', width: 60, firstDir: 'desc', sortValue: (r) => r._pendingLines || 0, render: (r) => r._pendingLines },
     {
-      key: 'old', label: 'Old monthly', width: 110, align: 'right', firstDir: 'desc', sortValue: (r) => r._oldTotal || 0,
+      key: 'old', label: 'Old monthly', width: 100, align: 'right', firstDir: 'desc', sortValue: (r) => r._oldTotal || 0,
       render: (r) => <span style={{ fontFamily: 'monospace' }}>£{r._oldTotal.toFixed(2)}</span>,
     },
     {
-      key: 'new', label: 'New monthly', width: 110, align: 'right', firstDir: 'desc', sortValue: (r) => r._newTotal || 0,
+      key: 'new', label: 'New monthly', width: 100, align: 'right', firstDir: 'desc', sortValue: (r) => r._newTotal || 0,
       render: (r) => <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>£{r._newTotal.toFixed(2)}</span>,
     },
     {
-      key: 'delta', label: 'Δ', width: 90, align: 'right', firstDir: 'desc', sortValue: (r) => r._delta || 0,
+      key: 'delta', label: 'Δ', width: 75, align: 'right', firstDir: 'desc', sortValue: (r) => r._delta || 0,
       render: (r) => (
         <span style={{ fontFamily: 'monospace', color: r._delta > 0 ? '#15803d' : r._delta < 0 ? '#b91c1c' : '#94a3b8' }}>
           {r._delta > 0 ? '+' : ''}£{r._delta.toFixed(2)}
@@ -430,11 +430,11 @@ export default function BillingUpliftReviewPage() {
       ),
     },
     {
-      key: 'goLive', label: 'Go-live', width: 110, firstDir: 'desc', sortValue: (r) => r._goLive || '',
+      key: 'goLive', label: 'Go-live', width: 100, firstDir: 'desc', sortValue: (r) => r._goLive || '',
       render: (r) => <span style={{ color: '#475569' }}>{r._goLive || '—'}</span>,
     },
     {
-      key: 'nextRun', label: 'Next QBO run', width: 120, firstDir: 'desc', sortValue: (r) => r.qbo_next_run_date || '',
+      key: 'nextRun', label: 'Next QBO run', width: 115, firstDir: 'desc', sortValue: (r) => r.qbo_next_run_date || '',
       render: (r) => (
         <span style={{ color: '#475569' }}>
           {r.qbo_next_run_date || (metaErrors[r.id]
@@ -444,20 +444,11 @@ export default function BillingUpliftReviewPage() {
       ),
     },
     {
-      key: 'status', label: 'Status', width: 150, sortValue: (r) => r.uplift_review_status || 'staged',
-      // "No email" was only a red envelope icon; it's a tag now so the rows
-      // that won't get a letter can be seen at a glance.
-      render: (r) => (
-        <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-          <StatusChip status={r.uplift_review_status || 'staged'} />
-          {r.uplift_email_skipped && (
-            <span title="This client won't get the fee-raise email (excluded from Send all)" style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c' }}>No email</span>
-          )}
-        </span>
-      ),
+      key: 'status', label: 'Status', width: 100, sortValue: (r) => r.uplift_review_status || 'staged',
+      render: (r) => <StatusChip status={r.uplift_review_status || 'staged'} />,
     },
     {
-      key: 'actions', label: '', width: 190, sortable: false,
+      key: 'actions', label: '', width: 175, sortable: false,
       // One main action per row (UI audit, Sprint 4): the row's next step is
       // the button, the rest are in the ⋮ menu with Discard last and in red.
       // Same handlers as before — only where they sit has changed.
