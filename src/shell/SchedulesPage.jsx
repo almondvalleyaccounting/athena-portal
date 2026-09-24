@@ -490,7 +490,7 @@ export default function SchedulesPage() {
 
   if (!isAdmin) {
     return (
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+      <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: serif, fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Scheduled Jobs
         </h1>
@@ -502,7 +502,7 @@ export default function SchedulesPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
       {notice && (
         <div style={{
           position: 'fixed', bottom: 22, right: 22, zIndex: 50, maxWidth: 420,

@@ -170,7 +170,7 @@ export default function BugReportPage() {
   };
 
   return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '32px 24px', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ margin: '0 auto', padding: '32px 24px', fontFamily: "'Outfit', sans-serif" }}>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Bug size={24} style={{ color: '#0e7fe0' }} /> Bug Reports

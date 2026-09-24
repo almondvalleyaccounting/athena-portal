@@ -295,7 +295,7 @@ export default function GroupDetailPage() {
   const allLineItems = quotes.flatMap(q => q.line_items || []);
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6">
       <div className="flex justify-between items-start mb-4">
         <div>
           {editingName ? (

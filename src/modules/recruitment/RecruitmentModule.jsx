@@ -23,7 +23,7 @@ export default function RecruitmentModule() {
 
   return (
     <div style={{ padding: '24px 28px 48px', fontFamily: font, minHeight: '100%', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18, maxWidth: 1180, marginLeft: 'auto', marginRight: 'auto' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
         {TABS.map((t) => (
           <button key={t.path} onClick={() => navigate(t.path)}
             style={pillStyle({ tone: 'info', active: t.match(location.pathname) })}>

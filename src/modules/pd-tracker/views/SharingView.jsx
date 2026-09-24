@@ -87,7 +87,7 @@ export default function SharingView() {
   const openForMe = reqForMe.filter((r) => r.status === 'open');
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 900, margin: '0 auto', fontFamily: FONT }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto', fontFamily: FONT }}>
       <SectionTitle kicker="Sharing" title="Who sees your CPD, and 360° feedback"
         hint="Grant a mentor or manager access, or ask anyone for feedback without giving them access." />
 

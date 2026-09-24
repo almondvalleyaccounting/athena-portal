@@ -90,7 +90,7 @@ export default function MandatoryView() {
   if (error) return <Msg colour="#dc2626">Error: {error}</Msg>;
 
   return (
-    <div style={{ fontFamily: font, padding: '20px 28px 48px', maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ fontFamily: font, padding: '20px 28px 48px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
         <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#0f172a' }}>Mandatory training</h2>
         <div style={{ flex: 1 }} />

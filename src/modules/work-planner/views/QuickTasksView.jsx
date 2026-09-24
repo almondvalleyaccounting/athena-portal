@@ -81,7 +81,7 @@ export default function QuickTasksView({ compact, onAction }) {
   };
 
   return (
-    <div style={{ padding: 10, maxWidth: 960 }}>
+    <div style={{ padding: 10 }}>
       {/* Add bar */}
       <div style={{ display: 'flex', gap: 5, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <input

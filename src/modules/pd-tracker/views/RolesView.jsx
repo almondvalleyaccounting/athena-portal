@@ -138,7 +138,7 @@ export default function RolesView() {
   const availableCats = allCategories.filter((c) => !usedCats.has(c));
 
   return (
-    <div style={{ padding: '28px 32px 80px', maxWidth: 1100, margin: '0 auto', fontFamily: FONT }}>
+    <div style={{ padding: '28px 32px 80px', margin: '0 auto', fontFamily: FONT }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
         <h2 style={{ margin: 0, fontFamily: SERIF, fontSize: 22, color: '#0f172a' }}>Role profiles</h2>
         {busy && <span style={{ fontSize: 12, color: '#0e7fe0' }}>Saving…</span>}

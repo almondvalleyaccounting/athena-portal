@@ -1132,7 +1132,7 @@ export default function AdminTasksPage() {
   );
 
   return (
-    <div style={{ maxWidth: 1240, margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '28px 32px 48px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
         <ClipboardList size={20} color="#0e7fe0" />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Admin task list</h1>

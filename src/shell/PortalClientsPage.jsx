@@ -90,7 +90,7 @@ export default function PortalClientsPage() {
 
   if (!canManage) {
     return (
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+      <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Portal Clients
         </h1>
@@ -102,7 +102,7 @@ export default function PortalClientsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a' }}>
           Portal Clients

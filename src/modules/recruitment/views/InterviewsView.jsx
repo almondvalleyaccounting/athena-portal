@@ -17,7 +17,7 @@ export default function InterviewsView() {
   }, []);
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: font }}>
+    <div style={{ margin: '0 auto', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <CalendarDays size={20} color="#0e7fe0" />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Interviews</h1>

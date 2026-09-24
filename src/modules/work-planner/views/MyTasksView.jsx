@@ -112,7 +112,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
   if (filters.serviceFilter) stranded = stranded.filter((t) => t.service === filters.serviceFilter);
 
   return (
-    <div style={{ padding: 10, maxWidth: 960 }}>
+    <div style={{ padding: 10 }}>
       {stranded.length > 0 && (
         <div style={{
           marginBottom: 12, border: '1px solid #fcd34d', background: '#fffbeb',

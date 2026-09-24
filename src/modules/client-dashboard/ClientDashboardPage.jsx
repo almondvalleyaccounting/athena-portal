@@ -575,7 +575,7 @@ export default function ClientDashboardPage() {
     // Fill the available width (laptop → PC → docked/external monitor); a wide
     // cap keeps line lengths sane on 4K without wasting space below it. Mobile
     // is intentionally not catered for.
-    <div style={{ width: '100%', maxWidth: '2200px', margin: '0 auto', padding: '28px clamp(20px, 2.4vw, 48px) 40px' }}>
+    <div style={{ width: '100%', margin: '0 auto', padding: '28px clamp(20px, 2.4vw, 48px) 40px' }}>
       <div style={{ display: 'flex', gap: 'clamp(24px, 2.4vw, 44px)', alignItems: 'flex-start' }}>
         {/* ── Left rail: title, client picker, actions, filters ── */}
         <div style={{

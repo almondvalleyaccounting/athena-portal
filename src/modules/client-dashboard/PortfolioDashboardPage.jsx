@@ -156,7 +156,7 @@ export default function PortfolioDashboardPage() {
   const flaggedCount = cards.filter((c) => c.flags.some((f) => f.level === 'red')).length;
 
   return (
-    <div style={{ maxWidth: '1180px', margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap', marginBottom: '24px' }}>
         <div style={{ flex: 1, minWidth: '260px' }}>
           <h1 style={{ fontFamily: PLAYFAIR, fontSize: '28px', fontWeight: 500, color: C.ink, marginBottom: '8px' }}>

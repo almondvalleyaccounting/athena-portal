@@ -238,7 +238,7 @@ export default function TriageBoardPage() {
   const openCount = (cases || []).filter((c) => c.status === 'open').length;
 
   return (
-    <div style={{ maxWidth: view === 'board' ? 1400 : 1600, margin: '0 auto', padding: '24px 32px 48px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '24px 32px 48px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <LifeBuoy size={20} color="#0e7fe0" />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Triage</h1>

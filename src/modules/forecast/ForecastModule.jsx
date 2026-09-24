@@ -327,7 +327,7 @@ export default function ForecastModule() {
   }, [findings]);
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '24px 24px 60px', fontFamily: fontStack }}>
+    <div style={{ margin: '0 auto', padding: '24px 24px 60px', fontFamily: fontStack }}>
       <Header onExport={forecast && lens.exportPack ? () => setShowExport(true) : null}
         forecast={forecast} forecasts={forecasts}
         forecastId={forecastId} onSelect={setForecastId}

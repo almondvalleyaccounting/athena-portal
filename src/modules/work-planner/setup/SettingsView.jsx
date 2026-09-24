@@ -62,7 +62,7 @@ export default function SettingsView() {
   const mode = current.enabled ? 'enabled' : current.dry_run ? 'dry_run' : 'off';
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 800 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <p style={{ fontSize: 14, color: '#475569', marginBottom: 14 }}>
         Workflow auto-scheduling feature flag. Ingest/reconciliation writes to Supabase regardless of this flag — but future behaviours (Outlook push, automated chasers, calendar propagation) check it before running. Flip when you're confident the data is clean.
       </p>

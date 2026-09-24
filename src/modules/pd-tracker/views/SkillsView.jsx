@@ -170,7 +170,7 @@ export default function SkillsView() {
   };
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 1280, margin: '0 auto' }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
         <SectionTitle kicker="Skill matrix" title="Where am I, where am I heading?"
           hint="Pick a role to see the target profile, or your own starred picks. Score yourself honestly." />

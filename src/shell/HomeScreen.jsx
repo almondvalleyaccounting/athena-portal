@@ -1571,7 +1571,7 @@ export default function HomeScreen() {
   );
 
   return (
-    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px 24px 40px' }}>
+    <div style={{ margin: '0 auto', padding: '24px 24px 40px' }}>
       {/* ── Header row ── */}
       <div
         style={{

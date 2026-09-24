@@ -219,7 +219,7 @@ export default function IdeasPage() {
   };
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px' }}>
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
         <h1

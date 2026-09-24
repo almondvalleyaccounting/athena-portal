@@ -35,7 +35,7 @@ export default function TaxCalcView() {
   }, []);
 
   return (
-    <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 900 }}>
+    <div style={{ padding: '24px 28px', fontFamily: font }}>
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 24 }}>
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>
           TaxCalc import

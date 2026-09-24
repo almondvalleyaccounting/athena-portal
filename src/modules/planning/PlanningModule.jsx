@@ -220,7 +220,7 @@ export default function PlanningModule() {
 
   return (
     <PlanningCtx.Provider value={ctxValue}>
-      <div style={{ maxWidth: 1240, margin: '0 auto', padding: '24px 24px 60px', fontFamily: "'Outfit', sans-serif" }}>
+      <div style={{ margin: '0 auto', padding: '24px 24px 60px', fontFamily: "'Outfit', sans-serif" }}>
         <Header />
         <Tabs />
         <Routes>

@@ -126,7 +126,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
   };
 
   return (
-    <div style={{ padding: embedded ? 0 : '20px 28px', fontFamily: font, maxWidth: embedded ? '100%' : 720 }}>
+    <div style={{ padding: embedded ? 0 : '20px 28px', fontFamily: font }}>
       {!embedded && (
         <>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>

@@ -132,7 +132,7 @@ export default function RecommendationsView() {
   };
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 980, margin: '0 auto' }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
       <SectionTitle
         kicker="Recommendations"
         title="Where the lever is biggest"

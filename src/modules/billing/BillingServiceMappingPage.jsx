@@ -111,7 +111,7 @@ export default function BillingServiceMappingPage() {
   }, [serviceUsage, mappings]);
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Service → fee earner mapping
       </h1>

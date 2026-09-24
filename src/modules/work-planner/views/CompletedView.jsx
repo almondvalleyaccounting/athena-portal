@@ -32,7 +32,7 @@ export default function CompletedView() {
   }
 
   return (
-    <div style={{ padding: '12px 20px', maxWidth: 960 }}>
+    <div style={{ padding: '12px 20px' }}>
       {list.map((task) => (
         <div
           key={task.id}

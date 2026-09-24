@@ -76,7 +76,7 @@ export default function MyReviewView() {
   if (items.length === 0) return <Msg>Nothing for you in the {monthLabel(cycle.period_month)} review — nicely on top of things. 👏</Msg>;
 
   return (
-    <div style={{ fontFamily: font, padding: '18px 22px 48px', maxWidth: 1100, margin: '0 auto', background: '#f8fafc', minHeight: '100%' }}>
+    <div style={{ fontFamily: font, padding: '18px 22px 48px', margin: '0 auto', background: '#f8fafc', minHeight: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
         <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#0f172a' }}>My review — {monthLabel(cycle.period_month)}</h2>
         <span style={{ fontSize: 14, fontWeight: 600, color: answered === items.length ? '#16a34a' : '#0e7fe0' }}>

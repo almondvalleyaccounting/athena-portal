@@ -1230,6 +1230,6 @@ function WorkStat({ icon: Icon, label, count, sub, onClick }) {
   );
 }
 
-const wrapStyle = { maxWidth: 960, margin: '0 auto', padding: '28px 24px', fontFamily: "'Outfit', sans-serif" };
+const wrapStyle = { margin: '0 auto', padding: '28px 32px', fontFamily: "'Outfit', sans-serif" };
 const cardStyle = { background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '18px 22px' };
 const sectionTitle = { fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 12, marginTop: 0 };

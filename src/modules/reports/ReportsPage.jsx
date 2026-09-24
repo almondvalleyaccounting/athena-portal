@@ -203,7 +203,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px' }}>
       {/* Header */}
       <h1
         style={{

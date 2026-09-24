@@ -76,7 +76,7 @@ export default function UpdatesView() {
   }, [rows]);
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '24px 20px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '24px 20px', fontFamily: font }}>
       <button
         onClick={() => navigate('/onboarding')}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}

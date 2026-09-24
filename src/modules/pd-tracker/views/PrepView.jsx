@@ -193,7 +193,7 @@ export default function PrepView() {
   const adoptedBodies = useMemo(() => new Set(notes.map((n) => n.body)), [notes]);
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 1180, margin: '0 auto' }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 18 }}>
         <SectionTitle
           kicker="1-2-1 prep"

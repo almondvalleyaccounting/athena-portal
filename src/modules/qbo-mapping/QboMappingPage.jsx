@@ -338,7 +338,7 @@ export default function QboMappingPage() {
   const selectedIds = [...selected];
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <button onClick={() => navigate(backRoute)} style={backLinkStyle}>
         <ArrowLeft size={14} /> {backLabel}
       </button>

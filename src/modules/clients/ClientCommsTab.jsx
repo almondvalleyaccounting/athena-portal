@@ -174,7 +174,7 @@ export default function ClientCommsTab({ entityId }) {
     return (
       <div style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 12, textAlign: 'center', padding: '44px 24px', fontFamily: font }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No communications yet</div>
-        <div style={{ fontSize: 14, color: '#64748b', maxWidth: 460, margin: '0 auto' }}>
+        <div style={{ fontSize: 14, color: '#64748b', margin: '0 auto' }}>
           Emails to or from this client's known addresses, plus any SMS/WhatsApp, will appear here.
         </div>
       </div>

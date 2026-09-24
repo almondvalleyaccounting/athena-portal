@@ -95,7 +95,7 @@ export default function VacancyDetailView() {
   const st = VACANCY_STATUS_MAP[vacancy.status] || VACANCY_STATUS_MAP.draft;
 
   return (
-    <div style={{ maxWidth: 1180, margin: '0 auto', fontFamily: font }}>
+    <div style={{ margin: '0 auto', fontFamily: font }}>
       <button onClick={() => navigate('/recruitment')}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: '#64748b', fontSize: 13.5, cursor: 'pointer', fontFamily: font, padding: 0, marginBottom: 12 }}>
         <ArrowLeft size={14} /> All vacancies

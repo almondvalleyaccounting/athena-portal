@@ -61,7 +61,7 @@ export default function HistoryView() {
   };
 
   return (
-    <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 1180 }}>
+    <div style={{ padding: '24px 28px', fontFamily: font }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
         <Filter label="Source">
           <select value={source} onChange={(e) => setSource(e.target.value)} style={selectStyle}>

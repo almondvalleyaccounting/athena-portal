@@ -388,7 +388,7 @@ export default function BillingUpliftReviewPage() {
   const approvedCount = counts.approved || 0;
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1400 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
         <div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>

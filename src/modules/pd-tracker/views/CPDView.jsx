@@ -108,7 +108,7 @@ export default function CPDView() {
   };
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         <SectionTitle
           kicker="CPD log"

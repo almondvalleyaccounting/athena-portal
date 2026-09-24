@@ -471,7 +471,7 @@ export default function BillingReviewAndChangePage() {
   };
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1600 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Review and Change
       </h1>

@@ -18,7 +18,7 @@ export default function ConnectionsPage() {
 
   if (profile?.can_manage_portal !== true) {
     return (
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+      <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Connections
         </h1>
@@ -30,7 +30,7 @@ export default function ConnectionsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
       <h1
         style={{
           fontFamily: "'Playfair Display', serif",

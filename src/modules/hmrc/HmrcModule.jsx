@@ -114,7 +114,7 @@ export default function HmrcModule() {
   const chosen = clients.find((c) => c.entity_id === entityId);
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1420 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9 }}>

@@ -77,7 +77,7 @@ export default function UserSettingsPage() {
   };
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ margin: '0 auto', padding: '40px 24px' }}>
       <h1
         style={{
           fontFamily: "'Playfair Display', serif",

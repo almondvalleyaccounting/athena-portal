@@ -182,7 +182,7 @@ export default function KpiPacksPage() {
 
   if (!canManage) {
     return (
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: OUTFIT }}>
+      <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: OUTFIT }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           KPI Packs
         </h1>
@@ -195,7 +195,7 @@ export default function KpiPacksPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1180, margin: '0 auto', padding: '32px 24px 60px', fontFamily: OUTFIT }}>
+    <div style={{ margin: '0 auto', padding: '32px 24px 60px', fontFamily: OUTFIT }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
         <Layers size={26} style={{ color: '#38bdf8', marginTop: 4 }} />
         <div>

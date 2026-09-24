@@ -401,7 +401,7 @@ export default function BillingReviewPage() {
   const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1280 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
         Billing approval queue
       </h1>

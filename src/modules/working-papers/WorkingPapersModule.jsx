@@ -188,7 +188,7 @@ export default function WorkingPapersModule() {
   const entity = rows.find((r) => r.entity_id === entityId) || null;
 
   return (
-    <div style={{ padding: '20px 28px', fontFamily: font, maxWidth: 1420 }}>
+    <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 9 }}>
         <FileSpreadsheet size={22} style={{ color: '#64748b' }} /> Working Papers
       </h1>

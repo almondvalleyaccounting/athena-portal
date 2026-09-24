@@ -153,7 +153,7 @@ export default function DashboardAccessPage() {
 
   if (!canManage) {
     return (
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
+      <div style={{ margin: '0 auto', padding: '40px 24px', fontFamily: font }}>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 500, color: '#0f172a', marginBottom: 8 }}>
           Client Dashboard Access
         </h1>
@@ -165,7 +165,7 @@ export default function DashboardAccessPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 24px 60px', fontFamily: font }}>
+    <div style={{ margin: '0 auto', padding: '32px 24px 60px', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 6 }}>
         <BarChart3 size={26} style={{ color: '#38bdf8', marginTop: 4 }} />
         <div>

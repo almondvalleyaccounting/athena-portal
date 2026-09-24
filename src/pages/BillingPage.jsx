@@ -530,7 +530,7 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-6">
       {/* Header */}
       <div className="flex justify-between items-start mb-4">
         <div>

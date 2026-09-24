@@ -62,7 +62,7 @@ export default function VacanciesView() {
   const openCount = (vacancies || []).filter((v) => v.status === 'open').length;
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', fontFamily: font }}>
+    <div style={{ margin: '0 auto', fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <Briefcase size={20} color="#0e7fe0" />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Vacancies</h1>

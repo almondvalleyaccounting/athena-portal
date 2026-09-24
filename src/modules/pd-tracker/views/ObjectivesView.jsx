@@ -77,7 +77,7 @@ export default function ObjectivesView() {
   const closed = items.filter((i) => i.status === 'complete' || i.status === 'abandoned');
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 980, margin: '0 auto' }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         <SectionTitle
           kicker="Objectives"

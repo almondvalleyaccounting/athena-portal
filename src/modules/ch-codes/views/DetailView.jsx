@@ -79,7 +79,7 @@ export default function DetailView() {
   const terminal = meta.terminal;
 
   return (
-    <div style={{ padding: '24px 28px', fontFamily: font, maxWidth: 900 }}>
+    <div style={{ padding: '24px 28px', fontFamily: font }}>
       <button onClick={() => navigate('/onboarding/ch-codes')}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: '#64748b', fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 14, fontFamily: font }}>
         <ArrowLeft size={14} /> Back to pipeline

@@ -203,7 +203,7 @@ export default function ClientsPage() {
   );
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px', fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ margin: '0 auto', padding: '32px 24px', fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>

@@ -161,7 +161,7 @@ export default function ManagerView() {
   if (error) return <Msg colour="#dc2626">Error: {error}</Msg>;
 
   return (
-    <div style={{ fontFamily: font, padding: '18px 22px 48px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ fontFamily: font, padding: '18px 22px 48px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#0f172a' }}>
           Job Review{cycle ? ` — ${monthLabel(cycle.period_month)}` : ''}

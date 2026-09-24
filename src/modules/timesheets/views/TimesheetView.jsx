@@ -302,7 +302,7 @@ export default function TimesheetView() {
   };
 
   return (
-    <div style={{ padding: '16px 20px', maxWidth: 1200, fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ padding: '16px 20px', fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         {/* Staff selector */}

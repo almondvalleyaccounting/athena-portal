@@ -36,7 +36,7 @@ export default function ScheduledView({ sort, onEdit }) {
   });
 
   return (
-    <div style={{ padding: 10, maxWidth: 960 }}>
+    <div style={{ padding: 10 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {list.map((master) => {
           const ni = nextInstance(master, overridesMap, completedKeys);

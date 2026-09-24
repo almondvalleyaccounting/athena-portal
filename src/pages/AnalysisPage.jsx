@@ -274,7 +274,7 @@ export default function AnalysisPage() {
     : '1.5fr 1.5fr 0.8fr 1fr 1fr 1fr 0.8fr';
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-6">
       {/* Back link */}
       <button onClick={() => navigate(-1)} className="text-xs text-ocean-600 hover:text-ocean-700 mb-3 inline-block">
         &larr; Back

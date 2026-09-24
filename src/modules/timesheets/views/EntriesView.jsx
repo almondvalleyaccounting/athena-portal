@@ -195,7 +195,7 @@ export default function EntriesView() {
   );
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: 1100, fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ padding: '20px 24px', fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>All Entries</h2>

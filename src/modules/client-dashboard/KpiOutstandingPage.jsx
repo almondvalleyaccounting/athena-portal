@@ -77,7 +77,7 @@ export default function KpiOutstandingPage() {
   }, [rows]);
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '32px 24px 60px', fontFamily: OUTFIT }}>
+    <div style={{ margin: '0 auto', padding: '32px 24px 60px', fontFamily: OUTFIT }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
         <ClipboardList size={26} style={{ color: '#38bdf8', marginTop: 4 }} />
         <div>

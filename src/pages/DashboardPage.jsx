@@ -387,7 +387,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6">
       {/* Header row with title + time filter */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold text-ocean-700">Dashboard</h2>

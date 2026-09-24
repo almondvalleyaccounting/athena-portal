@@ -292,7 +292,7 @@ export default function OneToOnesView() {
   const totalMinutes = useMemo(() => meetings.reduce((acc, m) => acc + (m.duration_mins || 0), 0), [meetings]);
 
   return (
-    <div style={{ padding: '32px 32px 80px', maxWidth: 1080, margin: '0 auto' }}>
+    <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         <SectionTitle
           kicker="1-2-1s"
