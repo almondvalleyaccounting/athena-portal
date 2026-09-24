@@ -28,6 +28,7 @@ export default function IdeasPage() {
   const { profile } = useAuth();
   const [ideas, setIdeas] = useState([]);
   const [newIdea, setNewIdea] = useState('');
+  const [newDetail, setNewDetail] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -69,8 +70,12 @@ export default function IdeasPage() {
     setSubmitting(true);
 
     try {
+      // The title and the optional "what would it do, and why?" are kept in
+      // the one text column, title first (a blank line between), so nothing
+      // else that reads ideas needs to change.
+      const detail = newDetail.trim();
       const { error } = await supabase.from('ideas').insert({
-        text: newIdea.trim(),
+        text: detail ? `${newIdea.trim()}\n\n${detail}` : newIdea.trim(),
         submitted_by: profile?.id,
         submitted_by_name: profile?.full_name || profile?.name || profile?.email || 'Unknown',
         votes: 0,
@@ -78,6 +83,7 @@ export default function IdeasPage() {
 
       if (!error) {
         setNewIdea('');
+        setNewDetail('');
         await loadIdeas();
       }
     } catch {
@@ -245,59 +251,10 @@ export default function IdeasPage() {
         </p>
       </div>
 
-      {/* Submit new idea */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '12px',
-          marginBottom: '32px',
-        }}
-      >
-        <input
-          value={newIdea}
-          onChange={(e) => setNewIdea(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          placeholder="I think we should..."
-          disabled={submitting}
-          style={{
-            flex: 1,
-            border: '1px solid #e5e7eb',
-            borderRadius: '10px',
-            padding: '12px 16px',
-            fontSize: '14.5px',
-            fontFamily: "'Outfit', sans-serif",
-            outline: 'none',
-            transition: 'border-color 0.2s ease',
-          }}
-          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
-          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-        />
-        <button
-          onClick={handleSubmit}
-          disabled={!newIdea.trim() || submitting}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            backgroundColor:
-              !newIdea.trim() || submitting ? '#e5e7eb' : '#1E4560',
-            color: !newIdea.trim() || submitting ? '#94a3b8' : '#ffffff',
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
-            fontWeight: 600,
-            border: 'none',
-            borderRadius: '10px',
-            padding: '12px 20px',
-            cursor: !newIdea.trim() || submitting ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s ease',
-            flexShrink: 0,
-          }}
-        >
-          <Plus size={16} />
-          Add
-        </button>
-      </div>
-
+      {/* The list takes the width; the suggest card sits beside it at a
+          readable size (UI audit, Sprint 3 form pass). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 24, alignItems: 'start' }}>
+      <div>
       {/* Ideas list */}
       {loading ? (
         <p
@@ -402,15 +359,18 @@ export default function IdeasPage() {
               {/* Idea content */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 {editingId === idea.id ? (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                    <input
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 6 }}>
+                    {/* Multi-line: an idea can carry a title and a description
+                        separated by a blank line. Ctrl/Cmd+Enter saves. */}
+                    <textarea
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleEdit(idea); if (e.key === 'Escape') setEditingId(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleEdit(idea); if (e.key === 'Escape') setEditingId(null); }}
                       autoFocus
+                      rows={Math.min(8, Math.max(2, (editText || '').split(String.fromCharCode(10)).length + 1))}
                       style={{
                         flex: 1, padding: '6px 10px', fontSize: 14.5, fontFamily: "'Outfit', sans-serif",
-                        border: '1px solid #38bdf8', borderRadius: 8, outline: 'none',
+                        border: '1px solid #1E4560', borderRadius: 8, outline: 'none', resize: 'vertical',
                       }}
                     />
                     <button onClick={() => handleEdit(idea)} style={{ fontSize: 13, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Save</button>
@@ -430,7 +390,12 @@ export default function IdeasPage() {
                     }}
                     title="Click to edit"
                   >
-                    {idea.text}
+                    {(idea.text || '').split('\n\n')[0]}
+                    {(idea.text || '').includes('\n\n') && (
+                      <span style={{ display: 'block', fontWeight: 400, color: '#64748b', fontSize: 14, marginTop: 4, whiteSpace: 'pre-line' }}>
+                        {idea.text.slice(idea.text.indexOf('\n\n') + 2)}
+                      </span>
+                    )}
                   </p>
                 )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -590,6 +555,54 @@ export default function IdeasPage() {
           ))}
         </div>
       )}
+      </div>
+
+      <aside style={{ position: 'sticky', top: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 }}>
+        <h2 style={{ fontFamily: "'Outfit', sans-serif", fontSize: 16, fontWeight: 600, color: '#0f172a', margin: '0 0 12px' }}>
+          Suggest an idea
+        </h2>
+        <input
+          value={newIdea}
+          onChange={(e) => setNewIdea(e.target.value)}
+          placeholder="Short title — I think we should…"
+          disabled={submitting}
+          style={{
+            width: '100%', boxSizing: 'border-box', border: '1px solid #e5e7eb', borderRadius: 10,
+            padding: '10px 14px', fontSize: 14.5, fontFamily: "'Outfit', sans-serif", outline: 'none', marginBottom: 10,
+          }}
+          onFocus={(e) => (e.target.style.borderColor = '#1E4560')}
+          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+        />
+        <textarea
+          value={newDetail}
+          onChange={(e) => setNewDetail(e.target.value)}
+          placeholder="What would it do, and why? (optional)"
+          disabled={submitting}
+          rows={4}
+          style={{
+            width: '100%', boxSizing: 'border-box', border: '1px solid #e5e7eb', borderRadius: 10,
+            padding: '10px 14px', fontSize: 14, fontFamily: "'Outfit', sans-serif", outline: 'none', resize: 'vertical', marginBottom: 12,
+          }}
+          onFocus={(e) => (e.target.style.borderColor = '#1E4560')}
+          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!newIdea.trim() || submitting}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            backgroundColor: !newIdea.trim() || submitting ? '#e5e7eb' : '#1E4560',
+            color: !newIdea.trim() || submitting ? '#94a3b8' : '#ffffff',
+            fontFamily: "'Outfit', sans-serif", fontSize: 14, fontWeight: 600,
+            border: 'none', borderRadius: 10, padding: '10px 18px',
+            cursor: !newIdea.trim() || submitting ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <Plus size={16} />
+          {submitting ? 'Adding…' : 'Add idea'}
+        </button>
+      </aside>
+      </div>
     </div>
   );
 }
