@@ -75,8 +75,8 @@ function isModuleClickable(mod) {
 }
 
 /* ─── Open-in-new-window helpers ───────────────────────────────────
-   Sidebar items are buttons, not <a>, so the browser's own "open in
-   new tab" menu never appears. We supply our own. BrowserRouter means
+   Sidebar items are links, but the right-click menu is still ours so it
+   can offer a proper new *window* as well as a tab. BrowserRouter means
    routes are real URLs and the Supabase session lives in localStorage,
    so a second window lands logged in on the same page. */
 const absoluteUrl = (route) => new URL(route, window.location.origin).href;
@@ -93,6 +93,15 @@ function openInNewWindow(route) {
     '_blank',
     `popup=yes,noopener,noreferrer,width=${width},height=${height},left=${left},top=${top}`
   );
+}
+
+// Sidebar entries are real links now, so ctrl/cmd/shift-click and middle-click
+// open a new tab the browser's own way. A plain left click is intercepted and
+// runs the in-app behaviour (expand the group, client-side navigate).
+function onLinkClick(e, run) {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  run?.();
 }
 
 function openInNewTab(route) {
@@ -365,6 +374,7 @@ export default function Sidebar() {
               <NavItem
                 icon={IconComp}
                 label={mod.label}
+                href={mod.route}
                 active={active}
                 collapsed={collapsed}
                 clickable={clickable}
@@ -394,11 +404,14 @@ export default function Sidebar() {
               {isExpanded && kids.length > 0 && (
                 <div style={{ overflow: 'hidden', transition: 'max-height 0.2s ease' }}>
                   {kids.map((child) => (
-                    <button
+                    <a
                       key={child.id}
-                      onClick={() => navigate(child.route)}
+                      href={child.route}
+                      onClick={(e) => onLinkClick(e, () => navigate(child.route))}
                       onContextMenu={(e) => openCtxMenu(e, child.route, child.label)}
                       style={{
+                        boxSizing: 'border-box',
+                        textDecoration: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         width: '100%',
@@ -430,7 +443,7 @@ export default function Sidebar() {
                         {child.label}
                       </span>
                       {child.inDevelopment && <span style={{ marginLeft: 'auto', paddingLeft: 4, display: 'flex' }}><InDevelopmentTag short /></span>}
-                    </button>
+                    </a>
                   ))}
                 </div>
               )}
@@ -460,6 +473,7 @@ export default function Sidebar() {
               key={mod.id}
               icon={IconComp}
               label={mod.label}
+              href={mod.route}
               active={active}
               collapsed={collapsed}
               clickable={clickable}
@@ -483,6 +497,7 @@ export default function Sidebar() {
             <NavItem
               icon={Settings}
               label="Settings"
+              href={adminChildren[0]?.route}
               active={isActive('/admin') || isActive('/settings')}
               collapsed={collapsed}
               clickable
@@ -501,11 +516,13 @@ export default function Sidebar() {
             {adminExpanded && !collapsed && adminChildren.map((child) => {
               const active = location.pathname.startsWith(child.route);
               return (
-                <button
+                <a
                   key={child.id}
-                  onClick={() => navigate(child.route)}
+                  href={child.route}
+                  onClick={(e) => onLinkClick(e, () => navigate(child.route))}
                   onContextMenu={(e) => openCtxMenu(e, child.route, child.label)}
                   style={{
+                    boxSizing: 'border-box', textDecoration: 'none',
                     display: 'flex', alignItems: 'center', width: '100%',
                     padding: '6px 12px 6px 44px', borderRadius: 6, border: 'none',
                     background: active ? 'rgba(56,189,248,0.08)' : 'transparent',
@@ -523,7 +540,7 @@ export default function Sidebar() {
                     fontWeight: active ? 600 : 400,
                     color: active ? '#0f172a' : '#64748b',
                   }}>{child.label}</span>
-                </button>
+                </a>
               );
             })}
           </>
@@ -729,7 +746,7 @@ function ContextMenu({ menu, onClose }) {
 }
 
 /* ─── Nav item sub-component ───────────────────────────────────── */
-function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, beta, inDevelopment, hasChevron, chevronOpen, onClick, onContextMenu }) {
+function NavItem({ icon: Icon, label, href, active, collapsed, clickable, planned, beta, inDevelopment, hasChevron, chevronOpen, onClick, onContextMenu }) {
   const [hovered, setHovered] = useState(false);
 
   const baseStyle = {
@@ -766,12 +783,13 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
   const labelColor = active ? '#0f172a' : planned ? '#94a3b8' : '#1e293b';
 
   return (
-    <button
-      onClick={onClick}
+    <a
+      href={clickable && href ? href : undefined}
+      onClick={(e) => onLinkClick(e, onClick)}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={baseStyle}
+      style={{ ...baseStyle, boxSizing: 'border-box', textDecoration: 'none', color: 'inherit' }}
       title={collapsed ? (inDevelopment ? `${label} — in development` : label) : planned ? 'Coming soon' : undefined}
     >
       {active && <div style={accentStyle} />}
@@ -881,6 +899,6 @@ function NavItem({ icon: Icon, label, active, collapsed, clickable, planned, bet
           {label}
         </div>
       )}
-    </button>
+    </a>
   );
 }
