@@ -43,17 +43,42 @@ export default function QuickSearch() {
   }, []);
 
   // Debounced search
-  const runSearch = useCallback(async (q) => {
+  const runSearch = useCallback(async (raw) => {
+    // Commas and brackets would break the PostgREST or() filter.
+    const q = (raw || '').replace(/[,()*]/g, ' ').trim();
     if (!q || q.length < 2) { setResults({ clients: [], tasks: [], quotes: [] }); setLoading(false); return; }
     setLoading(true);
     try {
-      const [{ data: clients }, { data: tasks }, { data: quotes }] = await Promise.all([
-        supabase.from('entities').select('id, name, type').ilike('name', `%${q}%`).limit(5),
+      // Identifiers are stored without spaces; people type "38890 25012" or
+      // "GB 488 0176 63". Match those on a compacted copy.
+      const compact = q.replace(/\s+/g, '');
+      const vat = compact.replace(/^GB/i, '');
+      const idFilters = compact.length >= 3
+        ? [`company_number.ilike.%${compact}%`, `utr.ilike.%${compact}%`, `vat_number.ilike.%${vat}%`,
+           `paye_ref.ilike.%${compact}%`, `bm_client_id.ilike.%${compact}%`,
+           `billing_email.ilike.%${compact}%`, `prospect_email.ilike.%${compact}%`]
+        : [];
+      const [{ data: clientRows }, { data: emailRows }, { data: tasks }, { data: quotes }] = await Promise.all([
+        supabase.from('entities')
+          .select('id, name, type, company_number, utr, vat_number, paye_ref, bm_client_id, billing_email, prospect_email')
+          .or([`name.ilike.%${q}%`, ...idFilters].join(','))
+          .order('name').limit(8),
+        // BrightManager contact emails aren't on entities.
+        compact.length >= 3
+          ? supabase.from('v_email_reconciliation').select('entity_id, name, bm_contact_email')
+              .ilike('bm_contact_email', `%${compact}%`).limit(5)
+          : Promise.resolve({ data: [] }),
         supabase.from('quick_tasks').select('id, title, service').ilike('title', `%${q}%`).limit(5),
         supabase.from('quotes').select('id, quote_ref, relationship_group, status')
           .or(`quote_ref.ilike.%${q}%,relationship_group.ilike.%${q}%`).limit(5),
       ]);
-      setResults({ clients: clients || [], tasks: tasks || [], quotes: quotes || [] });
+      const clients = (clientRows || []).map((c) => ({ ...c, matched: matchedOn(c, q, compact, vat) }));
+      for (const e of emailRows || []) {
+        if (!clients.some((c) => c.id === e.entity_id)) {
+          clients.push({ id: e.entity_id, name: e.name, matched: `Email ${e.bm_contact_email}` });
+        }
+      }
+      setResults({ clients: clients.slice(0, 8), tasks: tasks || [], quotes: quotes || [] });
     } catch (e) {
       console.error('[QuickSearch]', e);
     }
@@ -83,7 +108,7 @@ export default function QuickSearch() {
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => { if (query.length >= 2) setOpen(true); }}
-          placeholder="Search clients, tasks, quotes..."
+          placeholder="Search name, company no., UTR, VAT, email…"
           style={{
             width: '100%', padding: '7px 60px 7px 32px', fontSize: 13,
             fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
@@ -143,7 +168,7 @@ export default function QuickSearch() {
               {results.clients.map((c) => (
                 <div key={c.id} onClick={() => handleSelect(`/clients/${c.id}`)} style={resultRow}>
                   <span style={{ fontWeight: 500, color: '#0f172a' }}>{c.name}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{c.type?.replace('_', ' ')}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>{c.matched || c.type?.replace('_', ' ')}</span>
                 </div>
               ))}
             </div>
@@ -176,6 +201,21 @@ export default function QuickSearch() {
       )}
     </div>
   );
+}
+
+// Which identifier a client matched on, so a hit on "SC824366" says why it's
+// there. Nothing when the name matched — the name is already on the row.
+function matchedOn(c, q, compact, vat) {
+  const has = (v, needle) => v && needle && String(v).toLowerCase().includes(needle.toLowerCase());
+  if (has(c.name, q)) return null;
+  if (has(c.company_number, compact)) return `Company no. ${c.company_number}`;
+  if (has(c.utr, compact)) return `UTR ${c.utr}`;
+  if (has(c.vat_number, vat)) return `VAT ${c.vat_number}`;
+  if (has(c.paye_ref, compact)) return `PAYE ${c.paye_ref}`;
+  if (has(c.bm_client_id, compact)) return `BrightManager ${c.bm_client_id}`;
+  if (has(c.billing_email, compact)) return `Email ${c.billing_email}`;
+  if (has(c.prospect_email, compact)) return `Email ${c.prospect_email}`;
+  return null;
 }
 
 const sectionHeader = {
