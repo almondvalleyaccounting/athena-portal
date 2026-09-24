@@ -298,7 +298,7 @@ export default function TriageBoardPage() {
       {cases === null && <div style={{ ...card, padding: 18, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>Loading…</div>}
 
       {cases !== null && view === 'board' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: 14, alignItems: 'start' }}>
           {CATEGORIES.map((cat) => {
             const items = byCategory[cat.key] || [];
             const Icon = cat.icon;
