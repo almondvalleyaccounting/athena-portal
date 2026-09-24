@@ -10,6 +10,17 @@ import {
 
 const font = "'Outfit', sans-serif";
 
+// One-time sign-in codes (Government Gateway, Google…) land on the practice
+// number. Mask the digits until someone deliberately reveals them — same
+// test the telnyx-inbound function uses to keep them out of notifications.
+function isVerificationCode(text) {
+  const t = text || '';
+  const hasCode = /\b\d{4,8}\b/.test(t) || /\b[A-Z]-\d{4,8}\b/.test(t);
+  const saysCode = /\b(code|passcode|verification|verify|one[- ]time|OTP|PIN|security number)\b/i.test(t);
+  return hasCode && saysCode;
+}
+const maskCodes = (text) => (isVerificationCode(text) ? text.replace(/\b\d{4,8}\b/g, '••••••') : text);
+
 // Shared conversation UI for the practice Telnyx number. channel='sms'
 // or 'whatsapp' — same table (sms_messages), same send function, the
 // channel column keeps the two inboxes apart. Clerk SMS in Teams keeps
@@ -18,6 +29,7 @@ export default function MessagesView({ channel }) {
   const { profile } = useAuth();
   const [messages, setMessages] = useState(null);
   const [names, setNames] = useState({});
+  const [revealed, setRevealed] = useState(() => new Set());
   const [contactMap, setContactMap] = useState(() => new Map());
   const [peopleMap, setPeopleMap] = useState(() => new Map());
   const [active, setActive] = useState(null); // counterpart number
@@ -153,7 +165,7 @@ export default function MessagesView({ channel }) {
               </div>
               {displayName(c) !== c.number && <div style={{ fontSize: 11, color: '#64748b' }}>{c.number}</div>}
               <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
-                {c.last.direction === 'out' ? 'You: ' : ''}{c.last.body}
+                {c.last.direction === 'out' ? 'You: ' : ''}{maskCodes(c.last.body)}
               </div>
             </div>
           ))}
@@ -226,7 +238,16 @@ export default function MessagesView({ channel }) {
                     color: m.direction === 'out' ? '#fff' : '#1e293b',
                     border: m.direction === 'out' ? 'none' : '1px solid #e2e8f0',
                   }}>
-                    {m.body}
+                    {revealed.has(m.id) ? m.body : maskCodes(m.body)}
+                    {!revealed.has(m.id) && isVerificationCode(m.body) && (
+                      <button
+                        type="button"
+                        onClick={() => setRevealed((prev) => new Set(prev).add(m.id))}
+                        style={{ display: 'block', marginTop: 4, padding: 0, border: 'none', background: 'none', color: '#0e7fe0', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+                      >
+                        Show code
+                      </button>
+                    )}
                     <div style={{ fontSize: 10, marginTop: 4, opacity: 0.75, textAlign: 'right' }}>
                       {fmtTime(m.created_at)}
                       {m.direction === 'out' && ` · ${m.status === 'failed' ? `failed${m.error ? ` — ${m.error}` : ''}` : m.status}`}

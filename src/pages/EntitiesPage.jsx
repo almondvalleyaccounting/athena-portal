@@ -74,7 +74,10 @@ export default function EntitiesPage() {
 
   useEffect(() => { loadEntities(); }, []);
 
+  // Former (NLAC) and archived records aren't quotable clients; the Clients
+  // page hides them the same way.
   const filtered = entities.filter((e) => {
+    if (e.entity_status === 'nlac' || e.entity_status === 'archived') return false;
     if (letter && firstCharBucket(e.name) !== letter) return false;
     if (!search) return true;
     return e.name?.toLowerCase().includes(search.toLowerCase()) || e.company_number?.includes(search);

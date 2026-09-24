@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
+import { decodeEntities } from '../../../lib/decodeEntities';
 import {
   buildTagSuggester, startMailboxConnect, downloadAttachment, effectiveSignature, gmail, listMailboxes,
   loadContacts, loadSignatures, loadTagRules, mailboxNeedsReconnect, parseAddress, recordTagRule,
@@ -103,14 +104,14 @@ function MessageCard({ msg, mailbox, defaultOpen }) {
       >
         <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a', whiteSpace: 'nowrap' }}>{from.name}</span>
         {open && <span style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>to {msg.to}{msg.cc ? `, cc ${msg.cc}` : ''}</span>}
-        {!open && <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{msg.snippet}</span>}
+        {!open && <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{decodeEntities(msg.snippet)}</span>}
         <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(msg.internalDate)}</span>
       </div>
       {open && (
         <div style={{ borderTop: '1px solid #f1f5f9' }}>
           {msg.bodyHtml
             ? <HtmlBody html={msg.bodyHtml} />
-            : <div style={{ padding: 14, fontSize: 13, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.bodyText || msg.snippet}</div>}
+            : <div style={{ padding: 14, fontSize: 13, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.bodyText || decodeEntities(msg.snippet)}</div>}
           {msg.attachments.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
               {msg.attachments.map((a) => (
@@ -312,14 +313,14 @@ function buildLabelTree(userLabels) {
 
 // Quote the original message for reply/forward bodies (plain text).
 function quoteBody(msg) {
-  const text = msg.bodyText || msg.snippet || '';
+  const text = msg.bodyText || decodeEntities(msg.snippet);
   const from = parseAddress(msg.from);
   const when = msg.internalDate ? new Date(msg.internalDate).toLocaleString('en-GB') : msg.date;
   return `On ${when}, ${from.name} <${from.email}> wrote:\n${text.split('\n').map((l) => `> ${l}`).join('\n')}`;
 }
 
 function forwardBody(msg) {
-  const text = msg.bodyText || msg.snippet || '';
+  const text = msg.bodyText || decodeEntities(msg.snippet);
   return `---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${msg.date}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${text}`;
 }
 
@@ -963,7 +964,7 @@ export default function EmailView() {
       action: 'TEMPLATE',
       text: t.subject || '(no subject)',
       details: [
-        t.snippet || '',
+        decodeEntities(t.snippet),
         '',
         `From: ${t.from}`,
         `Email: https://mail.google.com/mail/?authuser=${t.mailbox}#all/${t.id}`,
@@ -1469,7 +1470,7 @@ export default function EmailView() {
             const subject = (
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: 1, minWidth: 0 } : {}) }}>
                 <span style={{ fontWeight: t.unread ? 700 : 500, color: '#1e293b' }}>{t.subject}</span>
-                <span style={{ color: '#94a3b8' }}> — {t.snippet}</span>
+                <span style={{ color: '#94a3b8' }}> — {decodeEntities(t.snippet)}</span>
               </span>
             );
             const marks = (

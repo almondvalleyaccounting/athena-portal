@@ -71,7 +71,7 @@ export default function ClientDetailView() {
           supabase.from('completed_tasks').select('*').eq('entity_id', id).order('completed_at', { ascending: false }),
           supabase.from('issues_log').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
           supabase.from('billing_items').select('*').eq('entity_id', id).order('created_at', { ascending: false }),
-          supabase.from('staff_profiles').select('id, name, email').order('name'),
+          supabase.from('staff_profiles').select('id, name, email, is_active').order('name'),
           supabase.from('client_service_allocations').select('*').eq('entity_id', id),
           supabase.from('v_email_reconciliation').select('*').eq('entity_id', id).maybeSingle(),
           supabase.from('onboardings')
@@ -670,7 +670,7 @@ export default function ClientDetailView() {
           <input value={changeTaskText} onChange={(e) => setChangeTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleRaiseAction(); }} placeholder="e.g. Chase outstanding documents, review fees..." disabled={taskCreating} style={{ flex: 1, minWidth: 200, padding: '9px 14px', fontSize: 13, border: '1px solid #e5e7eb', borderRadius: 10, outline: 'none', fontFamily: "'Outfit', sans-serif" }} />
           <select value={actionAssignee} onChange={(e) => setActionAssignee(e.target.value)} style={{ padding: '9px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif" }}>
             <option value="">Assign to...</option>
-            {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {staffList.filter((s) => s.is_active !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <button onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 13, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#0f172a', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
             {taskCreating ? 'Creating...' : 'Raise Action'}
@@ -1079,7 +1079,7 @@ function AllocationEditor({ entityId, billing, allocations, staff, onChange }) {
               style={allocSelectStyle}
             >
               <option value="">— unassigned —</option>
-              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {staff.filter((s) => s.is_active !== false || s.id === a.fee_earner_id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <select
               value={a.fee_earner_manager_id || ''}
@@ -1087,7 +1087,7 @@ function AllocationEditor({ entityId, billing, allocations, staff, onChange }) {
               style={allocSelectStyle}
             >
               <option value="">— unassigned —</option>
-              {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {staff.filter((s) => s.is_active !== false || s.id === a.fee_earner_manager_id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
         );

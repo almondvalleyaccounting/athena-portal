@@ -77,6 +77,8 @@ export default function PortfolioDashboardPage() {
           balances: latest.balances?.data || null,
           pnlMonthly: latest.pnl_monthly?.data || null,
           agedAR: latest.aged_receivables?.data || null,
+          agedARPulledAt: latest.aged_receivables?.pulled_at || null,
+          balancesPulledAt: latest.balances?.pulled_at || null,
           fileHealth: latest.file_health?.data || null,
           pulledAt: conn && (cacheByRealm[conn.realm_id] || [])[0]?.pulled_at || null,
         };
@@ -148,7 +150,13 @@ function PortfolioCard({ card, navigate, unstar }) {
   const currency = card.pnlMonthly?.currency || card.plFytd?.currency || 'GBP';
   const chBad = card.chStatus && card.chStatus !== 'active';
   const spark = card.pnlMonthly?.series?.income || null;
-  const debtors = card.agedAR?.buckets?.total ?? card.balances?.debtors;
+  // Two caches carry a debtors figure; take whichever was pulled more recently
+  // (an old aged-debtors snapshot used to win over today's balances).
+  const agedTotal = card.agedAR?.buckets?.total;
+  const balDebtors = card.balances?.debtors;
+  const debtors = agedTotal == null ? balDebtors
+    : balDebtors == null ? agedTotal
+    : (card.agedARPulledAt || '') > (card.balancesPulledAt || '') ? agedTotal : balDebtors;
   const healthColor = { green: '#22c55e', amber: '#f59e0b', red: '#ef4444' }[card.fileHealth?.score] || null;
   const openDash = () => { if (card.realmId) navigate(`/client-dashboard?realm=${encodeURIComponent(card.realmId)}`); };
 

@@ -74,7 +74,7 @@ export default function ReconcileView() {
 
       <p style={{ fontSize: 13, color: '#64748b', maxWidth: 860, marginTop: 0, marginBottom: 14, lineHeight: 1.55 }}>
         Every place the HMRC agent list and Athena disagree. Until these are cleared the debt totals are
-        incomplete — a scheme Athena has never heard of contributes nothing to the numbers on the Debt tab.
+        incomplete — a scheme Athena has never heard of contributes nothing to the totals on the Chasing tab.
         Tick a row off once you have fixed the underlying record; the next scrape only re-raises what is
         still wrong.
       </p>

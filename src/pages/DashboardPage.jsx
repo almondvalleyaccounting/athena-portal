@@ -113,7 +113,7 @@ export default function DashboardPage() {
     (async () => {
       try {
         const [{ data: ents }, { data: quots }, { data: items }] = await Promise.all([
-          supabase.from('entities').select('id,created_at'),
+          supabase.from('entities').select('id,created_at,entity_status'),
           supabase
             .from('quotes')
             .select('id,quote_ref,entity_id,status,monthly_gross,annual_total,created_at,valid_until')
@@ -166,7 +166,10 @@ export default function DashboardPage() {
       return true;
     });
 
+    // Current clients and prospects only — former (NLAC) and archived records
+    // are not part of the book, and the status view doesn't apply to entities.
     const filteredEntities = entities.filter((e) => {
+      if (e.entity_status === 'nlac' || e.entity_status === 'archived') return false;
       if (dateFrom && e.created_at < dateFrom) return false;
       return true;
     });
@@ -455,7 +458,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {[
               {
-                label: `Total Clients (${svLabel}, ${pLabel})`,
+                label: `Clients & prospects (${pLabel})`,
                 value: filtered.totalClients,
                 metric: 'total_clients',
                 action: () => navigate('/manage/clients'),

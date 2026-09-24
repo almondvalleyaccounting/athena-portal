@@ -75,7 +75,7 @@ export default function StaffView() {
         <Stat label="Headcount" value={staffLines.length} colour="#7c3aed" />
         <Stat label="Base salaries" value={fmtGBP(totalBase)} colour="#64748b" />
         <Stat label="Fully loaded" value={fmtGBP(totalFullyLoaded)} sub="Incl. on-costs" colour="#7c3aed" bold />
-        <Stat label="Revenue / head" value={fmtGBP(revPerHead)} sub="Y1" colour="#0e7fe0" />
+        <Stat label="Revenue per head" value={fmtGBP(revPerHead)} sub={`Y1 plan revenue ÷ all ${staffLines.length} staff`} colour="#0e7fe0" />
       </div>
 
       {/* Controls */}

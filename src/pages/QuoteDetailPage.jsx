@@ -294,7 +294,6 @@ export default function QuoteDetailPage() {
           </div>
           <p className="text-xs text-gray-400">
             {new Date(quote.created_at).toLocaleDateString('en-GB')}
-            {new Date(quote.created_at).toLocaleDateString('en-GB')}
             {quote.defaults_version && ` \u00B7 v${quote.defaults_version}`}
             {quote.valid_until && ` \u00B7 Valid until ${new Date(quote.valid_until + 'T00:00:00').toLocaleDateString('en-GB')}`}
           </p>

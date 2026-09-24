@@ -197,7 +197,7 @@ export default function BaselineView() {
           sub={`${fmtGBP(inferredMonthly)} inferred monthly · ${fmtGBP(inferredAnnual)} annual work ÷ 12`} />
         <Kpi label="Total run-rate"
           value={`${fmtGBP(totalMonthly)}/mo`}
-          sub={`${fmtGBP(totalMonthly * 12)} annualised · ${health.active_clients} clients`} />
+          sub={`${fmtGBP(totalMonthly * 12)} annualised · ${health.active_clients} clients · every active billing line, approved or not`} />
         <Kpi label="LTM P&L income" tag="QBO" tagColour="#0e7fe0"
           value={fmtGBP(ltmIncome)}
           sub={lastClosed ? `${lastClosed}: ${fmtGBP(lastClosedIncome)}` : 'no monthly cache yet'} />

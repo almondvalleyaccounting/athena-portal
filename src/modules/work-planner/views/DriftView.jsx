@@ -221,7 +221,7 @@ function DetailPanel({ row, staff, onAssign, onPause, onAcknowledge, onDismiss, 
             style={inputStyle}
           >
             <option value="">Unassigned</option>
-            {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {staff.filter((s) => s.is_active !== false || s.id === row.assignee_id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </label>
 

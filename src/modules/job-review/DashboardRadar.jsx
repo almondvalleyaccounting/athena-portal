@@ -40,6 +40,9 @@ export default function JobReviewRadar() {
   const monthLbl = cycle
     ? new Date(cycle.period_month + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : '';
+  // The cycle is whatever is open, not this month — say so when it's old.
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const stale = cycle && cycle.period_month.slice(0, 7) < thisMonth;
 
   return (
     <div
@@ -49,6 +52,11 @@ export default function JobReviewRadar() {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-700">
           Job Review {cycle ? `· ${monthLbl}` : ''}
+          {stale && (
+            <span className="ml-2 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+              Out of date — no review opened since {monthLbl}
+            </span>
+          )}
         </h3>
         <span className="text-xs text-ocean-600 hover:text-ocean-700">Open →</span>
       </div>
@@ -69,7 +77,7 @@ export default function JobReviewRadar() {
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
               <div className="h-full bg-ocean-500" style={{ width: `${pct}%` }} />
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">{pct}% of the team have responded.</p>
+            <p className="text-[11px] text-gray-400 mt-1">{answered} of {total} jobs have an answer ({pct}%).</p>
           </div>
         </>
       )}

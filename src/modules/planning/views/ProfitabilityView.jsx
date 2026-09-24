@@ -42,6 +42,9 @@ export default function ProfitabilityView() {
     return list;
   }, [rows, filter, search]);
 
+  const timedCount = rows.filter((r) => r.hours_ltm > 0).length;
+  const timedShare = rows.length ? timedCount / rows.length : 0;
+
   const totals = useMemo(() => {
     const t = { clients: rows.length, revenue: 0, cost: 0, hours: 0, at_loss: 0 };
     for (const r of rows) {
@@ -82,9 +85,15 @@ export default function ProfitabilityView() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginTop: 16 }}>
           <Stat label="Revenue (annual)" value={fmtGBP(totals.revenue)} colour="#0e7fe0" big />
           <Stat label="Cost to serve (LTM)" value={fmtGBP(totals.cost)} colour="#7c3aed" />
-          <Stat label="Gross margin" value={fmtGBP(totals.margin)} sub={fmtPct(totals.margin_pct)} colour={totals.margin >= 0 ? '#059669' : '#dc2626'} big />
+          {/* With (almost) no time logged every client costs £0 and the margin
+              reads 100% — a number that means nothing. Say that instead. */}
+          {timedShare < 0.2 ? (
+            <Stat label="Gross margin" value="—" sub={`Not enough time logged (${timedCount} of ${rows.length} clients)`} colour="#94a3b8" big />
+          ) : (
+            <Stat label="Gross margin" value={fmtGBP(totals.margin)} sub={fmtPct(totals.margin_pct)} colour={totals.margin >= 0 ? '#059669' : '#dc2626'} big />
+          )}
           <Stat label="Blended £/hour" value={fmtGBP(totals.blended_rate)} sub={`${totals.hours.toFixed(0)} hrs LTM`} colour="#64748b" />
-          <Stat label="Clients at a loss" value={totals.at_loss} colour={totals.at_loss > 0 ? '#dc2626' : '#64748b'} />
+          <Stat label="Clients at a loss" value={timedShare < 0.2 ? '—' : totals.at_loss} colour={totals.at_loss > 0 ? '#dc2626' : '#64748b'} />
         </div>
 
         {timesheets.length === 0 && !loading && (
@@ -152,8 +161,8 @@ export default function ProfitabilityView() {
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.hours_ltm > 0 ? fmtGBP(r.effective_rate) : '—'}</td>
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#64748b' }}>{fmtGBP(r.cost_to_serve)}</td>
                   <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.margin >= 0 ? '#0f172a' : '#dc2626', fontWeight: 600 }}>{fmtGBP(r.margin)}</td>
-                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.margin_pct >= 0.3 ? '#059669' : r.margin_pct >= 0 ? '#f59e0b' : '#dc2626', fontWeight: 700 }}>
-                    {fmtPct(r.margin_pct)}
+                  <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.hours_ltm === 0 ? '#cbd5e1' : r.margin_pct >= 0.3 ? '#059669' : r.margin_pct >= 0 ? '#f59e0b' : '#dc2626', fontWeight: 700 }}>
+                    {r.hours_ltm === 0 ? '—' : fmtPct(r.margin_pct)}
                   </td>
                   <td style={{ ...td, fontSize: 11, color: '#64748b' }}>{r.top_service || '—'}</td>
                 </tr>

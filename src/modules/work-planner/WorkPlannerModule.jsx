@@ -91,7 +91,10 @@ export default function WorkPlannerModule() {
   const [scheduledTasks, setScheduledTasks] = useState([]);
   const [overrides, setOverrides] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
-  const [staffList, setStaffList] = useState([]);
+  // allStaff keeps leavers so historic rows still show a name (staffMap);
+  // staffList is what pickers and the team bar offer — active staff only.
+  const [allStaff, setAllStaff] = useState([]);
+  const staffList = useMemo(() => allStaff.filter((s) => s.is_active !== false), [allStaff]);
   const [entityList, setEntityList] = useState([]);
   const [progressNotes, setProgressNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -168,9 +171,9 @@ export default function WorkPlannerModule() {
   // ── Derived: lookup maps ──
   const staffMap = useMemo(() => {
     const m = {};
-    staffList.forEach((s) => { m[s.id] = s; });
+    allStaff.forEach((s) => { m[s.id] = s; });
     return m;
-  }, [staffList]);
+  }, [allStaff]);
 
   const entityMap = useMemo(() => {
     const m = {};
@@ -203,7 +206,7 @@ export default function WorkPlannerModule() {
         setScheduledTasks(st);
         setOverrides(ov);
         setCompletedTasks(ct);
-        setStaffList(staff);
+        setAllStaff(staff);
         setEntityList(entities);
 
         // Load progress notes for active tasks

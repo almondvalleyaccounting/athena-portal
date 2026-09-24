@@ -187,7 +187,7 @@ export async function insertProgressNote(note) {
 export async function fetchStaffProfiles() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, name, email, work_planner, colour')
+    .select('id, name, email, work_planner, colour, is_active')
     .order('name', { ascending: true });
   if (error) throw error;
   return data || [];

@@ -371,8 +371,18 @@ export function buildNarrative({
   // "100% EBITDA margin — Strong" and top-quartile benchmark verdicts that
   // are pure garbage-in-confident-out. Say so, loudly, and skip every
   // margin/benchmark-flavoured finding until the model is fed.
-  const modelFed = (y1.staffCost || 0) > 0 || (y1.overheads || 0) > 0 || (y1.ownerComp || 0) > 0;
-  if (!modelFed && y1.revenue > 0) {
+  // Staff alone is not "fed": with overheads at £0 the margin is staff-only and
+  // read as a 45% "Strong". Margin verdicts need both staff and overheads.
+  const anyCosts = (y1.staffCost || 0) > 0 || (y1.overheads || 0) > 0 || (y1.ownerComp || 0) > 0;
+  const modelFed = (y1.staffCost || 0) > 0 && (y1.overheads || 0) > 0;
+  if (anyCosts && !modelFed && y1.revenue > 0) {
+    const missing = [(y1.staffCost || 0) > 0 ? null : 'staff', (y1.overheads || 0) > 0 ? null : 'overheads'].filter(Boolean).join(' and ');
+    findings.push({
+      severity: 'critical', priority: 99,
+      text: `No ${missing} in this plan yet, so margin and benchmark findings are hidden — they would overstate profit. Add them on the ${missing === 'staff' ? 'Staff' : missing === 'overheads' ? 'Overheads' : 'Staff and Overheads'} tab${missing.includes(' and ') ? 's' : ''}.`,
+    });
+  }
+  if (!anyCosts && y1.revenue > 0) {
     findings.push({
       severity: 'critical', priority: 99,
       text: 'This plan has no staff, overhead, or owner-comp lines yet — every margin and benchmark below would be meaningless, so they are hidden. Add costs on the Staff, Overheads and Owner comp tabs first.',
@@ -406,7 +416,7 @@ export function buildNarrative({
   const revPerEarner = feeEarners > 0 ? y1.revenue / feeEarners : 0;
   if (feeEarners > 0) {
     if (revPerEarner < 90000) {
-      findings.push({ severity: 'warning', priority: 60, text: `Revenue per fee-earner is ${fmtGBP(revPerEarner)} — below the £90-120k UK practice norm. Either under-priced or under-utilised.` });
+      findings.push({ severity: 'warning', priority: 60, text: `Revenue per fee-earner (Y1 plan ÷ fee-earners only) is ${fmtGBP(revPerEarner)} — below the £90-120k UK practice norm. Either under-priced or under-utilised.` });
     } else if (revPerEarner > 150000) {
       findings.push({ severity: 'positive', priority: 15, text: `Revenue per fee-earner is ${fmtGBP(revPerEarner)} — top-quartile territory (£150k+).` });
     }
@@ -452,12 +462,14 @@ export function buildNarrative({
   }
 
   // ── Profitability — unprofitable client count
-  const atLoss = profitability.filter((r) => r.margin < 0);
-  const lowMargin = profitability.filter((r) => r.margin_pct >= 0 && r.margin_pct < 0.3);
+  // Only clients with logged time have a real cost; the rest read 100% margin.
+  const costed = profitability.filter((r) => r.hours_ltm > 0);
+  const atLoss = costed.filter((r) => r.margin < 0);
+  const lowMargin = costed.filter((r) => r.margin_pct >= 0 && r.margin_pct < 0.3);
   if (atLoss.length > 0) {
     const lossSum = atLoss.reduce((s, r) => s + Math.abs(r.margin), 0);
     findings.push({ severity: 'warning', priority: 68, text: `${atLoss.length} client${atLoss.length !== 1 ? 's' : ''} currently loss-making (combined ${fmtGBP(lossSum)}/yr). Renegotiate, reassign to junior staff, or exit.` });
-  } else if (lowMargin.length > profitability.length * 0.25 && profitability.length > 4) {
+  } else if (lowMargin.length > costed.length * 0.25 && costed.length > 4) {
     findings.push({ severity: 'info', priority: 45, text: `${lowMargin.length} clients on <30% margin — a repricing round would add meaningful profit.` });
   }
 

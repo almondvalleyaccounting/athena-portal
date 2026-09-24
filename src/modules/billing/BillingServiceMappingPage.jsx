@@ -43,7 +43,7 @@ export default function BillingServiceMappingPage() {
     const [{ data: billing }, { data: maps }, { data: people }] = await Promise.all([
       supabase.from('live_billing').select('services').eq('status', 'active'),
       supabase.from('billing_service_mappings').select('*'),
-      supabase.from('staff_profiles').select('id, name, email').order('name'),
+      supabase.from('staff_profiles').select('id, name, email').eq('is_active', true).order('name'),
     ]);
 
     // Aggregate usage: how much revenue is tied to each service_id.

@@ -66,6 +66,7 @@ export default function CommitToLiveModal({ quote, lineItems, profile, onCommitt
       const { data: staffRows } = await supabase
         .from('staff_profiles')
         .select('id, name, email')
+        .eq('is_active', true)
         .order('name');
       const clean = (staffRows || []).map((s) => ({ ...s, name: s.name || s.email }));
       setStaff(clean);

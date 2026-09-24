@@ -209,9 +209,9 @@ export const TAX_ORDER = ['paye', 'corporation-tax', 'vat', 'self-assessment'];
 //
 // Level 0 links into level 1; a figure at level 1 opens level 2 beneath it.
 export const LEVELS = {
-  0: { label: 'Level 0', hint: 'Every client, one figure per tax' },
-  1: { label: 'Level 1', hint: 'One client, one tax — what the figure is made of' },
-  2: { label: 'Level 2', hint: 'The individual transactions behind a figure' },
+  0: { label: 'All clients', hint: 'Every client, one figure per tax' },
+  1: { label: 'One client', hint: 'One client, one tax — what the figure is made of' },
+  2: { label: 'Transactions', hint: 'The individual transactions behind a figure' },
 };
 
 // The trail back up. Rendered on every tax tab so it is always obvious which of

@@ -559,7 +559,7 @@ export default function BillingReviewAndChangePage() {
                 <> · <span style={{ color: '#b91c1c' }}>{matrix.entityList.filter((e) => e.excluded).length} excluded from raises</span></>
               )}
               {' · '}{matrix.services.length} service{matrix.services.length === 1 ? '' : 's'}
-              {' · '}Priority: manual → floor → inflation · annual = monthly × 12
+              {' · '}Priority: manual → floor → inflation · annual column = monthly × 12 (yearly fees not included)
             </div>
           </div>
 

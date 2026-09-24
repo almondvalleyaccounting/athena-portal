@@ -1087,7 +1087,10 @@ function AttentionSummaryCard({ items, segments, onExpand }) {
             marginBottom: '2px',
           }}
         >
-          {items.length} item{items.length === 1 ? '' : 's'} need{items.length === 1 ? 's' : ''} your
+          {/* The list folds some kinds into one row ("45 fee gaps"), so a row
+              count is not a count of things. Count the areas instead and let
+              the chips carry the real numbers. */}
+          {segments.length} area{segments.length === 1 ? '' : 's'} need{segments.length === 1 ? 's' : ''} your
           attention
         </p>
         <p style={{ fontFamily: FONT, fontSize: '11px', color: '#94a3b8' }}>
@@ -1254,14 +1257,14 @@ export default function HomeScreen() {
                 </>
               ) : (
                 <>
-                  Show all {attentionItems.length} <ChevronDown size={13} />
+                  Show list <ChevronDown size={13} />
                 </>
               )}
             </button>
           ) : null
         }
       >
-        Needs attention{!loading && attentionItems.length > 0 ? ` — ${attentionItems.length}` : ''}
+        Needs attention
       </SectionLabel>
       {loading ? (
         <p style={{ fontFamily: FONT, fontSize: '12px', color: '#94a3b8' }}>Checking…</p>
@@ -1410,7 +1413,7 @@ export default function HomeScreen() {
           }}
         >
           <StatCard
-            label={`Revenue — ${pulsePeriodLabel}`}
+            label={`Income (P&L) — ${pulsePeriodLabel}`}
             value={pulsePl?.income != null ? formatCurrency(pulsePl.income) : '—'}
             chip={pulseIsLtm ? null : <YoYChip current={pulse?.plFytd?.income} prior={pulse?.plFytdPrior?.income} />}
             sub={
@@ -1436,11 +1439,14 @@ export default function HomeScreen() {
             onClick={() => openPulse('pnl')}
           />
           <StatCard
-            label="Cash at bank"
+            label="Bank balances"
             value={pulse?.balances?.cash != null ? formatCurrency(pulse.balances.cash) : '—'}
+            // Sum of every QBO bank account's current balance — client-money
+            // accounts and future-dated items included, so it runs higher than
+            // the balance-sheet cash Practice Planning uses.
             sub={
               pulse?.balances?.bank_account_count
-                ? `across ${pulse.balances.bank_account_count} bank account${pulse.balances.bank_account_count === 1 ? '' : 's'}`
+                ? `all ${pulse.balances.bank_account_count} QuickBooks bank account${pulse.balances.bank_account_count === 1 ? '' : 's'}, incl. client money`
                 : null
             }
             onClick={() => openPulse('balance')}
@@ -1448,7 +1454,7 @@ export default function HomeScreen() {
           <StatCard
             label="Debtors"
             value={pulse?.balances?.debtors != null ? formatCurrency(pulse.balances.debtors) : '—'}
-            sub="owed to the practice"
+            sub="owed to the practice, per QuickBooks today"
             onClick={() => openPulse('aged')}
           />
         </div>

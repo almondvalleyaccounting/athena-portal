@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Mail, MessageSquare, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { loadClientEmails, listEntitySms, parseAddress, fmtTime } from '../communications/api';
+import { decodeEntities } from '../../lib/decodeEntities';
 
 const font = "'Outfit', sans-serif";
 const ACCENT = '#0e7fe0';
@@ -76,7 +77,7 @@ function EmailItem({ item }) {
             {item.subject || '(no subject)'}
           </div>
           <div style={{ fontSize: 11.5, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {who}{!open && item.snippet ? ` — ${item.snippet}` : ''}
+            {who}{!open && item.snippet ? ` — ${decodeEntities(item.snippet)}` : ''}
           </div>
         </div>
         <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtTime(item.occurred_at)}</span>

@@ -27,6 +27,17 @@ function ok(data: unknown = { received: true }) {
   return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
+// One-time sign-in codes (Government Gateway, Google, banks) arrive on the
+// practice number. They are kept in sms_messages for whoever is signing in,
+// but must never be copied into notification titles, which fan out to
+// several people and live forever.
+function isVerificationCode(text: string): boolean {
+  const t = text || "";
+  const hasCode = /\b\d{4,8}\b/.test(t) || /\b[A-Z]-\d{4,8}\b/.test(t);
+  const saysCode = /\b(code|passcode|verification|verify|one[- ]time|OTP|PIN|security number)\b/i.test(t);
+  return hasCode && saysCode;
+}
+
 function digitsSuffix(raw: string, n = 9): string {
   const d = String(raw || "").replace(/\D/g, "");
   return d.slice(-n);
@@ -115,7 +126,9 @@ Deno.serve(async (req) => {
       for (const s of recipients) {
         await service.from("notifications").insert({
           recipient_id: s.id, kind: "sms_received",
-          title: `${channel === "whatsapp" ? "WhatsApp" : "Text"} from ${entityName || from}: ${text.slice(0, 80)}`,
+          title: isVerificationCode(text)
+            ? `Sign-in code received from ${entityName || from} — open Text Messages to see it`
+            : `${channel === "whatsapp" ? "WhatsApp" : "Text"} from ${entityName || from}: ${text.slice(0, 80)}`,
           link_path: `/comms/${channel}`,
         });
       }

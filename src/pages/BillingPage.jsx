@@ -621,14 +621,14 @@ export default function BillingPage() {
         <RevenueTile
           label="Annual fees"
           value={fmt(annualFeesNet)}
-          hint="Pure annual (cadence=annual), ex VAT"
+          hint="Approved fees billed once a year, ex VAT"
           onClick={() => { setCardFilter(cardFilter === 'annual' ? null : 'annual'); setShowMissingPanel(false); }}
           active={cardFilter === 'annual'}
         />
         <RevenueTile
-          label="Total annual revenue"
+          label="Contracted fees, annualised"
           value={fmt(totalAnnualRevenue)}
-          hint="Monthly × 12 + annual fees"
+          hint="Approved monthly × 12 + yearly fees, ex VAT"
           highlight
         />
       </div>
@@ -699,14 +699,17 @@ export default function BillingPage() {
         <QboConnectionPanel profile={profile} onSyncComplete={loadData} />
         {/* Mirror freshness — most recent direction='pull' event in
             qbo_sync_log (qbo-pull logs every pull via logSync). */}
+        {/* qbo-pull only writes a log row when a billing line changes, so
+            this is the last change, not the last run — the pull itself runs
+            every night. A row's own 'pending' (needs review) isn't shown:
+            it describes that one line, not the pull. */}
         <div className="text-xs text-gray-500 mt-1.5">
-          Last pulled from QBO:{' '}
+          QuickBooks is checked every night · last change picked up:{' '}
           {lastPull
             ? <span className="font-medium text-gray-700">
-                {new Date(lastPull.created_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                {lastPull.status && lastPull.status !== 'success' ? ` (${lastPull.status})` : ''}
+                {new Date(lastPull.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
-            : <span className="font-medium text-gray-700">never</span>}
+            : <span className="font-medium text-gray-700">none yet</span>}
         </div>
       </div>
 

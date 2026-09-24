@@ -37,10 +37,7 @@ export default function GroupsPage() {
   const [showNewClient, setShowNewClient] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
   const [letter, setLetter] = useState(null);
-
-  const filteredGroups = letter
-    ? groups.filter((g) => firstCharBucket(g.name) === letter)
-    : groups;
+  const [showDeleted, setShowDeleted] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -73,6 +70,18 @@ export default function GroupsPage() {
     if (!quotesByGroup[q.group_id]) quotesByGroup[q.group_id] = [];
     quotesByGroup[q.group_id].push(q);
   });
+
+  // A group whose every quote was deleted is history, not work — hidden
+  // unless asked for.
+  const isDeletedGroup = (g) => {
+    const qs = quotesByGroup[g.id] || [];
+    return qs.length > 0 && qs.every((q) => q.status === 'deleted');
+  };
+  const deletedCount = groups.filter(isDeletedGroup).length;
+  const visibleGroups = showDeleted ? groups : groups.filter((g) => !isDeletedGroup(g));
+  const filteredGroups = letter
+    ? visibleGroups.filter((g) => firstCharBucket(g.name) === letter)
+    : visibleGroups;
 
   // Client search results
   const filteredEntities = searchTerm.trim()
@@ -260,8 +269,14 @@ export default function GroupsPage() {
         </div>
       )}
 
-      <div className="mb-3">
-        <AlphabetFilter items={groups} selected={letter} onChange={setLetter} />
+      <div className="mb-3 flex items-center gap-3">
+        <AlphabetFilter items={visibleGroups} selected={letter} onChange={setLetter} />
+        {deletedCount > 0 && (
+          <label className="text-xs text-gray-400 flex items-center gap-1 whitespace-nowrap">
+            <input type="checkbox" checked={showDeleted} onChange={(e) => setShowDeleted(e.target.checked)} />
+            Show deleted ({deletedCount})
+          </label>
+        )}
       </div>
 
       {/* Groups List */}
