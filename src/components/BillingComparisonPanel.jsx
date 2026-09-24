@@ -94,7 +94,7 @@ export default function BillingComparisonPanel({ items, title = 'Quote vs curren
   const billedCount = perEntity.filter((e) => e.hasLive).length;
   const FilterBtn = ({ onClick, active, children }) => (
     <button onClick={onClick} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
-      border: active ? '1px solid #0f172a' : '1px solid #e5e7eb', background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#475569' }}>
+      border: active ? '1px solid #0f172a' : '1px solid #e5e7eb', background: active ? '#1E4560' : '#fff', color: active ? '#fff' : '#475569' }}>
       {children}
     </button>
   );

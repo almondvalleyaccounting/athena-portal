@@ -103,9 +103,11 @@ export function StatusBadge({ status }) {
 export function Btn({ children, onClick, variant = 'primary', disabled, className = '' }) {
   const base = 'px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40';
   const variants = {
-    primary: 'bg-sun-300 text-ocean-700 hover:bg-sun-200 font-semibold',
-    secondary: 'bg-white text-ocean-600 border border-ocean-300 hover:bg-ocean-50',
-    danger: 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100',
+    // One main-action colour across Athena (UI audit, Sprint 3): ocean with
+    // white text. Secondary is quiet; danger is white with red, not a fill.
+    primary: 'bg-ocean-600 text-white hover:bg-ocean-700 font-semibold',
+    secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50',
+    danger: 'bg-white text-red-700 border border-red-200 hover:bg-red-50',
     ghost: 'text-gray-500 hover:text-ocean-600 hover:bg-gray-50',
   };
   return (

@@ -171,7 +171,7 @@ export default function UserSettingsPage() {
             disabled={saving || !dirty}
             style={{
               fontFamily: font, fontSize: 14, fontWeight: 600, color: '#fff',
-              backgroundColor: saving || !dirty ? '#94a3b8' : '#0e7fe0',
+              backgroundColor: saving || !dirty ? '#94a3b8' : '#1E4560',
               border: 'none', borderRadius: 10, padding: '10px 24px',
               cursor: saving ? 'wait' : dirty ? 'pointer' : 'default',
               transition: 'all 0.2s ease',

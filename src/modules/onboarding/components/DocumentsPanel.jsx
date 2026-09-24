@@ -187,7 +187,7 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
       {drive && pending.length > 0 && (
         <button
           onClick={saveToDrive} disabled={busy}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', opacity: busy ? 0.7 : 1 }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', opacity: busy ? 0.7 : 1 }}
         >
           <HardDriveUpload size={13} /> {busy ? 'Saving…' : `Save ${pending.length} to Drive`}
         </button>

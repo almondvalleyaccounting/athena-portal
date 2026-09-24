@@ -86,7 +86,7 @@ export default function PortalAccessPanel({ entityId, onboardingId, entityEmail 
         <button
           onClick={() => invite(true)} disabled={busy || !email.includes('@')}
           title="Create the portal invite and send the warm welcome email (portal link + what we need)"
-          style={{ padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#F5C518', color: '#1E4560', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          style={{ padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           Invite + welcome
         </button>

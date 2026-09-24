@@ -328,7 +328,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
               fontSize: '14px',
               fontWeight: 600,
               color: canSave ? '#ffffff' : '#94a3b8',
-              backgroundColor: canSave ? '#0f172a' : '#e5e7eb',
+              backgroundColor: canSave ? '#1E4560' : '#e5e7eb',
               border: 'none',
               borderRadius: '10px',
               padding: '12px',

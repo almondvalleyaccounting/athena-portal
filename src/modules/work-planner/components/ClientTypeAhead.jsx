@@ -228,7 +228,7 @@ function letterBtn(active, enabled) {
     fontSize: 11, fontWeight: active ? 700 : 500,
     fontFamily: "'Outfit', sans-serif",
     border: 'none', borderRadius: 4,
-    background: active ? '#0e7fe0' : enabled ? '#f1f5f9' : 'transparent',
+    background: active ? '#1E4560' : enabled ? '#f1f5f9' : 'transparent',
     color: active ? '#fff' : enabled ? '#1e293b' : '#cbd5e1',
     cursor: enabled ? 'pointer' : 'default',
     transition: 'background 0.1s',

@@ -436,7 +436,7 @@ export default function DashboardView() {
                     onClick={handleLock}
                     disabled={lockSaving || !lockFrom || !lockTo}
                     style={{
-                      ...navBtn, gap: 5, color: '#fff', background: '#0e7fe0', borderColor: '#0e7fe0',
+                      ...navBtn, gap: 5, color: '#fff', background: '#1E4560', borderColor: '#0e7fe0',
                       opacity: (lockSaving || !lockFrom || !lockTo) ? 0.5 : 1,
                     }}
                   >

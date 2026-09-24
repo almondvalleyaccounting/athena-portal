@@ -167,7 +167,7 @@ export default function SharingView() {
                 const on = reqResponders.includes(s.id);
                 return (
                   <button key={s.id} onClick={() => toggleResponder(s.id)}
-                    style={{ fontSize: 13, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 999, border: '1px solid ' + (on ? '#0f172a' : '#cbd5e1'), background: on ? '#0f172a' : '#fff', color: on ? '#fff' : '#475569' }}>
+                    style={{ fontSize: 13, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 999, border: '1px solid ' + (on ? '#0f172a' : '#cbd5e1'), background: on ? '#1E4560' : '#fff', color: on ? '#fff' : '#475569' }}>
                     {s.name}
                   </button>
                 );

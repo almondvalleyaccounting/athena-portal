@@ -394,7 +394,7 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
           <button onClick={remove} disabled={busy} style={{ padding: '8px 12px', fontSize: 13.5, fontWeight: 600, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Delete</button>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button onClick={onClose} disabled={busy} style={{ padding: '8px 14px', fontSize: 14, color: '#334155', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>Cancel</button>
-            <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>{busy ? 'Saving…' : 'Save'}</button>
+            <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: F }}>{busy ? 'Saving…' : 'Save'}</button>
           </div>
         </div>
       </div>

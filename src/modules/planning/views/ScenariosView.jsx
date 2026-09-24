@@ -375,6 +375,6 @@ const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14 };
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: '#64748b' };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
 const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnSm = { padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#0f172a', color: '#fff', border: 'none' };
+const btnSm = { padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#1E4560', color: '#fff', border: 'none' };
 const btnSmOutline = { padding: '4px 8px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', display: 'inline-flex', alignItems: 'center' };
 const labelStyle = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 };

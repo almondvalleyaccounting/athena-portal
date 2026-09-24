@@ -49,8 +49,8 @@ export function Stat({ label, value, sub, accent = '#0f172a' }) {
 
 export function Button({ children, onClick, variant = 'primary', disabled, style }) {
   const variants = {
-    primary: { bg: '#0f172a', fg: '#fff' },
-    accent:  { bg: '#0e7fe0', fg: '#fff' },
+    primary: { bg: '#1E4560', fg: '#fff' },
+    accent:  { bg: '#1E4560', fg: '#fff' },
     ghost:   { bg: 'transparent', fg: '#0f172a', border: '1px solid #e5e7eb' },
     danger:  { bg: 'transparent', fg: '#dc2626', border: '1px solid #fee2e2' },
   };

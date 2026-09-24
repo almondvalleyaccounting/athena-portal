@@ -122,7 +122,7 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
           disabled={saving || !password || !confirm}
           style={{
             width: '100%',
-            backgroundColor: saving || !password || !confirm ? '#94a3b8' : '#0f172a',
+            backgroundColor: saving || !password || !confirm ? '#94a3b8' : '#1E4560',
             color: '#ffffff',
             fontFamily: "'Outfit', sans-serif",
             fontWeight: 600,

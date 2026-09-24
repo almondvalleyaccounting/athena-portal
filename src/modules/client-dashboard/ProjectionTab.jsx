@@ -500,7 +500,7 @@ function CreateCard({ clientName, onStart }) {
         onClick={onStart}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px',
-          border: 'none', borderRadius: '11px', backgroundColor: '#0f172a', color: '#ffffff',
+          border: 'none', borderRadius: '11px', backgroundColor: '#1E4560', color: '#ffffff',
           cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700,
         }}
       >
@@ -672,7 +672,7 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
               disabled={creating || busy || !draft.opening}
               style={{
                 alignSelf: 'flex-start', padding: '10px 20px', border: 'none', borderRadius: '10px',
-                backgroundColor: creating ? '#cbd5e1' : '#0f172a', color: '#fff',
+                backgroundColor: creating ? '#cbd5e1' : '#1E4560', color: '#fff',
                 fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700,
                 cursor: creating ? 'wait' : 'pointer',
               }}

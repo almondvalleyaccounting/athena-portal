@@ -586,6 +586,6 @@ const addBtn = {
 };
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '10px 20px',
-  border: 'none', borderRadius: '10px', backgroundColor: '#0f172a', color: '#fff',
+  border: 'none', borderRadius: '10px', backgroundColor: '#1E4560', color: '#fff',
   fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700, cursor: 'pointer',
 };

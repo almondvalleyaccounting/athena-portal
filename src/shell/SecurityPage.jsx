@@ -153,7 +153,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
         ) : factors.length === 0 ? (
           <button
             onClick={startEnroll}
-            style={{ padding: '8px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+            style={{ padding: '8px 14px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
           >
             Enrol authenticator
           </button>
@@ -232,7 +232,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
               <button
                 onClick={verifyEnroll}
                 disabled={enrolling.verifying || enrolling.code.length < 6}
-                style={{ padding: '8px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: enrolling.verifying || enrolling.code.length < 6 ? 'not-allowed' : 'pointer', opacity: enrolling.verifying || enrolling.code.length < 6 ? 0.6 : 1 }}
+                style={{ padding: '8px 14px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: enrolling.verifying || enrolling.code.length < 6 ? 'not-allowed' : 'pointer', opacity: enrolling.verifying || enrolling.code.length < 6 ? 0.6 : 1 }}
               >
                 {enrolling.verifying ? 'Verifying…' : 'Verify & activate'}
               </button>

@@ -159,7 +159,7 @@ export default function RolesView() {
               <button key={r.id} onClick={() => setSelectedId(r.id)}
                 style={{
                   textAlign: 'left', border: '1px solid ' + (selectedId === r.id ? '#0f172a' : '#e5e7eb'),
-                  background: selectedId === r.id ? '#0f172a' : '#fff', color: selectedId === r.id ? '#fff' : '#0f172a',
+                  background: selectedId === r.id ? '#1E4560' : '#fff', color: selectedId === r.id ? '#fff' : '#0f172a',
                   borderRadius: 8, padding: '8px 10px', cursor: 'pointer', fontFamily: FONT, fontSize: 14, fontWeight: 500,
                 }}>{r.name}</button>
             ))}
@@ -260,8 +260,8 @@ function Field({ label, children, grow }) {
 }
 
 const input = { padding: '7px 10px', fontSize: 14, fontFamily: FONT, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
-const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
-const btnPrimarySm = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
+const btnPrimarySm = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
 const btnDanger = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c' };
 const btnGhost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
 

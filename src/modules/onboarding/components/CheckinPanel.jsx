@@ -119,7 +119,7 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
           <button
             disabled={busy}
             onClick={sendCheckin}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
           >
             <Send size={12} /> Send check-in email
           </button>

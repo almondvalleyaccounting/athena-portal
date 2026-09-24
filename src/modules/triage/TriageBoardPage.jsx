@@ -279,7 +279,7 @@ export default function TriageBoardPage() {
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 13, fontWeight: 600,
                   fontFamily: font, border: 'none', cursor: 'pointer',
-                  background: compact === v ? '#0f172a' : '#fff', color: compact === v ? '#fff' : '#475569',
+                  background: compact === v ? '#1E4560' : '#fff', color: compact === v ? '#fff' : '#475569',
                 }}>
                 <Icon size={13} /> {label}
               </button>

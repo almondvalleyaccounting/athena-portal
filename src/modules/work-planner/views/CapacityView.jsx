@@ -461,7 +461,7 @@ function ShiftPopover({ popover, months, onClose, onSubmit }) {
           }}>Cancel</button>
           <button onClick={go} disabled={busy} style={{
             padding: '5px 12px', fontSize: 13, border: '1px solid #0f172a',
-            background: '#0f172a', color: '#fff', borderRadius: 6, cursor: 'pointer',
+            background: '#1E4560', color: '#fff', borderRadius: 6, cursor: 'pointer',
             fontFamily: "'Outfit', sans-serif",
           }}>{busy ? 'Saving…' : 'Propose shift'}</button>
         </div>
@@ -502,7 +502,7 @@ function btnStyle(variant) {
     return {
       padding: '5px 12px', fontSize: 13, fontWeight: 500,
       border: '1px solid #0f172a', borderRadius: 6,
-      background: '#0f172a', color: '#fff', cursor: 'pointer',
+      background: '#1E4560', color: '#fff', cursor: 'pointer',
       fontFamily: "'Outfit', sans-serif",
     };
   }
@@ -517,7 +517,7 @@ function btnStyle(variant) {
 function miniBtn(kind) {
   return {
     border: 'none', padding: '0 4px', borderRadius: 3, fontSize: 11, cursor: 'pointer',
-    background: kind === 'save' ? '#0f172a' : '#e5e7eb',
+    background: kind === 'save' ? '#1E4560' : '#e5e7eb',
     color: kind === 'save' ? '#fff' : '#64748b',
     fontFamily: "'Outfit', sans-serif",
   };

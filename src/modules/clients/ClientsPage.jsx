@@ -231,7 +231,7 @@ export default function ClientsPage() {
             onClick={() => setShowNewClient(true)}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              backgroundColor: '#0f172a', color: '#fff',
+              backgroundColor: '#1E4560', color: '#fff',
               fontSize: 14, fontWeight: 600, border: 'none', borderRadius: 10,
               padding: '10px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
               fontFamily: "'Outfit', sans-serif",

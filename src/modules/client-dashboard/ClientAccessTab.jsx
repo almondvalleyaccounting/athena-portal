@@ -221,7 +221,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
             title={realmId ? undefined : 'This client has no live QuickBooks connection, so there would be nothing to show.'}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px',
-              border: 'none', borderRadius: 10, backgroundColor: realmId ? '#0f172a' : '#cbd5e1',
+              border: 'none', borderRadius: 10, backgroundColor: realmId ? '#1E4560' : '#cbd5e1',
               color: '#fff', fontFamily: OUTFIT, fontSize: 14, fontWeight: 700,
               cursor: realmId ? 'pointer' : 'not-allowed',
             }}
@@ -550,7 +550,7 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
                     onClick={() => setEmail(c.email)}
                     style={{
                       border: `1px solid ${email === c.email ? '#0f172a' : '#e5e7eb'}`,
-                      background: email === c.email ? '#0f172a' : '#fff',
+                      background: email === c.email ? '#1E4560' : '#fff',
                       color: email === c.email ? '#fff' : '#334155',
                       borderRadius: 999, padding: '5px 12px', fontSize: 13,
                       cursor: 'pointer', fontFamily: OUTFIT,
@@ -612,7 +612,7 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px',
               border: 'none', borderRadius: 10,
-              backgroundColor: (!valid || saving) ? '#cbd5e1' : '#0f172a',
+              backgroundColor: (!valid || saving) ? '#cbd5e1' : '#1E4560',
               color: '#fff', fontFamily: OUTFIT, fontSize: 14, fontWeight: 700,
               cursor: (!valid || saving) ? 'not-allowed' : 'pointer',
             }}

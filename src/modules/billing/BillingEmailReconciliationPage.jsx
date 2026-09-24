@@ -90,7 +90,7 @@ export default function BillingEmailReconciliationPage() {
                   style={{
                     fontSize: 13, padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
                     border: isActive ? '1px solid #0f172a' : '1px solid #e5e7eb',
-                    background: isActive ? '#0f172a' : '#fff',
+                    background: isActive ? '#1E4560' : '#fff',
                     color: isActive ? '#fff' : '#475569', fontFamily: font,
                   }}
                 >

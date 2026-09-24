@@ -519,7 +519,7 @@ function DefinitionModal({ draft, setDraft, dimensions, knownKeys, definitions, 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 22px', borderTop: '1px solid #e5e7eb' }}>
           <button onClick={onClose} style={smallBtn}>Cancel</button>
           <button onClick={() => onSave(draft)} disabled={!valid || busy}
-            style={{ ...primaryBtn, backgroundColor: valid && !busy ? '#0f172a' : '#cbd5e1' }}>
+            style={{ ...primaryBtn, backgroundColor: valid && !busy ? '#1E4560' : '#cbd5e1' }}>
             <Check size={14} /> {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -569,7 +569,7 @@ const smallBtn = {
 };
 const primaryBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 17px',
-  border: 'none', borderRadius: 10, backgroundColor: '#0f172a', color: '#fff',
+  border: 'none', borderRadius: 10, backgroundColor: '#1E4560', color: '#fff',
   fontFamily: OUTFIT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
 };
 const iconAdd = {

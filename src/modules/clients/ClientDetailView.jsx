@@ -546,7 +546,7 @@ export default function ClientDetailView() {
               </button>
               <button
                 onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}&seed=source`)}
-                style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+                style={{ fontSize: 13, padding: '5px 10px', border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
                 title="Start a quote seeded from another client's recurring bill pricing"
               >
                 New quote from another client's pricing
@@ -674,7 +674,7 @@ export default function ClientDetailView() {
             <option value="">Assign to...</option>
             {staffList.filter((s) => s.is_active !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <button onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#0f172a', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
+          <button onClick={handleRaiseAction} disabled={!changeTaskText.trim() || taskCreating} style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, background: !changeTaskText.trim() ? '#e5e7eb' : '#1E4560', color: !changeTaskText.trim() ? '#94a3b8' : '#fff', border: 'none', borderRadius: 10, cursor: !changeTaskText.trim() ? 'not-allowed' : 'pointer', fontFamily: "'Outfit', sans-serif", flexShrink: 0 }}>
             {taskCreating ? 'Creating...' : 'Raise Action'}
           </button>
         </div>
@@ -776,7 +776,7 @@ function EditableName({ entity, setEntity, profile }) {
           disabled={saving}
           style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, padding: '2px 10px', minWidth: 320 }}
         />
-        <button onClick={save} disabled={saving} style={{ fontSize: 13, padding: '5px 10px', border: 'none', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>{saving ? '…' : 'Save'}</button>
+        <button onClick={save} disabled={saving} style={{ fontSize: 13, padding: '5px 10px', border: 'none', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>{saving ? '…' : 'Save'}</button>
         <button onClick={() => setEditing(false)} style={{ fontSize: 13, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
       </div>
     );

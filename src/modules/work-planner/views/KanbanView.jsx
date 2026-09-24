@@ -255,7 +255,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                             setNoteText(''); setNoteInput(null);
                           }}
                           style={{
-                            border: 'none', background: '#0e7fe0', color: '#fff',
+                            border: 'none', background: '#1E4560', color: '#fff',
                             fontSize: 10, fontWeight: 600, padding: '2px 6px',
                             borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                           }}

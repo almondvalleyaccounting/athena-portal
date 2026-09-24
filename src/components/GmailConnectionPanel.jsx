@@ -117,7 +117,7 @@ export default function GmailConnectionPanel() {
         onClick={handleConnect}
         style={{
           padding: '8px 16px', fontSize: 14, fontWeight: 600,
-          background: '#0f172a', color: '#fff', borderRadius: 8,
+          background: '#1E4560', color: '#fff', borderRadius: 8,
           border: 'none', cursor: 'pointer', fontFamily: font,
         }}
       >

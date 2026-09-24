@@ -24,7 +24,7 @@ export const inputStyle = {
 
 export const btn = {
   padding: '6px 13px', fontSize: 13.5, fontWeight: 500, fontFamily: font,
-  border: '1px solid #0f172a', borderRadius: 8, background: '#0f172a',
+  border: '1px solid #0f172a', borderRadius: 8, background: '#1E4560',
   color: '#fff', cursor: 'pointer',
 };
 

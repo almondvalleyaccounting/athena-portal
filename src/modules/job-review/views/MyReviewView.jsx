@@ -290,7 +290,7 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
                 fontSize: 13, fontWeight: 600, fontFamily: font,
                 cursor: saving || !dirty ? 'default' : 'pointer',
                 padding: '8px 18px', borderRadius: 8, border: '1px solid #0f172a',
-                background: !dirty ? '#94a3b8' : '#0f172a', borderColor: !dirty ? '#94a3b8' : '#0f172a',
+                background: !dirty ? '#94a3b8' : '#1E4560', borderColor: !dirty ? '#94a3b8' : '#0f172a',
                 color: '#fff', whiteSpace: 'nowrap',
               }}
             >{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button>

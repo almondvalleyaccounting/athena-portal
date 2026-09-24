@@ -267,7 +267,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                         setNoteText(''); setNoteInput(null);
                       }}
                       style={{
-                        border: 'none', background: '#0e7fe0', color: '#fff',
+                        border: 'none', background: '#1E4560', color: '#fff',
                         fontSize: 12, fontWeight: 600, padding: '4px 10px',
                         borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                       }}

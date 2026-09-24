@@ -135,7 +135,7 @@ export default function MessagesView({ channel }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => { setNewNumber(''); setActive(null); setDraft(''); }}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '8px 12px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '8px 12px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
           >
             <Plus size={14} /> New {channel === 'whatsapp' ? 'WhatsApp' : 'text'}
           </button>
@@ -203,7 +203,7 @@ export default function MessagesView({ channel }) {
               <button
                 onClick={() => doSend(newNumber)}
                 disabled={sending || !draft.trim() || !newNumber.trim()}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
               >
                 <Send size={13} /> {sending ? 'Sending…' : 'Send'}
               </button>
@@ -268,7 +268,7 @@ export default function MessagesView({ channel }) {
               <button
                 onClick={() => doSend(activeConv.number, activeConv.entityId)}
                 disabled={sending || !draft.trim()}
-                style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 7, padding: '0 18px', fontSize: 14, fontWeight: 600, background: sending || !draft.trim() ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 10, cursor: sending ? 'default' : 'pointer', fontFamily: font }}
+                style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 7, padding: '0 18px', fontSize: 14, fontWeight: 600, background: sending || !draft.trim() ? '#94a3b8' : '#1E4560', color: '#fff', border: 'none', borderRadius: 10, cursor: sending ? 'default' : 'pointer', fontFamily: font }}
               >
                 <Send size={14} /> Send
               </button>

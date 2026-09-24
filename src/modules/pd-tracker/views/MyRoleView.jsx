@@ -174,6 +174,6 @@ export default function MyRoleView() {
 
 const xBtn = { marginLeft: 8, border: 'none', background: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 14.5, lineHeight: 1, padding: 0 };
 const badge = { fontSize: 11, fontWeight: 700, color: '#166534', background: '#dcfce7', borderRadius: 999, padding: '1px 7px', marginRight: 4 };
-const addBtn = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '6px 12px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const addBtn = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '6px 12px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
 
 function Msg({ children }) { return <div style={{ padding: 40, fontFamily: FONT, color: '#64748b', fontSize: 14.5, textAlign: 'center' }}>{children}</div>; }

@@ -141,7 +141,7 @@ export default function ScheduledView({ sort, onEdit }) {
                         setNoteText(''); setNoteInput(null);
                       }}
                       style={{
-                        border: 'none', background: '#0e7fe0', color: '#fff',
+                        border: 'none', background: '#1E4560', color: '#fff',
                         fontSize: 11, fontWeight: 600, padding: '3px 8px',
                         borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                       }}

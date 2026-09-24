@@ -174,7 +174,7 @@ export default function StandardFeesPage() {
               disabled={saving || !newTask.task_name.trim() || !newTask.service_id}
               style={{
                 padding: '7px 16px', fontSize: 14, fontWeight: 600, fontFamily: font,
-                background: (!newTask.task_name.trim() || !newTask.service_id) ? '#e2e8f0' : '#0e7fe0',
+                background: (!newTask.task_name.trim() || !newTask.service_id) ? '#e2e8f0' : '#1E4560',
                 color: (!newTask.task_name.trim() || !newTask.service_id) ? '#94a3b8' : '#fff',
                 border: 'none', borderRadius: 8, cursor: (!newTask.task_name.trim() || !newTask.service_id) ? 'default' : 'pointer',
               }}

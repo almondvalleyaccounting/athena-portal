@@ -9,7 +9,7 @@ export function btn(kind) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
     fontFamily: font, borderRadius: 8, cursor: 'pointer',
-    background: kind === 'primary' ? '#0f172a' : '#fff',
+    background: kind === 'primary' ? '#1E4560' : '#fff',
     color: kind === 'primary' ? '#fff' : '#475569',
     border: kind === 'primary' ? 'none' : '1px solid #e5e7eb',
   };

@@ -270,7 +270,7 @@ export default function WaitingView() {
               display: 'inline-flex', alignItems: 'center', gap: 4,
               padding: '6px 12px', fontSize: 13, fontWeight: 600,
               border: 'none', borderRadius: 6,
-              background: '#0f172a', color: '#fff',
+              background: '#1E4560', color: '#fff',
               cursor: planning ? 'wait' : 'pointer', fontFamily: font,
               opacity: planning ? 0.6 : 1,
             }}

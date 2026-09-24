@@ -257,6 +257,6 @@ const btnSecondary = {
 const btnPrimary = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   fontSize: 13, fontWeight: 600, padding: '6px 12px',
-  background: '#0f172a', border: 'none', borderRadius: 8,
+  background: '#1E4560', border: 'none', borderRadius: 8,
   color: '#fff', cursor: 'pointer', fontFamily: font,
 };

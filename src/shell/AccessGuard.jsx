@@ -22,7 +22,7 @@ export default function AccessGuard({ profile, children }) {
         </p>
         <button
           onClick={() => navigate('/home')}
-          style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+          style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
         >
           Back to Home
         </button>

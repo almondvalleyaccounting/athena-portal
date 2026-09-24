@@ -230,7 +230,7 @@ function ObjectiveCard({ obj, skills, onPatch, onDelete, compact }) {
                 onClick={() => onPatch(obj.id, { progress_pct: v, status: v === 100 ? 'complete' : v > 0 ? 'in_progress' : 'open' })}
                 style={{
                   fontFamily: FONT, fontSize: 12, fontWeight: 600,
-                  background: obj.progress_pct === v ? '#0f172a' : '#f1f5f9',
+                  background: obj.progress_pct === v ? '#1E4560' : '#f1f5f9',
                   color: obj.progress_pct === v ? '#fff' : '#475569',
                   border: 'none', borderRadius: 999, padding: '4px 10px', cursor: 'pointer',
                 }}

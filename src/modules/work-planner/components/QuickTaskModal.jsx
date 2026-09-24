@@ -151,7 +151,7 @@ export default function QuickTaskModal({ task, staffList, entityList, progressNo
           <button onClick={onClose} style={{ ...btnBase, border: '1px solid #e5e7eb', background: '#fff', color: '#1e293b' }}>
             Cancel
           </button>
-          <button onClick={handleSave} style={{ ...btnBase, background: '#0f172a', color: '#fff', border: '1px solid #0f172a' }}>
+          <button onClick={handleSave} style={{ ...btnBase, background: '#1E4560', color: '#fff', border: '1px solid #0f172a' }}>
             Save
           </button>
         </div>

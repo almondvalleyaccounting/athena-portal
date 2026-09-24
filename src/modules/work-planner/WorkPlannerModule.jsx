@@ -840,7 +840,7 @@ export default function WorkPlannerModule() {
                 style={{
                   padding: '5px 12px', fontSize: 12, fontWeight: 500,
                   fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
-                  borderRadius: 8, background: '#0f172a', color: '#fff', cursor: 'pointer',
+                  borderRadius: 8, background: '#1E4560', color: '#fff', cursor: 'pointer',
                 }}
               >
                 + Scheduled Task

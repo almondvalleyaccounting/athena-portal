@@ -107,8 +107,8 @@ const btn = (primary) => ({
   display: 'inline-flex', alignItems: 'center', gap: 5,
   padding: '5px 11px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   color: primary ? '#fff' : '#0f172a',
-  background: primary ? '#0f172a' : '#fff',
-  border: `1px solid ${primary ? '#0f172a' : '#e2e8f0'}`,
+  background: primary ? '#1E4560' : '#fff',
+  border: `1px solid ${primary ? '#1E4560' : '#e2e8f0'}`,
   borderRadius: 7, cursor: 'pointer',
 });
 

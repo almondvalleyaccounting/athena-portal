@@ -29,7 +29,7 @@ const font = "'Outfit', sans-serif";
 
 const btnPrimary = (enabled) => ({
   padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: enabled ? '#0e7fe0' : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
+  background: enabled ? '#1E4560' : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
 const btnGhost = {

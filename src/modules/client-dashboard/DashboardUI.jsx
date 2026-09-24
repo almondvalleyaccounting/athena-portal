@@ -120,7 +120,7 @@ export function Segmented({ options = [], value, onChange, size = 'md', label })
               style={{
                 padding: pad, border: 'none', cursor: 'pointer',
                 borderLeft: i === 0 ? 'none' : '1px solid #e5e7eb',
-                backgroundColor: active ? '#0f172a' : '#ffffff',
+                backgroundColor: active ? '#1E4560' : '#ffffff',
                 color: active ? '#ffffff' : '#475569',
                 fontFamily: OUTFIT, fontSize: fs, fontWeight: active ? 700 : 500,
                 whiteSpace: 'nowrap',

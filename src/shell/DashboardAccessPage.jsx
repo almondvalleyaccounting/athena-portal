@@ -182,7 +182,7 @@ export default function DashboardAccessPage() {
           onClick={() => setAdding(true)}
           style={{
             marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7,
-            padding: '10px 18px', border: 'none', borderRadius: 10, backgroundColor: '#0f172a',
+            padding: '10px 18px', border: 'none', borderRadius: 10, backgroundColor: '#1E4560',
             color: '#fff', fontFamily: font, fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
           }}
         >
@@ -516,7 +516,7 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
             onClick={submit} disabled={!valid || saving}
             style={{
               padding: '10px 20px', border: 'none', borderRadius: 10,
-              backgroundColor: valid && !saving ? '#0f172a' : '#cbd5e1', color: '#fff',
+              backgroundColor: valid && !saving ? '#1E4560' : '#cbd5e1', color: '#fff',
               fontFamily: font, fontSize: 14.5, fontWeight: 700,
               cursor: valid && !saving ? 'pointer' : 'not-allowed',
             }}

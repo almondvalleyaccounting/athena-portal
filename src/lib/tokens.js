@@ -24,6 +24,12 @@
 // Use the helpers (chip / pill / etc) below rather than the raw
 // numbers when possible — they keep us consistent over time.
 
+// The one main-action colour (UI audit, Sprint 3 — Bobby chose ocean): the
+// primary button everywhere, and the "selected" state of segmented controls.
+// Green and red stay for status (approve / done, destructive), never for the
+// ordinary main action.
+export const brand = { solid: '#1E4560', hover: '#193A50', onSolid: '#fff' };
+
 export const tones = {
   success: { bg: '#dcfce7', fg: '#166534', border: '#86efac', solid: '#059669', onSolid: '#fff' },
   warning: { bg: '#fef3c7', fg: '#92400e', border: '#fcd34d', solid: '#d97706', onSolid: '#fff' },

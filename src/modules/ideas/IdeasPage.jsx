@@ -280,7 +280,7 @@ export default function IdeasPage() {
             alignItems: 'center',
             gap: '6px',
             backgroundColor:
-              !newIdea.trim() || submitting ? '#e5e7eb' : '#0f172a',
+              !newIdea.trim() || submitting ? '#e5e7eb' : '#1E4560',
             color: !newIdea.trim() || submitting ? '#94a3b8' : '#ffffff',
             fontFamily: "'Outfit', sans-serif",
             fontSize: '14px',

@@ -750,7 +750,7 @@ const tabBtn = (active) => ({
 });
 const input = { width: '100%', padding: '9px 12px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' };
 const textarea = { ...input, resize: 'vertical', lineHeight: 1.5 };
-const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
 const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
 const btnSmall = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
 const linkBtn = { background: 'none', border: 'none', color: '#0e7fe0', fontSize: 13, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", padding: 0 };

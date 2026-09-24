@@ -115,7 +115,7 @@ export default function CompleteModal({ task, mode, onConfirm, onClose }) {
             disabled={saving}
             style={{
               ...btnBase,
-              background: isNotReq ? '#64748b' : '#0f172a',
+              background: isNotReq ? '#64748b' : '#1E4560',
               color: '#fff',
               border: `1px solid ${isNotReq ? '#64748b' : '#0f172a'}`,
               opacity: saving ? 0.6 : 1,

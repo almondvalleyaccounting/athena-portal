@@ -473,7 +473,7 @@ const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, 
 const btnPrimary = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   fontSize: 14, fontWeight: 600, padding: '8px 14px',
-  background: '#0f172a', border: 'none', borderRadius: 8,
+  background: '#1E4560', border: 'none', borderRadius: 8,
   color: '#fff', cursor: 'pointer', fontFamily: font,
 };
 const btnSecondary = {

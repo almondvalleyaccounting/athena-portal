@@ -46,7 +46,7 @@ export const theme = {
 export const viewTheme = (view = 'management') => {
   const map = {
     management: {
-      btnPrimary: 'bg-sun-300 text-ocean-600 hover:bg-sun-200',
+      btnPrimary: 'bg-ocean-600 text-white hover:bg-ocean-700',
       btnSecondary: 'bg-white text-sun-500 border border-sun-300 hover:bg-sun-50',
       badgeActive: 'bg-sun-50 text-sun-600',
       badgeMuted: 'bg-sun-300/15 text-sun-500',

@@ -441,7 +441,7 @@ function smallBtn(variant) {
     padding: '6px 14px', fontSize: 13, fontWeight: 500,
     fontFamily: font, borderRadius: 6, cursor: 'pointer',
   };
-  if (variant === 'primary') return { ...base, background: '#0f172a', color: '#fff', border: '1px solid #0f172a' };
+  if (variant === 'primary') return { ...base, background: '#1E4560', color: '#fff', border: '1px solid #0f172a' };
   if (variant === 'disabled') return { ...base, background: '#e2e8f0', color: '#94a3b8', border: '1px solid #e2e8f0', cursor: 'not-allowed' };
   return { ...base, background: '#fff', color: '#64748b', border: '1px solid #cbd5e1' };
 }

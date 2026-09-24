@@ -186,7 +186,7 @@ export default function SkillsView() {
           </label>
           {isRoleMode && canEdit && (
             <button onClick={() => setShowCust((v) => !v)}
-              style={{ fontFamily: FONT, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '7px 12px', borderRadius: 8, border: '1px solid ' + (showCust ? '#0f172a' : '#cbd5e1'), background: showCust ? '#0f172a' : '#fff', color: showCust ? '#fff' : '#475569' }}>
+              style={{ fontFamily: FONT, fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '7px 12px', borderRadius: 8, border: '1px solid ' + (showCust ? '#0f172a' : '#cbd5e1'), background: showCust ? '#1E4560' : '#fff', color: showCust ? '#fff' : '#475569' }}>
               Customise
             </button>
           )}
@@ -251,7 +251,7 @@ export default function SkillsView() {
               <button key={c} onClick={() => setActiveCategory(c)}
                 style={{
                   border: 'none', cursor: 'pointer',
-                  background: activeCategory === c ? '#0f172a' : '#f1f5f9',
+                  background: activeCategory === c ? '#1E4560' : '#f1f5f9',
                   color: activeCategory === c ? '#fff' : '#475569',
                   fontFamily: FONT, fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 999,
                 }}>{c}</button>

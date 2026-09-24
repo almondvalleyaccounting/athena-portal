@@ -287,7 +287,7 @@ function TogglePill({ active, onClick, children }) {
     <button onClick={onClick} style={{
       fontSize: 13, fontWeight: active ? 600 : 500,
       padding: '6px 14px', borderRadius: 999,
-      background: active ? '#0f172a' : '#fff',
+      background: active ? '#1E4560' : '#fff',
       color: active ? '#fff' : '#475569',
       border: '1px solid ' + (active ? '#0f172a' : '#e5e7eb'),
       cursor: 'pointer', fontFamily: font,

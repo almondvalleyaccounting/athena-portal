@@ -116,7 +116,7 @@ export default function QuickTasksView({ compact, onAction }) {
             fontFamily: "'Outfit', sans-serif",
             border: canAdd ? '1px solid #0f172a' : '1px solid #e5e7eb',
             borderRadius: 8,
-            background: canAdd ? '#0f172a' : '#f1f5f9',
+            background: canAdd ? '#1E4560' : '#f1f5f9',
             color: canAdd ? '#fff' : '#94a3b8',
             cursor: canAdd ? 'pointer' : 'default',
             transition: 'all 0.15s',
@@ -268,7 +268,7 @@ export default function QuickTasksView({ compact, onAction }) {
                               setProgressInput(null);
                             }}
                             style={{
-                              border: 'none', background: '#0e7fe0', color: '#fff',
+                              border: 'none', background: '#1E4560', color: '#fff',
                               fontSize: 10, fontWeight: 600, padding: '3px 8px',
                               borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
                             }}

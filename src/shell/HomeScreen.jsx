@@ -1356,7 +1356,7 @@ export default function HomeScreen() {
           style={{
             fontFamily: FONT, fontSize: '12px', fontWeight: 600, padding: '3px 10px',
             border: 'none', cursor: 'pointer',
-            backgroundColor: pulsePeriod === key ? '#0f172a' : '#ffffff',
+            backgroundColor: pulsePeriod === key ? '#1E4560' : '#ffffff',
             color: pulsePeriod === key ? '#ffffff' : '#64748b',
           }}
         >

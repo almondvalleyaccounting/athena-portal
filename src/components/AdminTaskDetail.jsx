@@ -268,7 +268,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={save} disabled={saving || !form.title.trim()}
-            style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: form.title.trim() ? '#0f172a' : '#e5e7eb', color: form.title.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 8, cursor: form.title.trim() ? 'pointer' : 'not-allowed', fontFamily: font }}>
+            style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: form.title.trim() ? '#1E4560' : '#e5e7eb', color: form.title.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 8, cursor: form.title.trim() ? 'pointer' : 'not-allowed', fontFamily: font }}>
             {saving ? 'Saving…' : 'Save changes'}
           </button>
           {savedFlash && <span style={{ fontSize: 13.5, color: '#059669', fontWeight: 600 }}>✓ Saved</span>}
@@ -318,7 +318,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
             onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }}
             placeholder="Add a note or response…" style={inputStyle} />
           <button onClick={addNote} disabled={!noteDraft.trim()}
-            style={{ padding: '8px 12px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            style={{ padding: '8px 12px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
             <Send size={13} />
           </button>
         </div>

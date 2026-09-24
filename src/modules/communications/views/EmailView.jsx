@@ -1128,7 +1128,7 @@ export default function EmailView() {
           style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical', lineHeight: 1.5 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={sendComposer} disabled={sending}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: sending ? 'default' : 'pointer', fontFamily: font }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: sending ? 'default' : 'pointer', fontFamily: font }}>
             <Send size={13} /> {sending ? 'Sending…' : 'Send'}
           </button>
           {composer.mode === 'forward' && <span style={{ fontSize: 12, color: '#94a3b8' }}>Attachments aren&apos;t carried over on forwards yet.</span>}
@@ -1267,7 +1267,7 @@ export default function EmailView() {
 
         <button
           onClick={() => { setThread(null); startComposer('new'); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
         >
           <PenSquare size={14} /> New email
         </button>
@@ -1624,7 +1624,7 @@ export default function EmailView() {
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setSigOpen(false)} style={{ padding: '8px 14px', fontSize: 14, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
-              <button onClick={doSaveSignature} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#0e7fe0', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>Save</button>
+              <button onClick={doSaveSignature} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>Save</button>
             </div>
           </div>
         </div>

@@ -103,7 +103,7 @@ export default function MFAChallenge({ onPassed }) {
             <button
               onClick={handleVerify}
               disabled={verifying || code.length < 6 || !challengeId}
-              style={{ width: '100%', marginTop: 14, padding: '10px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14.5, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
+              style={{ width: '100%', marginTop: 14, padding: '10px 14px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14.5, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
             >
               {verifying ? 'Verifying…' : 'Verify'}
             </button>

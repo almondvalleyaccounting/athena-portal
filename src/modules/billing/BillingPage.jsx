@@ -765,7 +765,7 @@ export default function BillingPage() {
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {approvedItems.length > 0 && (
-            <button onClick={()=>{setShowPushConfirm(true);setPushResults(null);}} style={{...btnPrimary,background:'#059669',gap:5}}>
+            <button onClick={()=>{setShowPushConfirm(true);setPushResults(null);}} style={{...btnPrimary,gap:5}}>
               <Send size={14}/> Push to QB ({selectedApproved.length > 0 ? selectedApproved.length : approvedItems.length})
             </button>
           )}
@@ -1281,7 +1281,7 @@ export default function BillingPage() {
             )}
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>{setShowPushConfirm(false);setPushResults(null);}} style={{...btnOutline,flex:1}}>{pushResults && !pushResults.error ? 'Close' : 'Cancel'}</button>
-              <button onClick={handleBatchPush} disabled={pushing || !allContactsReady} style={{...btnPrimary,flex:1,background:'#059669',justifyContent:'center',opacity:(pushing||!allContactsReady)?0.5:1}}>
+              <button onClick={handleBatchPush} disabled={pushing || !allContactsReady} style={{...btnPrimary,flex:1,justifyContent:'center',opacity:(pushing||!allContactsReady)?0.5:1}}>
                 {pushing ? 'Pushing...'
                   : mixedSend ? `Send ${sendCount} · draft ${draftCount}`
                   : sendCount > 0 ? `Create & send ${sendCount}`
@@ -1534,7 +1534,7 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   );
 }
 
-const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#1E4560',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:14,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
 // Narrower gutters for the qty/rate/amount boxes — seven columns on one row.

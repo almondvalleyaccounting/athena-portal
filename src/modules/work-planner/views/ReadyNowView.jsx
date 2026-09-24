@@ -672,14 +672,14 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
             title="Review queued BM change requests"
             style={{
               padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
-              border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
+              border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer',
             }}
           >Changes Queue ({pendingChanges.length})</button>
           <button
             onClick={exportCsv}
             style={{
               padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
-              border: '1px solid #0f172a', borderRadius: 6, background: '#0f172a', color: '#fff', cursor: 'pointer',
+              border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer',
             }}
           >Export CSV</button>
         </div>
@@ -1290,7 +1290,7 @@ const selectInput = {
 };
 const btnPrimary = {
   fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
-  borderRadius: 6, border: '1px solid #0f172a', background: '#0f172a', color: '#fff', fontWeight: 600,
+  borderRadius: 6, border: '1px solid #0f172a', background: '#1E4560', color: '#fff', fontWeight: 600,
 };
 const btnPrimaryDisabled = { ...btnPrimary, background: '#94a3b8', border: '1px solid #94a3b8', cursor: 'not-allowed' };
 const btnSecondary = {
@@ -1364,7 +1364,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
             style={{
               fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: disabled ? 'not-allowed' : 'pointer',
               borderRadius: 6, border: '1px solid #0f172a',
-              background: disabled ? '#94a3b8' : '#0f172a', color: '#fff', fontWeight: 600,
+              background: disabled ? '#94a3b8' : '#1E4560', color: '#fff', fontWeight: 600,
             }}
           >Deprioritise</button>
         </div>

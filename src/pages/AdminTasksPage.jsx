@@ -1808,7 +1808,7 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
             <button key={m} onClick={() => { setMinutes(m); setCustom(''); }}
               style={{
                 padding: '6px 12px', fontSize: 13.5, fontWeight: 600, fontFamily: font, borderRadius: 8, cursor: 'pointer',
-                background: minutes === m && custom === '' ? '#0f172a' : '#fff',
+                background: minutes === m && custom === '' ? '#1E4560' : '#fff',
                 color: minutes === m && custom === '' ? '#fff' : '#475569',
                 border: `1px solid ${minutes === m && custom === '' ? '#0f172a' : '#e5e7eb'}`,
               }}>{m}m</button>
@@ -2568,7 +2568,7 @@ function TabBtn({ active, onClick, children }) {
   return (
     <button onClick={onClick} style={{
       padding: '4px 11px', fontSize: 12.5, fontWeight: 600, fontFamily: font, borderRadius: 999, cursor: 'pointer',
-      background: active ? '#0f172a' : '#fff', color: active ? '#fff' : '#64748b',
+      background: active ? '#1E4560' : '#fff', color: active ? '#fff' : '#64748b',
       border: `1px solid ${active ? '#0f172a' : '#e5e7eb'}`, whiteSpace: 'nowrap',
     }}>{children}</button>
   );
@@ -2703,7 +2703,7 @@ function btn(kind) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
     fontFamily: font, borderRadius: 8, cursor: 'pointer',
-    background: kind === 'primary' ? '#0f172a' : '#fff',
+    background: kind === 'primary' ? '#1E4560' : '#fff',
     color: kind === 'primary' ? '#fff' : '#475569',
     border: kind === 'primary' ? 'none' : '1px solid #e5e7eb',
   };

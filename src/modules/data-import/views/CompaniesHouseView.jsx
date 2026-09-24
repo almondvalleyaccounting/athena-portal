@@ -84,7 +84,7 @@ export default function CompaniesHouseView() {
             disabled={running}
             style={{
               fontFamily: font, fontSize: 14, fontWeight: 600,
-              color: '#fff', background: '#0f172a', border: 'none', borderRadius: 10,
+              color: '#fff', background: '#1E4560', border: 'none', borderRadius: 10,
               padding: '10px 18px', cursor: running ? 'wait' : 'pointer',
               opacity: running ? 0.6 : 1,
             }}

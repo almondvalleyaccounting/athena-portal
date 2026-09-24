@@ -330,5 +330,5 @@ const sub = { fontSize: 13, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6
 const th = { padding: '9px 12px', textAlign: 'right', fontWeight: 600 };
 const td = { padding: '7px 12px', textAlign: 'right', color: '#0f172a', fontVariantNumeric: 'tabular-nums' };
 const input = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 7, background: '#fff', color: '#0f172a', outline: 'none', boxSizing: 'border-box' };
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
+const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
 const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: font };

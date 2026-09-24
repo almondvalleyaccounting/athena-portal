@@ -305,7 +305,7 @@ const td = { padding: '7px 10px', verticalAlign: 'middle' };
 function Th({ children }) {
   return <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb' }}>{children}</th>;
 }
-const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
 const btnSecondary = { fontSize: 13, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569' };
 
 function Msg({ children, colour = '#64748b' }) {

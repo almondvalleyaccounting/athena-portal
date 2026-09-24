@@ -32,7 +32,7 @@ export default function EmptyState({ icon, title, body, actions = [] }) {
               onClick={a.onClick}
               style={{
                 padding: '7px 14px', fontSize: 14, fontWeight: a.primary ? 600 : 500,
-                background: a.primary ? '#0f172a' : '#fff',
+                background: a.primary ? '#1E4560' : '#fff',
                 color: a.primary ? '#fff' : '#0f172a',
                 border: a.primary ? 'none' : '1px solid #e5e7eb',
                 borderRadius: 6, cursor: 'pointer', fontFamily: font,

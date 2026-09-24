@@ -171,7 +171,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
           <button
             disabled={!newArea.trim() || busy}
             onClick={() => { run(() => addHandoverArea(ob.id, newArea, profile?.id)); setAdding(false); setNewArea(''); }}
-            style={{ padding: '5px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#0f172a', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
+            style={{ padding: '5px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
           >
             Add
           </button>

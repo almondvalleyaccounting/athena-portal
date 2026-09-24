@@ -484,7 +484,7 @@ function CellEditor({ entityId, serviceId, initial, cadence, onCancel, onSave })
       <span style={{ fontSize: 10, color: '#64748b' }}>/ {CADENCE_LABEL[cadence] || cadence}</span>
       <button
         onClick={() => onSave(entityId, serviceId, val)}
-        style={{ border: 'none', background: '#0f172a', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ border: 'none', background: '#1E4560', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
         title="Save (Enter)"
       >✓</button>
       <button
@@ -581,7 +581,7 @@ function btnStyle(variant) {
     return {
       padding: '5px 12px', fontSize: 13, fontWeight: 500,
       border: '1px solid #0f172a', borderRadius: 6,
-      background: '#0f172a', color: '#fff', cursor: 'pointer',
+      background: '#1E4560', color: '#fff', cursor: 'pointer',
       fontFamily: "'Outfit', sans-serif",
     };
   }

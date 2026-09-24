@@ -333,7 +333,7 @@ export default function AdminPage() {
             fontSize: '14px',
             fontWeight: 600,
             color: '#ffffff',
-            backgroundColor: '#0f172a',
+            backgroundColor: '#1E4560',
             border: 'none',
             borderRadius: '10px',
             padding: '10px 20px',
@@ -526,7 +526,7 @@ export default function AdminPage() {
                       disabled={!createForm.full_name.trim() || saving === 'create'}
                       style={{
                         fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#fff',
-                        backgroundColor: !createForm.full_name.trim() ? '#94a3b8' : '#0f172a',
+                        backgroundColor: !createForm.full_name.trim() ? '#94a3b8' : '#1E4560',
                         border: 'none', borderRadius: '8px', padding: '8px 14px',
                         cursor: !createForm.full_name.trim() ? 'not-allowed' : 'pointer',
                       }}
@@ -780,7 +780,7 @@ export default function AdminPage() {
                             height: '22px',
                             borderRadius: '6px',
                             border: val ? 'none' : '2px solid #d1d5db',
-                            backgroundColor: val ? '#0f172a' : '#ffffff',
+                            backgroundColor: val ? '#1E4560' : '#ffffff',
                             cursor: isSaving ? 'wait' : 'pointer',
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -954,7 +954,7 @@ export function WorkingDaysEditor({ value, onChange }) {
               width: 22, height: 22, borderRadius: 4, border: 'none',
               fontSize: 11, fontWeight: 600, cursor: 'pointer',
               fontFamily: "'Outfit', sans-serif",
-              background: isActive ? '#0f172a' : '#f1f5f9',
+              background: isActive ? '#1E4560' : '#f1f5f9',
               color: isActive ? '#fff' : '#94a3b8',
               transition: 'all 0.12s',
             }}

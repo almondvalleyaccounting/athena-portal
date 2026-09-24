@@ -27,7 +27,7 @@ const btnGhost = {
 };
 const btnPrimary = (on) => ({
   padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: on ? '#0e7fe0' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',
+  background: on ? '#1E4560' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: on ? 'pointer' : 'default',
 });
 const btnDanger = (on) => ({

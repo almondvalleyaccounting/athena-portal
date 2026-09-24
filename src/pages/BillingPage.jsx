@@ -1103,7 +1103,7 @@ function RevenueTile({ label, value, hint, delta, onClick, active, highlight }) 
       className="text-left rounded-lg border transition-colors"
       style={{
         padding: '14px 16px',
-        background: highlight ? '#0f172a' : (active ? '#eff6ff' : '#fff'),
+        background: highlight ? '#1E4560' : (active ? '#eff6ff' : '#fff'),
         borderColor: highlight ? '#0f172a' : (active ? '#93c5fd' : '#e5e7eb'),
         color: highlight ? '#fff' : '#0f172a',
         cursor: onClick ? 'pointer' : 'default',
