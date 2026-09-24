@@ -13,6 +13,7 @@ import {
   forecastByMonth, actualsByMonth, buildStatement, buildCashflow,
   totalRow, netRow, PL_ORDER, BS_ORDER,
 } from './projectionEngine';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Projection tab.
@@ -496,11 +497,7 @@ function CreateCard({ clientName, onStart }) {
       </p>
       <button
         onClick={onStart}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px',
-          border: 'none', borderRadius: '11px', backgroundColor: '#1E4560', color: '#ffffff',
-          cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700,
-        }}
+        style={{ ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
       >
         <Plus size={16} /> Create projection
       </button>

@@ -3,6 +3,7 @@ import { FileText, HardDriveUpload, ExternalLink, FolderOpen, Sparkles, AlertTri
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import { getDriveConnection, startDriveConnect, saveDocumentsToDrive, getDocumentUrl, extractDocument, uploadStaffDocument } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -187,7 +188,7 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
       {drive && pending.length > 0 && (
         <button
           onClick={saveToDrive} disabled={busy}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', opacity: busy ? 0.7 : 1 }}
+          style={{ ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', opacity: busy ? 0.7 : 1 }}
         >
           <HardDriveUpload size={13} /> {busy ? 'Saving…' : `Save ${pending.length} to Drive`}
         </button>

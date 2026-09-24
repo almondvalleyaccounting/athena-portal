@@ -13,6 +13,7 @@ import { tones as semanticTones } from '../lib/tokens';
 import DataTable from '../components/DataTable';
 import { fetchAllRows } from '../lib/fetchAllRows';
 import { ChevronRight, ChevronDown } from 'lucide-react';
+import { BTN } from '../lib/buttonStyles';
 
 // DataTable writes a row's background inline on hover and clears it on
 // mouse-out, so a background passed through rowStyle would vanish after the
@@ -1203,12 +1204,7 @@ function ActionLine({ count, noun, tone, label, ctaLabel, onClick }) {
         background: t.bg, color: t.fg,
       }}>{count}</span>
       <span>{noun} {label}</span>
-      <button onClick={onClick} style={{
-        fontSize: 13, fontWeight: 600, padding: '3px 10px',
-        background: '#fff', color: '#0f172a',
-        border: '1px solid #e5e7eb', borderRadius: 6,
-        cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-      }}>{ctaLabel}</button>
+      <button onClick={onClick} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>{ctaLabel}</button>
     </span>
   );
 }

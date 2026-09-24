@@ -7,6 +7,7 @@ import NominalMapView from './NominalMapView';
 import NominalMapBulk from './NominalMapBulk';
 import HmrcQboCompare from './HmrcQboCompare';
 import { font, card, th, thNum, td, tdNum, inputStyle, Pill, ErrorBar } from './wpShared';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
  * Working Papers.
@@ -92,10 +93,7 @@ function ClientPicker({ rows, entityId, onPick, loading }) {
         ))}
         <button
           onClick={() => setShowOutOfScope((v) => !v)}
-          style={{
-            padding: '4px 9px', fontSize: 12.5, fontFamily: font, cursor: 'pointer',
-            border: '1px solid #e5e7eb', borderRadius: 7, background: '#fff', color: '#475569',
-          }}
+          style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
         >
           {showOutOfScope ? 'Hide clients with no PAYE scheme' : `Show the ${counts.no_paye_ref || 0} with no PAYE scheme`}
         </button>

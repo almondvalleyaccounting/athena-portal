@@ -4,6 +4,7 @@ import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import DateField from './DateField';
 import { sendOnboardingEmail, updateOnboarding } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const input = {
@@ -119,7 +120,7 @@ export default function CheckinPanel({ ob, staff, onChanged }) {
           <button
             disabled={busy}
             onClick={sendCheckin}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 14px', fontSize: 13, fontWeight: 600, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
+            style={{ ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
           >
             <Send size={12} /> Send check-in email
           </button>

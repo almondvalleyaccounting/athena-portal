@@ -5,6 +5,7 @@ import { generateInstances } from '../lib/instanceEngine';
 import Avatar from '../components/Avatar';
 import DueBadge from '../components/DueBadge';
 import { useWorkPlanner } from '../WorkPlannerModule';
+import { BTN } from '../../../lib/buttonStyles';
 
 export default function KanbanView({ dueFilter, onAction }) {
   const {
@@ -254,11 +255,7 @@ export default function KanbanView({ dueFilter, onAction }) {
                             if (noteText.trim()) await addProgressNote('scheduled', inst._masterId, noteText.trim(), inst._date ? formatISO(inst._date) : null);
                             setNoteText(''); setNoteInput(null);
                           }}
-                          style={{
-                            border: 'none', background: '#1E4560', color: '#fff',
-                            fontSize: 10, fontWeight: 600, padding: '2px 6px',
-                            borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-                          }}
+                          style={{ ...BTN.primary.sm, cursor: 'pointer' }}
                         >
                           Add
                         </button>

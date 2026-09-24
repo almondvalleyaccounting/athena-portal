@@ -10,6 +10,7 @@ import {
 } from '../lib/allocationsQueries';
 import { teamColour } from '../lib/helpers';
 import GroupReallocateModal from '../components/GroupReallocateModal';
+import { BTN } from '../../../lib/buttonStyles';
 
 const SERVICE_COL_W = 200;
 const CLIENT_COL_W = 240;
@@ -789,11 +790,11 @@ function CellEditor({ entityId, serviceId, initialFeeEarnerId, staffList, onCanc
       <button
         onClick={() => onSave({ entityId, serviceId, feeEarnerId })}
         title="Save as reallocation proposal"
-        style={{ border: 'none', background: '#1E4560', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ ...BTN.primary.sm, cursor: 'pointer' }}
       >✓</button>
       <button
         onClick={onCancel}
-        style={{ border: '1px solid #cbd5e1', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
       >×</button>
     </div>
   );
@@ -888,11 +889,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
           )}
           <button
             onClick={onClose}
-            style={{
-              fontSize: 14, padding: '5px 10px', borderRadius: 6,
-              border: '1px solid #cbd5e1', background: '#fff', color: '#475569', cursor: 'pointer',
-              fontFamily: "'Outfit', sans-serif",
-            }}
+            style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
           >Close</button>
         </div>
 
@@ -938,11 +935,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
                       <button
                         onClick={() => onDiscardDraft(r.id)}
                         title="Discard this proposal"
-                        style={{
-                          fontSize: 12, padding: '3px 8px', borderRadius: 4,
-                          border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer',
-                          fontFamily: "'Outfit', sans-serif",
-                        }}
+                        style={{ ...BTN.danger.sm, cursor: 'pointer' }}
                       >Discard</button>
                     </td>
                   </tr>

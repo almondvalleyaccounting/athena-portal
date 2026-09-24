@@ -8,6 +8,7 @@ import { insertEntity } from '../modules/work-planner/lib/supabaseQueries';
 import NewClientModal from './NewClientModal';
 import ServicePicker from '../modules/billing/ServicePicker';
 import { fetchAdhocServices } from '../modules/billing/billingServices';
+import { BTN } from '../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px' };
@@ -337,7 +338,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
             onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }}
             placeholder="Add a note or response…" style={inputStyle} />
           <button onClick={addNote} disabled={!noteDraft.trim()}
-            style={{ padding: '8px 12px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            style={{ ...BTN.primary.md, cursor: 'pointer' }}>
             <Send size={13} />
           </button>
         </div>

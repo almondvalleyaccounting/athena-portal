@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { BTN } from '../lib/buttonStyles';
 
 /*
   Shared "Add new client" modal used across the portal.
@@ -303,19 +304,7 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
           <button
             onClick={onClose}
             disabled={saving}
-            style={{
-              flex: 1,
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
-              fontWeight: 600,
-              color: '#64748b',
-              backgroundColor: '#ffffff',
-              border: '1px solid #e5e7eb',
-              borderRadius: '10px',
-              padding: '12px',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-            }}
+            style={{ ...BTN.secondary.md, flex: 1, cursor: 'pointer', transition: 'all 0.2s ease' }}
           >
             Cancel
           </button>

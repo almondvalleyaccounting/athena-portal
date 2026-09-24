@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { BTN } from '../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -115,11 +116,7 @@ export default function GmailConnectionPanel() {
       <button
         type="button"
         onClick={handleConnect}
-        style={{
-          padding: '8px 16px', fontSize: 14, fontWeight: 600,
-          background: '#1E4560', color: '#fff', borderRadius: 8,
-          border: 'none', cursor: 'pointer', fontFamily: font,
-        }}
+        style={{ ...BTN.primary.md, cursor: 'pointer' }}
       >
         Connect Gmail
       </button>

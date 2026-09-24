@@ -453,7 +453,7 @@ export default function QboMappingPage() {
                 onClick={() => toggleIgnore(r)}
                 disabled={busy}
                 title="Restore"
-                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer', fontFamily: font }}
+                style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
               >
                 Restore
               </button>

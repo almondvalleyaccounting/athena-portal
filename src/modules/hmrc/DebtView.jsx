@@ -14,6 +14,7 @@ import {
   font, TIERS, REVIEW_STATUSES, Pill, Stat, Chip, BlurInput, ErrorBar,
   ageLabel, shortDate, inputStyle,
 } from './hmrcShared';
+import { BTN } from '../../lib/buttonStyles';
 
 // The working list: every PAYE scheme HMRC shows us as agent for, ordered so
 // the ones that need chasing are at the top, and marked up as they are worked.
@@ -372,12 +373,7 @@ export default function DebtView({ entityId = '' }) {
         <button
           onClick={exportCsv}
           disabled={filtered.length === 0}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-            fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
-            border: '1px solid #e5e7eb', borderRadius: 8,
-            cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5,
-          }}
+          style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5 }}
         >
           <Download size={12} /> Export
         </button>

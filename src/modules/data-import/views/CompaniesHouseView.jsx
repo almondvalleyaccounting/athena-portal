@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -79,12 +80,7 @@ export default function CompaniesHouseView() {
           <button
             onClick={() => runLoop(false)}
             disabled={running}
-            style={{
-              fontFamily: font, fontSize: 14, fontWeight: 600,
-              color: '#fff', background: '#1E4560', border: 'none', borderRadius: 10,
-              padding: '10px 18px', cursor: running ? 'wait' : 'pointer',
-              opacity: running ? 0.6 : 1,
-            }}
+            style={{ ...BTN.primary.md, cursor: running ? 'wait' : 'pointer', opacity: running ? 0.6 : 1 }}
           >
             {running ? 'Syncing…' : 'Sync new only'}
           </button>
@@ -92,23 +88,14 @@ export default function CompaniesHouseView() {
             onClick={() => runLoop(true)}
             disabled={running}
             title="Re-ingest every limited company, including ones already loaded"
-            style={{
-              fontFamily: font, fontSize: 14, fontWeight: 500,
-              color: '#64748b', background: '#fff', border: '1px solid #cbd5e1',
-              borderRadius: 10, padding: '10px 18px', cursor: running ? 'wait' : 'pointer',
-              opacity: running ? 0.6 : 1,
-            }}
+            style={{ ...BTN.secondary.md, cursor: running ? 'wait' : 'pointer', opacity: running ? 0.6 : 1 }}
           >
             Re-sync all
           </button>
           {running && (
             <button
               onClick={() => { stopRef.current = true; }}
-              style={{
-                fontFamily: font, fontSize: 14,
-                color: '#b91c1c', background: '#fff', border: '1px solid #fca5a5',
-                borderRadius: 10, padding: '10px 18px', cursor: 'pointer',
-              }}
+              style={{ ...BTN.danger.md, cursor: 'pointer' }}
             >Stop</button>
           )}
         </div>

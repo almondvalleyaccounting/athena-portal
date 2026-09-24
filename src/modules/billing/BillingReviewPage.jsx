@@ -15,6 +15,7 @@ import FiltersPopover from '../../components/FiltersPopover';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
 import { tones } from '../../lib/tokens';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -572,7 +573,7 @@ export default function BillingReviewPage() {
             }
           }}
           disabled={diagnosing}
-          style={{ fontSize: 12, fontWeight: 500, padding: '4px 10px', background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
+          style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
           title="Show every QBO recurring template and its link status"
         >
           {diagnosing ? 'Checking…' : 'Check QBO templates'}
@@ -883,7 +884,7 @@ function DeliveryGapsPanel({ canFix }) {
         <button onClick={openPanel} disabled={!!busy} style={{ fontSize: 12, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font, opacity: busy ? 0.6 : 1 }}>
           {busy === 'preview' ? 'Checking addresses…' : open ? 'Hide' : 'Review one by one'}
         </button>
-        <button onClick={recheck} disabled={!!busy} style={{ fontSize: 12, background: '#fff', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 10px', cursor: busy ? 'default' : 'pointer', fontFamily: font }}>
+        <button onClick={recheck} disabled={!!busy} style={{ ...BTN.danger.sm, cursor: busy ? 'default' : 'pointer' }}>
           {busy === 'sweep' ? 'Re-checking…' : 'Re-check'}
         </button>
       </div>

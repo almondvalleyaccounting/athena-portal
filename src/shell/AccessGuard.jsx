@@ -2,6 +2,7 @@ import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Lock } from 'lucide-react';
 import { canAccessPath } from '../modules.config';
+import { BTN } from '../lib/buttonStyles';
 
 // Shown instead of a page the person's sidebar doesn't offer them — typed in,
 // bookmarked, or followed from a link elsewhere. Same flags as the sidebar.
@@ -22,7 +23,7 @@ export default function AccessGuard({ profile, children }) {
         </p>
         <button
           onClick={() => navigate('/home')}
-          style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+          style={{ ...BTN.primary.md, cursor: 'pointer' }}
         >
           Back to Home
         </button>

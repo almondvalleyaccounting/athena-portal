@@ -38,6 +38,7 @@ import EstimatesView from './views/EstimatesView';
 import CapacityView from './views/CapacityView';
 import ReadyNowView from './views/ReadyNowView';
 import DriftView from './views/DriftView';
+import { BTN } from '../../lib/buttonStyles';
 
 // ── Context ──
 const WorkPlannerContext = createContext(null);
@@ -837,11 +838,7 @@ export default function WorkPlannerModule() {
               )}
               <button
                 onClick={() => setModal('new')}
-                style={{
-                  padding: '5px 12px', fontSize: 12, fontWeight: 500,
-                  fontFamily: "'Outfit', sans-serif", border: '1px solid #0f172a',
-                  borderRadius: 8, background: '#1E4560', color: '#fff', cursor: 'pointer',
-                }}
+                style={{ ...BTN.primary.sm, cursor: 'pointer' }}
               >
                 + Scheduled Task
               </button>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchImportHistory, fetchStaffNames, markCancelled } from '../lib/importQueries';
 import { SOURCES, getSource, getSystemLabel } from '../lib/sources';
 import DataTable from '../../../components/DataTable';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -248,13 +249,7 @@ export default function HistoryView() {
                   <button
                     disabled={cancelling === r.id}
                     onClick={(e) => { e.stopPropagation(); handleCancel(r); }}
-                    style={{
-                      fontSize: 13, fontWeight: 500, padding: '6px 12px',
-                      background: '#fff', border: '1px solid #fca5a5', borderRadius: 6,
-                      color: '#991b1b', cursor: 'pointer',
-                      fontFamily: "'Outfit', sans-serif",
-                      opacity: cancelling === r.id ? 0.5 : 1,
-                    }}
+                    style={{ ...BTN.danger.sm, cursor: 'pointer', opacity: cancelling === r.id ? 0.5 : 1 }}
                   >
                     {cancelling === r.id ? 'Cancelling…' : 'Cancel this run'}
                   </button>

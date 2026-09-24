@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { rememberThisDevice, forgetThisDevice, TRUSTED_DEVICE_DAYS, UNTRUSTED_SESSION_DAYS } from '../lib/trustedDevice';
+import { BTN } from '../lib/buttonStyles';
 
 // Shown after password sign-in when the user has a verified TOTP factor
 // and the current session is still aal1. On successful verify, the
@@ -103,7 +104,7 @@ export default function MFAChallenge({ onPassed }) {
             <button
               onClick={handleVerify}
               disabled={verifying || code.length < 6 || !challengeId}
-              style={{ width: '100%', marginTop: 14, padding: '10px 14px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14.5, fontWeight: 600, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
+              style={{ ...BTN.primary.md, width: '100%', marginTop: 14, cursor: verifying || code.length < 6 ? 'not-allowed' : 'pointer', opacity: verifying || code.length < 6 ? 0.6 : 1 }}
             >
               {verifying ? 'Verifying…' : 'Verify'}
             </button>

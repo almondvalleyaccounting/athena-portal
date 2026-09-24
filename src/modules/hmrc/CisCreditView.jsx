@@ -8,6 +8,7 @@ import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
 import DataTable from '../../components/DataTable';
 import { font, Chip, Pill, ErrorBar } from './hmrcShared';
+import { BTN } from '../../lib/buttonStyles';
 
 // The CIS credit pot, and what can actually be done with it.
 //
@@ -239,9 +240,7 @@ export default function CisCreditView() {
         <Chip value="movable" label="Movable now"         count={groups.movable.length} active={view} onClick={onView} colour="#059669" />
         <Chip value="locked"  label="Locked to this year" count={groups.locked.length}  active={view} onClick={onView} colour="#c2410c" />
         <Chip value="unknown" label="Age unknown"         count={groups.unknown.length} active={view} onClick={onView} colour="#b45309" />
-        <button onClick={exportCsv} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
-          background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 11px',
-          fontFamily: font, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
+        <button onClick={exportCsv} style={{ ...BTN.secondary.sm, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <Download size={13} /> Export
         </button>
       </div>

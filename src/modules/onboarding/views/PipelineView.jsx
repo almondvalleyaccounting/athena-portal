@@ -10,6 +10,7 @@ import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
 import NotesThread, { fmtNoteTime } from '../components/NotesThread';
 import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES, setOnboardingStatus, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -327,7 +328,7 @@ ${latest.body}`}
           <ViewTabs active="List" />
           <button
             onClick={() => navigate('/onboarding/updates')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 14, fontWeight: 600, fontFamily: font, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer' }}
+            style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
           >
             ✨ Latest updates
           </button>

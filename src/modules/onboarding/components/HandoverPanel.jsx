@@ -7,6 +7,7 @@ import {
   addHandoverArea, addNote, initHandovers, listHandoverDefaults,
   removeHandover, saveHandoverDefault, updateHandover,
 } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const input = {
@@ -171,7 +172,7 @@ export default function HandoverPanel({ ob, staff, onChanged }) {
           <button
             disabled={!newArea.trim() || busy}
             onClick={() => { run(() => addHandoverArea(ob.id, newArea, profile?.id)); setAdding(false); setNewArea(''); }}
-            style={{ padding: '5px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer' }}
+            style={{ ...BTN.primary.sm, cursor: 'pointer' }}
           >
             Add
           </button>

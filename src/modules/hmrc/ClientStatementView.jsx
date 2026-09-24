@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import { font, ErrorBar, th, thNum, td, tdNum, card, inputStyle } from './hmrcShared';
+import { BTN } from '../../lib/buttonStyles';
 
 // One client's PAYE account, as a statement.
 //
@@ -220,12 +221,7 @@ export default function ClientStatementView({ payeRef = '', scheme = null }) {
         <button
           onClick={exportCsv}
           disabled={rows.length === 0}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-            fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
-            border: '1px solid #e5e7eb', borderRadius: 8,
-            cursor: rows.length ? 'pointer' : 'default', opacity: rows.length ? 1 : 0.5,
-          }}
+          style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: rows.length ? 'pointer' : 'default', opacity: rows.length ? 1 : 0.5 }}
         >
           <Download size={12} /> Export for Excel
         </button>

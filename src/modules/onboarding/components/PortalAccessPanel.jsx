@@ -3,6 +3,7 @@ import { Globe, Trash2, Mail } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import { listPortalAccess, invitePortalUser, removePortalInvite, sendOnboardingEmail } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 export const PORTAL_URL = 'https://clients.almondvalleyaccounting.co.uk';
@@ -86,14 +87,14 @@ export default function PortalAccessPanel({ entityId, onboardingId, entityEmail 
         <button
           onClick={() => invite(true)} disabled={busy || !email.includes('@')}
           title="Create the portal invite and send the warm welcome email (portal link + what we need)"
-          style={{ padding: '7px 14px', fontSize: 13.5, fontWeight: 700, fontFamily: font, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          style={{ ...BTN.primary.sm, cursor: 'pointer', whiteSpace: 'nowrap' }}
         >
           Invite + welcome
         </button>
         <button
           onClick={() => invite(false)} disabled={busy || !email.includes('@')}
           title="Invite silently — no email goes out"
-          style={{ padding: '7px 10px', fontSize: 13.5, fontWeight: 600, fontFamily: font, background: '#fff', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 8, cursor: 'pointer' }}
+          style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
         >
           Quietly
         </button>

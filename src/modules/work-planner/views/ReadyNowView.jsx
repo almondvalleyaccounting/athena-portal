@@ -663,25 +663,16 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
               setNormalDaysBuffer(90);
             }}
             title="Clear all filters and restore defaults"
-            style={{
-              padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
-              border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer',
-            }}
+            style={{ ...BTN.secondary.sm, whiteSpace: 'nowrap', cursor: 'pointer' }}
           >Reset filters</button>
           <button
             onClick={() => setQueueOpen(true)}
             title="Review changes to make in BM"
-            style={{
-              padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
-              border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer',
-            }}
+            style={{ ...BTN.primary.sm, whiteSpace: 'nowrap', cursor: 'pointer' }}
           >Changes Queue ({pendingChanges.length})</button>
           <button
             onClick={exportCsv}
-            style={{
-              padding: '5px 12px', fontSize: 13, fontWeight: 500, fontFamily: font, whiteSpace: 'nowrap',
-              border: '1px solid #0f172a', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer',
-            }}
+            style={{ ...BTN.primary.sm, whiteSpace: 'nowrap', cursor: 'pointer' }}
           >Export CSV</button>
         </div>
       </div>
@@ -982,11 +973,7 @@ function Box({
                     <button
                       onClick={() => onEdit(r)}
                       title="Request a change"
-                      style={{
-                        fontSize: 12, padding: '3px 8px', fontFamily: font, cursor: 'pointer',
-                        borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff',
-                        color: '#475569', fontWeight: 600,
-                      }}
+                      style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
                     >Edit</button>
                   )}
                   <RowAction
@@ -1345,10 +1332,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button
             onClick={onCancel}
-            style={{
-              fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
-              borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 500,
-            }}
+            style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
           >Cancel</button>
           <button
             disabled={disabled}

@@ -8,6 +8,7 @@ import {
   upsertEffortOverride, deleteEffortOverride,
   fetchServiceCadence, fetchActualMinutes,
 } from '../lib/allocationsQueries';
+import { BTN } from '../../../lib/buttonStyles';
 
 const SERVICE_COL_W = 200;
 const CLIENT_COL_W = 240;
@@ -484,12 +485,12 @@ function CellEditor({ entityId, serviceId, initial, cadence, onCancel, onSave })
       <span style={{ fontSize: 10, color: '#64748b' }}>/ {CADENCE_LABEL[cadence] || cadence}</span>
       <button
         onClick={() => onSave(entityId, serviceId, val)}
-        style={{ border: 'none', background: '#1E4560', color: '#fff', borderRadius: 3, padding: '2px 6px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ ...BTN.primary.sm, cursor: 'pointer' }}
         title="Save (Enter)"
       >✓</button>
       <button
         onClick={onCancel}
-        style={{ border: '1px solid #cbd5e1', background: '#fff', color: '#64748b', borderRadius: 3, padding: '2px 5px', fontSize: 11, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+        style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
         title="Cancel (Esc)"
       >×</button>
     </div>

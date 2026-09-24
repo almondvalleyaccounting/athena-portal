@@ -7,6 +7,7 @@ import { Btn } from '../../components/ui';
 import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
 import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
+import { BTN } from '../../lib/buttonStyles';
 
 const TIME_PERIODS = [
   { value: '1', label: 'Last month' },
@@ -814,7 +815,7 @@ function EditableName({ entity, setEntity, profile }) {
           disabled={saving}
           style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 500, color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: 8, padding: '2px 10px', minWidth: 320 }}
         />
-        <button onClick={save} disabled={saving} style={{ fontSize: 13, padding: '5px 10px', border: 'none', borderRadius: 6, background: '#1E4560', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>{saving ? '…' : 'Save'}</button>
+        <button onClick={save} disabled={saving} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{saving ? '…' : 'Save'}</button>
         <button onClick={() => setEditing(false)} style={{ fontSize: 13, background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}>Cancel</button>
       </div>
     );

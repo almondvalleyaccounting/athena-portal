@@ -6,6 +6,7 @@ import DueBadge from '../components/DueBadge';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import { firstCharBucket } from '../../../components/AlphabetFilter';
+import { BTN } from '../../../lib/buttonStyles';
 
 export default function QuickTasksView({ compact, onAction }) {
   const {
@@ -267,11 +268,7 @@ export default function QuickTasksView({ compact, onAction }) {
                               }
                               setProgressInput(null);
                             }}
-                            style={{
-                              border: 'none', background: '#1E4560', color: '#fff',
-                              fontSize: 10, fontWeight: 600, padding: '3px 8px',
-                              borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-                            }}
+                            style={{ ...BTN.primary.sm, cursor: 'pointer' }}
                           >
                             Add
                           </button>

@@ -5,6 +5,7 @@ import { nextInstance } from '../lib/instanceEngine';
 import Avatar from '../components/Avatar';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import DataTable from '../../../components/DataTable';
+import { BTN } from '../../../lib/buttonStyles';
 
 // The filter bar's Sort choice names a column here; anything else sorts by title.
 const SORT_KEYS = ['title', 'client', 'service', 'owner', 'next'];
@@ -114,11 +115,7 @@ export default function ScheduledView({ sort: sortProp, onEdit }) {
                 />
                 <button
                   onClick={() => saveNote(master)}
-                  style={{
-                    border: 'none', background: '#1E4560', color: '#fff',
-                    fontSize: 11, fontWeight: 600, padding: '3px 8px',
-                    borderRadius: 3, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-                  }}
+                  style={{ ...BTN.primary.sm, cursor: 'pointer' }}
                 >
                   Add
                 </button>

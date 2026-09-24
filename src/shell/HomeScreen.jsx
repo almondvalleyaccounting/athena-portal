@@ -14,6 +14,7 @@ import { useAuth } from './AppShell';
 import { supabase } from '../lib/supabase';
 import JobReviewRadar from '../modules/job-review/DashboardRadar';
 import { useDirectorDashboard, usePracticePulse, daysLate } from './homeDashboardData';
+import { BTN } from '../lib/buttonStyles';
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 function formatDate() {
@@ -599,11 +600,7 @@ function OverduePanel({ jobs, byService, service, onService, onRow, onWontHappen
                     <button
                       onClick={(e) => { e.stopPropagation(); onWontHappen([j]); }}
                       title="This job is never going to be done — exclude it from every count and add a BrightManager cleanup task for Admin"
-                      style={{
-                        fontFamily: FONT, fontSize: '12px', fontWeight: 600,
-                        padding: '2px 7px', borderRadius: '6px', border: '1px solid #e5e7eb',
-                        background: '#fff', color: '#64748b', cursor: 'pointer', whiteSpace: 'nowrap',
-                      }}
+                      style={{ ...BTN.secondary.sm, cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
                       Won't happen
                     </button>

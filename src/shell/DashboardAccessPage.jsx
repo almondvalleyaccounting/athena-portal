@@ -176,11 +176,7 @@ export default function DashboardAccessPage() {
         </div>
         <button
           onClick={() => setAdding(true)}
-          style={{
-            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7,
-            padding: '10px 18px', border: 'none', borderRadius: 10, backgroundColor: '#1E4560',
-            color: '#fff', fontFamily: font, fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
-          }}
+          style={{ ...BTN.primary.md, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}
         >
           <Plus size={15} /> Give access
         </button>

@@ -7,6 +7,7 @@ import {
   updateStaffCapacityHours,
 } from '../lib/allocationsQueries';
 import { teamColour } from '../lib/helpers';
+import { BTN } from '../../../lib/buttonStyles';
 
 const STAFF_COL_W = 220;
 const MONTH_COL_W = 88;
@@ -454,16 +455,8 @@ function ShiftPopover({ popover, months, onClose, onSubmit }) {
           })}
         </select>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} disabled={busy} style={{
-            padding: '5px 12px', fontSize: 13, border: '1px solid #cbd5e1',
-            background: '#fff', color: '#64748b', borderRadius: 6, cursor: 'pointer',
-            fontFamily: "'Outfit', sans-serif",
-          }}>Cancel</button>
-          <button onClick={go} disabled={busy} style={{
-            padding: '5px 12px', fontSize: 13, border: '1px solid #0f172a',
-            background: '#1E4560', color: '#fff', borderRadius: 6, cursor: 'pointer',
-            fontFamily: "'Outfit', sans-serif",
-          }}>{busy ? 'Saving…' : 'Propose shift'}</button>
+          <button onClick={onClose} disabled={busy} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={go} disabled={busy} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{busy ? 'Saving…' : 'Propose shift'}</button>
         </div>
       </div>
     </>

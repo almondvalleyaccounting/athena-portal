@@ -9,6 +9,7 @@ import SearchInput from '../../components/SearchInput';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import DataTable from '../../components/DataTable';
 import { font, Chip, Pill, ErrorBar, card, TAX_META } from './hmrcShared';
+import { BTN } from '../../lib/buttonStyles';
 
 // Level 0: every client, one HMRC position. The gateway to the module.
 //
@@ -313,10 +314,7 @@ export default function AllTaxesView({ clients = [], error = '' }) {
         <Chip value="multi"     label="On 2+ taxes"    count={groups.multi.length}     active={view} onClick={setView} colour="#c2410c" />
         <Chip value="all"       label="Every client"   count={groups.all.length}       active={view} onClick={setView} />
         <button onClick={exportCsv} disabled={filtered.length === 0}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-                   fontSize: 13, fontFamily: font, color: '#475569', background: '#fff',
-                   border: '1px solid #e5e7eb', borderRadius: 8,
-                   cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5 }}>
+          style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: filtered.length ? 'pointer' : 'default', opacity: filtered.length ? 1 : 0.5 }}>
           <Download size={12} /> Export for Excel
         </button>
       </div>

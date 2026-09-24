@@ -8,6 +8,7 @@ import Avatar from '../components/Avatar';
 import DueBadge from '../components/DueBadge';
 import StatusIcon from '../components/StatusIcon';
 import { useWorkPlanner } from '../WorkPlannerModule';
+import { BTN } from '../../../lib/buttonStyles';
 
 export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }) {
   const {
@@ -139,7 +140,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                 />
                 <button
                   onClick={() => updateScheduledTask(m.id, { planned_date: formatISO(addDays(now, 1)) })}
-                  style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#0f172a', cursor: 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' }}
+                  style={{ ...BTN.secondary.sm, cursor: 'pointer', whiteSpace: 'nowrap' }}
                 >
                   Tomorrow
                 </button>
@@ -266,11 +267,7 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                         if (noteText.trim()) await addProgressNote(task._noteTaskType, task._noteTaskId, noteText.trim(), task._noteOccDate);
                         setNoteText(''); setNoteInput(null);
                       }}
-                      style={{
-                        border: 'none', background: '#1E4560', color: '#fff',
-                        fontSize: 12, fontWeight: 600, padding: '4px 10px',
-                        borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-                      }}
+                      style={{ ...BTN.primary.sm, cursor: 'pointer' }}
                     >
                       Add
                     </button>

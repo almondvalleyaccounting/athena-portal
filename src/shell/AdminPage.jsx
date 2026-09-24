@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Palette, UserPlus, Pencil, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchPortalClientIdentifiers } from './portalAccessApi';
+import { BTN } from '../lib/buttonStyles';
 
 /*
   Permission columns on staff_profiles that map to module access.
@@ -328,18 +329,7 @@ export default function AdminPage() {
         </h1>
         <button
           onClick={() => { setShowInvite(!showInvite); setInviteError(''); setInviteSuccess(''); }}
-          style={{
-            fontFamily: "'Outfit', sans-serif",
-            fontSize: '14px',
-            fontWeight: 600,
-            color: '#ffffff',
-            backgroundColor: '#1E4560',
-            border: 'none',
-            borderRadius: '10px',
-            padding: '10px 20px',
-            cursor: 'pointer',
-            transition: 'opacity 0.2s ease',
-          }}
+          style={{ ...BTN.primary.md, cursor: 'pointer', transition: 'opacity 0.2s ease' }}
         >
           {showInvite ? 'Cancel' : '+ Add user'}
         </button>

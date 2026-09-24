@@ -267,14 +267,7 @@ export default function WaitingView() {
           <button
             onClick={runPlan}
             disabled={planning}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '6px 12px', fontSize: 13, fontWeight: 600,
-              border: 'none', borderRadius: 6,
-              background: '#1E4560', color: '#fff',
-              cursor: planning ? 'wait' : 'pointer', fontFamily: font,
-              opacity: planning ? 0.6 : 1,
-            }}
+            style={{ ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: planning ? 'wait' : 'pointer', opacity: planning ? 0.6 : 1 }}
             title="Re-plan the next 9 months"
           >
             <Play size={12} /> {planning ? 'Planning…' : 'Plan 9 months'}

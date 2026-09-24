@@ -1268,7 +1268,7 @@ export default function EmailView() {
 
         <button
           onClick={() => { setThread(null); startComposer('new'); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+          style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
         >
           <PenSquare size={14} /> New email
         </button>
@@ -1625,8 +1625,8 @@ export default function EmailView() {
               Added automatically when you compose or reply. Plain text for now.
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setSigOpen(false)} style={{ padding: '8px 14px', fontSize: 14, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
-              <button onClick={doSaveSignature} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>Save</button>
+              <button onClick={() => setSigOpen(false)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doSaveSignature} style={{ ...BTN.primary.md, cursor: 'pointer' }}>Save</button>
             </div>
           </div>
         </div>

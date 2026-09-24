@@ -15,6 +15,7 @@ import {
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
   reopenRequest, setPersonEmail, queueEmail, queuedCountsByRequest, queuedKindsByRequest,
 } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const isEmail = (e) => typeof e === 'string' && e.includes('@');
@@ -90,7 +91,7 @@ function CallLogModal({ group, onConfirm, onCancel, busy }) {
           style={{ ...fieldStyle, resize: 'vertical' }} />
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button onClick={onCancel} disabled={busy} style={{ padding: '8px 14px', fontSize: 14, fontWeight: 600, fontFamily: font, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 9, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={onCancel} disabled={busy} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => dt && onConfirm({ calledAt: new Date(dt).toISOString(), outcome, note })} disabled={!dt || busy}
             style={{ padding: '8px 16px', fontSize: 14, fontWeight: 700, fontFamily: font, background: (!dt || busy) ? '#e5e7eb' : tones.accent.solid, color: (!dt || busy) ? '#94a3b8' : '#fff', border: 'none', borderRadius: 9, cursor: (!dt || busy) ? 'not-allowed' : 'pointer' }}>
             {busy ? 'Saving…' : 'Log call'}

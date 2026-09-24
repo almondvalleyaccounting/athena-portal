@@ -7,6 +7,7 @@ import {
   loadContacts, loadPeoplePhones, peopleByPhoneSuffix, phoneSuffix,
   resolveEntityNames, sendMessage,
 } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -135,11 +136,11 @@ export default function MessagesView({ channel }) {
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => { setNewNumber(''); setActive(null); setDraft(''); }}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '8px 12px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+            style={{ ...BTN.primary.md, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer' }}
           >
             <Plus size={14} /> New {channel === 'whatsapp' ? 'WhatsApp' : 'text'}
           </button>
-          <button onClick={() => load()} title="Refresh" style={{ padding: '8px 10px', border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', color: '#334155' }}>
+          <button onClick={() => load()} title="Refresh" style={{ ...BTN.secondary.md, cursor: 'pointer' }}>
             <RefreshCw size={14} />
           </button>
         </div>
@@ -207,7 +208,7 @@ export default function MessagesView({ channel }) {
               >
                 <Send size={13} /> {sending ? 'Sending…' : 'Send'}
               </button>
-              <button onClick={() => { setNewNumber(null); setDraft(''); }} style={{ padding: '8px 14px', fontSize: 14, border: '1px solid #cbd5e1', background: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: font, color: '#334155' }}>Cancel</button>
+              <button onClick={() => { setNewNumber(null); setDraft(''); }} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
             </div>
             {channel === 'whatsapp' && (
               <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '7px 10px' }}>
