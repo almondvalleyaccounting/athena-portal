@@ -281,18 +281,16 @@ export default function ClientDetailView() {
   // put on every tab, so the facts you reach for are never a tab away.
   const isLtd = entity?.type === 'limited_company';
   const primary = people.find((p) => p.is_primary_contact)?.person || null;
-  const directors = people.filter((p) => p.role === 'director');
-  const pscs = people.filter((p) => p.source === 'ch_psc');
-  // One row per human: someone already listed as a director or PSC is not
-  // repeated under other contacts (their primary-contact badge moves with them).
-  const listedIds = new Set([...directors, ...pscs].map((p) => p.person?.id));
-  const otherPeople = people.filter((p) => p.role !== 'director' && p.source !== 'ch_psc' && !listedIds.has(p.person?.id));
+  // One card per human, carrying every role they hold here — a director who
+  // is also a PSC and the primary contact is one person with three tags,
+  // not three rows (entity_people holds a link per role).
+  const peopleGrouped = groupPeople(people);
   const showBillingTab = canSeeFees || canSeeQuotes;
   const CLIENT_TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'work', label: 'Work', count: tasks.length },
     ...(showBillingTab ? [{ id: 'billing', label: canSeeFees && canSeeQuotes ? 'Billing & quotes' : canSeeFees ? 'Billing' : 'Quotes' }] : []),
-    { id: 'people', label: 'People', count: new Set(people.map((p) => p.person?.id)).size },
+    { id: 'people', label: 'People', count: peopleGrouped.length },
     { id: 'comms', label: 'Communications' },
   ];
   const tab = CLIENT_TABS.some((t) => t.id === activeTab) ? activeTab : 'overview';
@@ -634,11 +632,7 @@ export default function ClientDetailView() {
       </>)}
 
       {tab === 'people' && (
-        isLtd ? (<>
-          <PeopleSection title={`Directors (${directors.length})`}><PeopleList people={directors} kind="director" primaryId={primary?.id} /></PeopleSection>
-          <PeopleSection title={`Persons with significant control (${pscs.length})`}><PeopleList people={pscs} kind="psc" primaryId={primary?.id} /></PeopleSection>
-          {otherPeople.length > 0 && <PeopleSection title={`Other contacts (${otherPeople.length})`}><PeopleList people={otherPeople} kind="contact" /></PeopleSection>}
-        </>) : <PeopleList people={people} kind="contact" />
+        <PeopleList people={peopleGrouped} isLtd={isLtd} />
       )}
 
       {tab === 'comms' && <ClientCommsTab entityId={id} />}
@@ -712,46 +706,69 @@ function dobLabel(y, m) {
   return `${m ? MONTHS[m] + ' ' : ''}${y}`;
 }
 
-// Directors / PSCs list for the client tabs. Rows come from entity_people
-// joined to people. Codes ending -2223 are genuine (confirmed 2026-07-15).
-function PeopleList({ people, kind, primaryId }) {
+// Collapse entity_people links (one per role) into one entry per person.
+// Directors first, then PSCs, then everyone else.
+function groupPeople(links) {
+  const byId = new Map();
+  for (const l of links) {
+    const person = l.person || {};
+    const key = person.id || `${person.name}-${byId.size}`;
+    if (!byId.has(key)) byId.set(key, { person, director: null, psc: null, otherRoles: new Set(), primary: false });
+    const g = byId.get(key);
+    if (l.role === 'director') g.director = l;
+    else if (l.source === 'ch_psc') g.psc = l;
+    else if (l.role) g.otherRoles.add(l.role);
+    if (l.is_primary_contact) g.primary = true;
+  }
+  const rank = (g) => (g.director ? 0 : g.psc ? 1 : 2);
+  return [...byId.values()].sort((a, b) => rank(a) - rank(b) || (a.person.name || '').localeCompare(b.person.name || ''));
+}
+
+// People tab: one card per person with a tag for each role they hold.
+// Codes ending -2223 are genuine (confirmed 2026-07-15).
+function PeopleList({ people, isLtd }) {
   if (!people || people.length === 0) {
     return (
       <div style={{ ...cardStyle, textAlign: 'center', padding: '40px 24px', color: '#94a3b8', fontSize: 14 }}>
-        {kind === 'psc'
-          ? 'No persons with significant control recorded. These come from the Companies House refresh.'
-          : kind === 'contact'
-            ? 'No people recorded for this client.'
-            : 'No directors recorded. These come from the Companies House refresh.'}
+        {isLtd
+          ? 'No directors or persons with significant control recorded. These come from the Companies House refresh.'
+          : 'No people recorded for this client.'}
       </div>
     );
   }
+  const tag = (bg, color, text) => <Badge bg={bg} color={color}>{text}</Badge>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {people.map((p, i) => {
-        const person = p.person || {};
+      {people.map((g, i) => {
+        const person = g.person;
         const dob = dobLabel(person.dob_year, person.dob_month);
         const code = person.ch_personal_code;
+        const appointed = g.director?.started_on || g.psc?.started_on;
         return (
           <div key={person.id || i} style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{person.name || 'Unnamed'}</div>
-              <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-                <span style={{ textTransform: 'capitalize' }}>{p.role || (kind === 'psc' ? 'PSC' : kind === 'contact' ? 'contact' : 'officer')}</span>
-                {kind === 'psc' && p.role_pct != null && <span>· {p.role_pct}%+ control</span>}
-                {dob && <span>· b. {dob}</span>}
-                {p.started_on && <span>· appointed {new Date(p.started_on).toLocaleDateString('en-GB')}</span>}
-                {(p.is_primary_contact || (primaryId && person.id === primaryId)) && <Badge bg="#dbeafe" color="#0e7fe0">Primary contact</Badge>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginRight: 4 }}>{person.name || 'Unnamed'}</span>
+                {g.director && tag('#e0e7ff', '#3730a3', 'Director')}
+                {g.psc && tag('#f5f3ff', '#6d28d9', `PSC${g.psc.role_pct != null ? ` · ${g.psc.role_pct}%+` : ''}`)}
+                {[...g.otherRoles].filter((r) => r !== 'contact').map((r) => <span key={r}>{tag('#f1f5f9', '#475569', r.replace(/_/g, ' '))}</span>)}
+                {g.primary && tag('#dbeafe', '#1E4560', 'Primary contact')}
+                {!g.director && !g.psc && !g.primary && g.otherRoles.size <= 1 && [...g.otherRoles][0] === 'contact' && tag('#f1f5f9', '#475569', 'Contact')}
+              </div>
+              <div style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+                {dob && <span>b. {dob}</span>}
+                {appointed && <span>{dob ? '· ' : ''}appointed {new Date(appointed).toLocaleDateString('en-GB')}</span>}
+                {person.email && <a href={`mailto:${person.email}`} style={{ color: '#1E4560', textDecoration: 'none' }}>{(dob || appointed) ? '· ' : ''}{person.email}</a>}
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>CH personal code</div>
-              {code
-                ? <div style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>
-                    {code}
-                  </div>
-                : <div style={{ fontSize: 13.5, color: '#cbd5e1' }}>none on file</div>}
-            </div>
+            {(isLtd || code) && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>CH personal code</div>
+                {code
+                  ? <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', fontSize: 14, fontFamily: 'monospace', fontWeight: 600, color: '#0f172a' }}>{code}<CopyButton value={code} /></div>
+                  : <div style={{ fontSize: 13.5, color: '#94a3b8' }}>none on file</div>}
+              </div>
+            )}
           </div>
         );
       })}
@@ -1226,15 +1243,6 @@ function CopyButton({ value }) {
     <button onClick={copy} title={done ? 'Copied' : 'Copy'} aria-label="Copy" style={{ display: 'inline-flex', padding: 3, border: 'none', background: 'none', cursor: 'pointer', color: done ? '#059669' : '#94a3b8', flexShrink: 0 }}>
       {done ? <Check size={14} /> : <Copy size={14} />}
     </button>
-  );
-}
-
-function PeopleSection({ title, children }) {
-  return (
-    <section>
-      <h3 style={sectionTitle}>{title}</h3>
-      {children}
-    </section>
   );
 }
 
