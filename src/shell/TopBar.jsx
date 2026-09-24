@@ -32,6 +32,7 @@ const SUBPAGES = [
   { prefix: '/admin/schedules', label: 'Scheduled Jobs' },
   { prefix: '/settings/me', label: 'My Settings' },
   { prefix: '/settings/shortcuts', label: 'Keyboard shortcuts' },
+  { prefix: '/security', label: 'Security & 2FA' },
 ];
 
 /* ─── Enhanced breadcrumb: returns array of segments ─────────── */
@@ -42,7 +43,10 @@ function useBreadcrumb() {
 
   // Settings routes (the group formerly labelled "Admin") — covers both
   // the admin-only /admin/* screens and the all-staff /settings/* pages.
-  if (pathname.startsWith('/admin') || pathname.startsWith('/settings')) {
+  // /security (avatar menu) and /kpis/outstanding (KPI packs) live outside
+  // /admin and /settings but belong with them.
+  if (pathname.startsWith('/admin') || pathname.startsWith('/settings')
+      || pathname.startsWith('/security') || pathname.startsWith('/kpis')) {
     const segments = [{ label: 'Settings' }];
     const sub = SUBPAGES.find((s) => pathname.startsWith(s.prefix));
     if (sub && sub.prefix !== pathname) segments.push({ label: sub.label });
@@ -50,22 +54,27 @@ function useBreadcrumb() {
     return segments;
   }
 
-  // Find matching module
-  const mod = MODULES.find((m) => pathname.startsWith(m.route));
+  // Find the page's module and child. Match children first, across every
+  // module and on their matchPaths too: several children live outside their
+  // module's own prefix (/timesheets and /triage under Work, /portfolio,
+  // /reports, /hmrc and /forecast under Client Work), and matching modules by
+  // prefix alone left those pages with an empty top bar.
+  const hits = (p) => pathname === p || pathname.startsWith(p + '/');
+  let best = null;
+  for (const m of MODULES) {
+    for (const c of m.children || []) {
+      for (const p of [c.route, ...(c.matchPaths || [])]) {
+        if (hits(p) && (!best || p.length > best.len)) best = { mod: m, child: c, len: p.length };
+      }
+    }
+  }
+  const mod = best?.mod || MODULES.find((m) => pathname.startsWith(m.route));
   if (!mod) return [];
 
   const segments = [{ label: mod.label, path: mod.route }];
-
-  // For modules with children, find the active child
-  if (mod.children) {
-    const sorted = [...mod.children].sort((a, b) => b.route.length - a.route.length);
-    const child = sorted.find((c) => {
-      if (c.route === mod.route) return pathname === mod.route;
-      return pathname.startsWith(c.route);
-    });
-    if (child && child.route !== mod.route) {
-      segments.push({ label: child.label, path: child.route });
-    }
+  const child = best?.child;
+  if (child && child.route !== mod.route) {
+    segments.push({ label: child.label, path: child.route });
   }
 
   // Tail segment for known sub-pages (e.g. /manage/billing/qbo-mapping)
