@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 
 // ── Quick Tasks ──
 
@@ -130,14 +131,17 @@ export async function deleteInstanceOverride(masterId, occurrenceDate) {
 
 // ── Completed Tasks ──
 
+// Every completed task, newest first. This used to stop at .limit(500), so
+// older completions vanished from /planner/completed — and from the planner's
+// completedKeys and overdue check, which read the same list to decide what is done.
+// fetchAllRows pages past PostgREST's 1000-row cap; id breaks completed_at ties
+// so the paging order is stable.
 export async function fetchCompletedTasks() {
-  const { data, error } = await supabase
+  return fetchAllRows(() => supabase
     .from('completed_tasks')
     .select('*')
     .order('completed_at', { ascending: false })
-    .limit(500);
-  if (error) throw error;
-  return data || [];
+    .order('id', { ascending: true }));
 }
 
 export async function insertCompletedTask(task) {

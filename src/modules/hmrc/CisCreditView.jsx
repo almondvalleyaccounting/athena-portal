@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
-import { font, Chip, Pill, ErrorBar, th, thNum, td, tdNum, card } from './hmrcShared';
+import DataTable from '../../components/DataTable';
+import { font, Chip, Pill, ErrorBar } from './hmrcShared';
 
 // The CIS credit pot, and what can actually be done with it.
 //
@@ -46,6 +48,30 @@ const BASIS = {
   'no credit':  { label: 'Cash only',   colour: '#94a3b8', hint: 'Unallocated payments, no credit' },
 };
 
+// What can be moved or might be: the order this tab has always opened in.
+const reachable = (r) => n(r.cash_movable) + n(r.credit_movable) + n(r.credit_age_unknown);
+
+// The order DataTable puts rows in, so the export matches the screen.
+function sortLike(list, columns, sort) {
+  const col = columns.find((c) => c.key === sort?.key);
+  if (!col) return list;
+  const get = col.sortValue || ((r) => r[col.key]);
+  const dir = sort.dir === 'desc' ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const va = get(a); const vb = get(b);
+    const ea = va == null || va === ''; const eb = vb == null || vb === '';
+    if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'en-GB', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+}
+
+const money = (v, colour, bold) => (
+  <span style={{ color: n(v) ? colour : '#e2e8f0', fontWeight: bold && n(v) ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
+    {n(v) ? fmtGbpDetailed(v) : '—'}
+  </span>
+);
+
 export default function CisCreditView() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
@@ -53,15 +79,21 @@ export default function CisCreditView() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [view, setView] = useState('all');
+  // No heading sort to begin with: the rows arrive in the tab's own order
+  // (movable plus age unknown, largest first) and a heading click re-sorts.
+  const [sort, setSort] = useState(null);
+  const [page, setPage] = useState(1);
+
+  const onView = (v) => { setView(v); setPage(1); };
+  const onSearch = (v) => { setSearch(v); setPage(1); };
 
   useEffect(() => {
-    // The module rule: say out loud how much is expected. PostgREST caps a fetch
-    // at around a thousand and truncates SILENTLY.
-    supabase.from('v_hmrc_cis_pot_status').select('*').limit(2000)
-      .then(({ data, error: e }) => {
-        if (e) setError(e.message); else setRows(data || []);
-        setLoading(false);
-      });
+    // PostgREST caps a fetch at 1000 and truncates SILENTLY — `.limit(2000)`
+    // does not raise it — so page through the lot, one row per PAYE scheme.
+    fetchAllRows(() => supabase.from('v_hmrc_cis_pot_status').select('*').order('paye_ref').order('hmrc_name'))
+      .then((data) => setRows(data))
+      .catch((e) => setError(e.message || 'Could not load the credit pot'))
+      .finally(() => setLoading(false));
   }, []);
 
   const taxYear = rows[0]?.current_tax_year || '';
@@ -74,23 +106,108 @@ export default function CisCreditView() {
     unknown: rows.filter((r) => n(r.credit_age_unknown) > 0),
   }), [rows]);
 
+  // Pre-sorted in the default order. DataTable's sort is stable, so this also
+  // breaks ties when a heading is clicked.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (groups[view] || rows)
       .filter((r) => !q || (r.hmrc_name || '').toLowerCase().includes(q))
-      .sort((a, b) =>
-        (n(b.cash_movable) + n(b.credit_movable) + n(b.credit_age_unknown))
-        - (n(a.cash_movable) + n(a.credit_movable) + n(a.credit_age_unknown)));
+      .sort((a, b) => reachable(b) - reachable(a));
   }, [groups, view, search, rows]);
 
   const sum = (k, list = filtered) => list.reduce((a, r) => a + n(r[k]), 0);
+
+  // The column headings already carry their group ("Cash · movable",
+  // "Credit · locked"), so nothing is lost to single-level headings.
+  const columns = [
+    {
+      key: 'hmrc_name', label: 'Client',
+      sortValue: (r) => r.hmrc_name || '',
+      render: (r) => (r.entity_id ? (
+        <button
+          onClick={() => navigate(`/hmrc/paye?entity=${r.entity_id}`)}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                   fontFamily: font, fontSize: 13, color: '#0f172a', textAlign: 'left',
+                   textDecoration: 'underline', textDecorationStyle: 'dotted',
+                   textDecorationColor: '#cbd5e1', maxWidth: '100%',
+                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          title="Open this client’s PAYE account">
+          {r.hmrc_name}
+        </button>
+      ) : (
+        // No entity behind the scheme — the name is all there is, and it must
+        // not look like a dead link.
+        <span title="No Athena client linked to this PAYE scheme">{r.hmrc_name}</span>
+      )),
+    },
+    {
+      key: 'cash_movable', align: 'right', width: 135,
+      label: <span title="Money the client sent that HMRC has not matched to a bill. No year restriction.">Cash · movable</span>,
+      sortValue: (r) => n(r.cash_movable),
+      render: (r) => money(r.cash_movable, '#0f172a'),
+    },
+    {
+      key: 'credit_movable', align: 'right', width: 140,
+      label: <span title="Credit that arose in a closed tax year, so it can be set against another year, another tax, or repaid.">Credit · movable</span>,
+      sortValue: (r) => n(r.credit_movable),
+      render: (r) => money(r.credit_movable, '#059669', true),
+    },
+    {
+      key: 'credit_locked', align: 'right', width: 135,
+      label: <span title="Credit that arose this tax year. It can only offset this year’s PAYE bills until 6 April.">Credit · locked</span>,
+      sortValue: (r) => n(r.credit_locked),
+      render: (r) => money(r.credit_locked, '#c2410c'),
+    },
+    {
+      key: 'credit_age_unknown', align: 'right', width: 170,
+      label: <span title="Credit whose tax year cannot be read from HMRC’s restated yearly rows. Not nil, and not available.">Credit · age unknown</span>,
+      sortValue: (r) => n(r.credit_age_unknown),
+      render: (r) => money(r.credit_age_unknown, '#b45309'),
+    },
+    {
+      key: 'credit_total', label: 'Credit total', align: 'right', width: 125,
+      sortValue: (r) => n(r.credit_total),
+      render: (r) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{n(r.credit_total) ? fmtGbpDetailed(r.credit_total) : '—'}</span>,
+    },
+    {
+      key: 'credit_cis', label: 'of which CIS', align: 'right', width: 125,
+      sortValue: (r) => n(r.credit_cis),
+      render: (r) => <span style={{ color: '#0369a1', fontVariantNumeric: 'tabular-nums' }}>{n(r.credit_cis) ? fmtGbpDetailed(r.credit_cis) : '—'}</span>,
+    },
+    {
+      key: 'basis', label: 'Basis', width: 170,
+      sortValue: (r) => (BASIS[r.basis] || BASIS['age unknown']).label,
+      render: (r) => {
+        const b = BASIS[r.basis] || BASIS['age unknown'];
+        return (
+          <>
+            <Pill colour={b.colour} title={b.hint} style={{ fontSize: 10.5 }}>{b.label}</Pill>
+            {r.matched_year && (
+              <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 6 }}>{r.matched_year}</span>
+            )}
+          </>
+        );
+      },
+    },
+  ];
+
+  // Totals over every filtered row, not just the page on screen.
+  const footer = (list) => ({
+    hmrc_name: `${list.length} client${list.length === 1 ? '' : 's'}`,
+    cash_movable: fmtGbpDetailed(sum('cash_movable', list)),
+    credit_movable: <span style={{ color: '#059669' }}>{fmtGbpDetailed(sum('credit_movable', list))}</span>,
+    credit_locked: <span style={{ color: '#c2410c' }}>{fmtGbpDetailed(sum('credit_locked', list))}</span>,
+    credit_age_unknown: <span style={{ color: '#b45309' }}>{fmtGbpDetailed(sum('credit_age_unknown', list))}</span>,
+    credit_total: fmtGbpDetailed(sum('credit_total', list)),
+    credit_cis: <span style={{ color: '#0369a1' }}>{fmtGbpDetailed(sum('credit_cis', list))}</span>,
+  });
 
   const exportCsv = () => {
     downloadCSV(
       `hmrc-cis-credit-${new Date().toISOString().slice(0, 10)}.csv`,
       ['Client', 'PAYE ref', 'Cash movable', 'Credit movable', 'Credit locked',
        'Credit age unknown', 'Credit total', 'of which CIS', 'Basis', 'Credit year'],
-      filtered.map((r) => [
+      sortLike(filtered, columns, sort).map((r) => [
         r.hmrc_name || '', r.paye_ref || '',
         n(r.cash_movable).toFixed(2), n(r.credit_movable).toFixed(2),
         n(r.credit_locked).toFixed(2), n(r.credit_age_unknown).toFixed(2),
@@ -121,12 +238,12 @@ export default function CisCreditView() {
       </p>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Client name…" style={{ minWidth: 240 }} />
-        <Chip value="all"     label="Everyone holding something" count={groups.all.length} active={view} onClick={setView} />
-        <Chip value="cis"     label="Holding CIS credit"  count={groups.cis.length}     active={view} onClick={setView} colour="#0369a1" />
-        <Chip value="movable" label="Movable now"         count={groups.movable.length} active={view} onClick={setView} colour="#059669" />
-        <Chip value="locked"  label="Locked to this year" count={groups.locked.length}  active={view} onClick={setView} colour="#c2410c" />
-        <Chip value="unknown" label="Age unknown"         count={groups.unknown.length} active={view} onClick={setView} colour="#b45309" />
+        <SearchInput value={search} onChange={onSearch} placeholder="Client name…" style={{ minWidth: 240 }} />
+        <Chip value="all"     label="Everyone holding something" count={groups.all.length} active={view} onClick={onView} />
+        <Chip value="cis"     label="Holding CIS credit"  count={groups.cis.length}     active={view} onClick={onView} colour="#0369a1" />
+        <Chip value="movable" label="Movable now"         count={groups.movable.length} active={view} onClick={onView} colour="#059669" />
+        <Chip value="locked"  label="Locked to this year" count={groups.locked.length}  active={view} onClick={onView} colour="#c2410c" />
+        <Chip value="unknown" label="Age unknown"         count={groups.unknown.length} active={view} onClick={onView} colour="#b45309" />
         <button onClick={exportCsv} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
           background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '6px 11px',
           fontFamily: font, fontSize: 13, color: '#475569', cursor: 'pointer' }}>
@@ -134,92 +251,27 @@ export default function CisCreditView() {
         </button>
       </div>
 
-      <div style={card}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: 11 }}>
-                <th style={th}>Client</th>
-                <th style={thNum} title="Money the client sent that HMRC has not matched to a bill. No year restriction.">Cash · movable</th>
-                <th style={thNum} title="Credit that arose in a closed tax year, so it can be set against another year, another tax, or repaid.">Credit · movable</th>
-                <th style={thNum} title="Credit that arose this tax year. It can only offset this year’s PAYE bills until 6 April.">Credit · locked</th>
-                <th style={thNum} title="Credit whose tax year cannot be read from HMRC’s restated yearly rows. Not nil, and not available.">Credit · age unknown</th>
-                <th style={{ ...thNum, borderLeft: '1px solid #e5e7eb' }}>Credit total</th>
-                <th style={thNum}>of which CIS</th>
-                <th style={th}>Basis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => {
-                const b = BASIS[r.basis] || BASIS['age unknown'];
-                return (
-                  <tr key={r.paye_ref} style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td style={td}>
-                      {r.entity_id ? (
-                        <button
-                          onClick={() => navigate(`/hmrc/paye?entity=${r.entity_id}`)}
-                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                   fontFamily: font, fontSize: 13, color: '#0f172a',
-                                   textDecoration: 'underline', textDecorationStyle: 'dotted',
-                                   textDecorationColor: '#cbd5e1' }}
-                          title="Open this client’s PAYE account">
-                          {r.hmrc_name}
-                        </button>
-                      ) : (
-                        // No entity behind the scheme — the name is all there is,
-                        // and it must not look like a dead link.
-                        <span title="No Athena client linked to this PAYE scheme">{r.hmrc_name}</span>
-                      )}
-                    </td>
-                    <td style={{ ...tdNum, color: n(r.cash_movable) ? '#0f172a' : '#e2e8f0' }}>
-                      {n(r.cash_movable) ? fmtGbpDetailed(r.cash_movable) : '—'}
-                    </td>
-                    <td style={{ ...tdNum, color: n(r.credit_movable) ? '#059669' : '#e2e8f0', fontWeight: n(r.credit_movable) ? 600 : 400 }}>
-                      {n(r.credit_movable) ? fmtGbpDetailed(r.credit_movable) : '—'}
-                    </td>
-                    <td style={{ ...tdNum, color: n(r.credit_locked) ? '#c2410c' : '#e2e8f0' }}>
-                      {n(r.credit_locked) ? fmtGbpDetailed(r.credit_locked) : '—'}
-                    </td>
-                    <td style={{ ...tdNum, color: n(r.credit_age_unknown) ? '#b45309' : '#e2e8f0' }}>
-                      {n(r.credit_age_unknown) ? fmtGbpDetailed(r.credit_age_unknown) : '—'}
-                    </td>
-                    <td style={{ ...tdNum, borderLeft: '1px solid #f1f5f9' }}>
-                      {n(r.credit_total) ? fmtGbpDetailed(r.credit_total) : '—'}
-                    </td>
-                    <td style={{ ...tdNum, color: '#0369a1' }}>
-                      {n(r.credit_cis) ? fmtGbpDetailed(r.credit_cis) : '—'}
-                    </td>
-                    <td style={td}>
-                      <Pill colour={b.colour} title={b.hint} style={{ fontSize: 10.5 }}>{b.label}</Pill>
-                      {r.matched_year && (
-                        <span style={{ fontSize: 11.5, color: '#94a3b8', marginLeft: 6 }}>{r.matched_year}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc', fontWeight: 700 }}>
-                <td style={td}>{filtered.length} client{filtered.length === 1 ? '' : 's'}</td>
-                <td style={tdNum}>{fmtGbpDetailed(sum('cash_movable'))}</td>
-                <td style={{ ...tdNum, color: '#059669' }}>{fmtGbpDetailed(sum('credit_movable'))}</td>
-                <td style={{ ...tdNum, color: '#c2410c' }}>{fmtGbpDetailed(sum('credit_locked'))}</td>
-                <td style={{ ...tdNum, color: '#b45309' }}>{fmtGbpDetailed(sum('credit_age_unknown'))}</td>
-                <td style={{ ...tdNum, borderLeft: '1px solid #e5e7eb' }}>{fmtGbpDetailed(sum('credit_total'))}</td>
-                <td style={{ ...tdNum, color: '#0369a1' }}>{fmtGbpDetailed(sum('credit_cis'))}</td>
-                <td style={td} />
-              </tr>
-            </tfoot>
-          </table>
+      <div style={{ overflowX: 'auto' }}>
+        <div style={{ minWidth: 1250 }}>
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            rowKey={(r) => r.paye_ref}
+            sort={sort}
+            onSort={(s) => { setSort(s); setPage(1); }}
+            page={page}
+            onPage={setPage}
+            footer={footer}
+            empty="No clients match."
+          />
         </div>
-        <div style={{ padding: '10px 14px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6, borderTop: '1px solid #f1f5f9' }}>
-          The three credit columns add up to the credit total, so nothing is lost between them.
-          <b> Age unknown is not nil and not available</b> — it is credit HMRC holds whose year we cannot
-          read, because HMRC restates the running balance in every year’s credits history rather than
-          reporting what arose in that year. Cash and credit are never added together: only one of them
-          can be moved on request.
-        </div>
+      </div>
+      <div style={{ padding: '10px 2px', fontSize: 12.5, color: '#94a3b8', lineHeight: 1.6 }}>
+        The three credit columns add up to the credit total, so nothing is lost between them.
+        <b> Age unknown is not nil and not available</b> — it is credit HMRC holds whose year we cannot
+        read, because HMRC restates the running balance in every year’s credits history rather than
+        reporting what arose in that year. Cash and credit are never added together: only one of them
+        can be moved on request.
       </div>
     </div>
   );

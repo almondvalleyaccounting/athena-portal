@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 
 /* ─── Fetch completed tasks for a staff member within a date range ── */
 export async function fetchCompletedForWeek(staffId, weekStart, weekEnd) {
@@ -161,30 +162,32 @@ export function isDateLocked(locks, dateStr) {
 }
 
 /* ─── Fetch all completed tasks within a date range (all staff, for dashboard) ── */
+// All staff over a range can pass PostgREST's silent 1,000-row cap, which
+// would quietly short the totals — so page through every row.
 export async function fetchAllCompletedForRange(startDate, endDate) {
-  const { data, error } = await supabase
+  return fetchAllRows(() => supabase
     .from('completed_tasks')
     .select('*')
     .gte('completed_at', startDate)
     .lt('completed_at', endDate)
-    .order('completed_at', { ascending: true });
-  if (error) throw error;
-  return data || [];
+    .order('completed_at', { ascending: true })
+    .order('id', { ascending: true }));
 }
 
 /* ─── Fetch all timesheet entries within a date range (all staff, for dashboard) ── */
 export async function fetchAllTimesheetEntriesForRange(startDate, endDate) {
-  const { data, error } = await supabase
-    .from('timesheet_entries')
-    .select('*')
-    .gte('work_date', startDate)
-    .lt('work_date', endDate)
-    .order('work_date', { ascending: true });
-  if (error) {
-    if (error.code === '42P01') return [];
+  try {
+    return await fetchAllRows(() => supabase
+      .from('timesheet_entries')
+      .select('*')
+      .gte('work_date', startDate)
+      .lt('work_date', endDate)
+      .order('work_date', { ascending: true })
+      .order('id', { ascending: true }));
+  } catch (e) {
+    console.error('[timesheetQueries] fetchAllTimesheetEntriesForRange error:', e.message);
     return [];
   }
-  return data || [];
 }
 
 /* ─── Edit / delete a single timesheet entry by id (All Entries screen) ── */

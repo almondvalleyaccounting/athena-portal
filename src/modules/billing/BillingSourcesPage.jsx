@@ -7,6 +7,8 @@ import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
 import { fmtGbp } from '../../lib/money';
 import { tones } from '../../lib/tokens';
+import DataTable from '../../components/DataTable';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 
 const font = "'Outfit', sans-serif";
 
@@ -18,6 +20,8 @@ const font = "'Outfit', sans-serif";
 //                         recurring template.
 //   - Other             : no monthly recurring billing (annual-only,
 //                         one-offs, or no billing recorded)
+const SOURCE_LABEL = { template: 'QBO Template', manual: 'Manual (no template)', other: 'No monthly' };
+
 export default function BillingSourcesPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
@@ -43,11 +47,16 @@ export default function BillingSourcesPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('live_billing')
-      .select('id, qbo_recurring_txn_id, qbo_customer_id, services, entity:entities(id, name, entity_status, qbo_customer_id)')
-      .eq('status', 'active');
-    setRows((data || []).filter((r) => (r.entity?.entity_status || 'active') !== 'nlac'));
+    // Every row: PostgREST stops at 1000 without saying so.
+    let data = [];
+    try {
+      data = await fetchAllRows(() => supabase
+        .from('live_billing')
+        .select('id, qbo_recurring_txn_id, qbo_customer_id, services, entity:entities(id, name, entity_status, qbo_customer_id)')
+        .eq('status', 'active')
+        .order('id'));
+    } catch { data = []; }
+    setRows(data.filter((r) => (r.entity?.entity_status || 'active') !== 'nlac'));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -96,6 +105,45 @@ export default function BillingSourcesPage() {
     if (q) out = out.filter((r) => r.entityName.toLowerCase().includes(q));
     return out;
   }, [classified, filter, search, activeBand]);
+
+  const COLUMNS = [
+    {
+      key: 'entityName', label: 'Client',
+      render: (r) => (
+        <a href={`/clients/${r.entityId}`} onClick={(e) => { e.preventDefault(); navigate(`/clients/${r.entityId}`); }} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 500 }}>
+          {r.entityName}
+        </a>
+      ),
+    },
+    {
+      key: 'source', label: 'Source', width: 210,
+      sortValue: (r) => SOURCE_LABEL[r.source],
+      render: (r) => (
+        <>
+          {r.source === 'template' && <SourceChip tone="success" label={SOURCE_LABEL.template} title={`Template txn id ${r.qboTxnId}`} />}
+          {r.source === 'manual'   && <SourceChip tone="danger"  label={SOURCE_LABEL.manual} title="Monthly billing without a QBO recurring template — invoiced by hand" />}
+          {r.source === 'other'    && <SourceChip tone="neutral" label={SOURCE_LABEL.other} />}
+        </>
+      ),
+    },
+    { key: 'monthlyNet', label: 'Monthly £', width: 130, align: 'right', render: (r) => <span style={{ fontFamily: 'monospace' }}>{fmtGbp(r.monthlyNet)}</span> },
+    { key: 'monthlyCount', label: 'Lines', width: 90, align: 'right', render: (r) => <span style={{ color: '#64748b' }}>{r.monthlyCount}</span> },
+    {
+      key: 'qbo', label: 'QuickBooks', width: 140, align: 'right',
+      sortValue: (r) => (r.qboCustomerId ? 0 : null),
+      render: (r) => r.qboCustomerId && (
+        <a
+          href={`https://app.qbo.intuit.com/app/customerdetail?nameId=${r.qboCustomerId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}
+          title="Open this customer in QuickBooks Online"
+        >
+          Open in QBO <ExternalLink size={11} />
+        </a>
+      ),
+    },
+  ];
 
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
@@ -173,50 +221,13 @@ export default function BillingSourcesPage() {
               actions={[{ label: 'Show all', onClick: () => setFilter('all') }]}
             />
           ) : (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    <Th>Client</Th>
-                    <Th>Source</Th>
-                    <Th align="right">Monthly £</Th>
-                    <Th align="right">Lines</Th>
-                    <Th></Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((r) => (
-                    <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <Td>
-                        <a href={`/clients/${r.entityId}`} onClick={(e) => { e.preventDefault(); navigate(`/clients/${r.entityId}`); }} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 500 }}>
-                          {r.entityName}
-                        </a>
-                      </Td>
-                      <Td>
-                        {r.source === 'template' && <SourceChip tone="success" label="QBO Template" title={`Template txn id ${r.qboTxnId}`} />}
-                        {r.source === 'manual'   && <SourceChip tone="danger"  label="Manual (no template)" title="Monthly billing without a QBO recurring template — invoiced by hand" />}
-                        {r.source === 'other'    && <SourceChip tone="neutral" label="No monthly" />}
-                      </Td>
-                      <Td align="right" style={{ fontFamily: 'monospace' }}>{fmtGbp(r.monthlyNet)}</Td>
-                      <Td align="right" style={{ color: '#64748b' }}>{r.monthlyCount}</Td>
-                      <Td align="right">
-                        {r.qboCustomerId && (
-                          <a
-                            href={`https://app.qbo.intuit.com/app/customerdetail?nameId=${r.qboCustomerId}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#0e7fe0', textDecoration: 'none' }}
-                            title="Open this customer in QuickBooks Online"
-                          >
-                            Open in QBO <ExternalLink size={11} />
-                          </a>
-                        )}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={COLUMNS}
+              rows={visible}
+              defaultSort={{ key: 'entityName', dir: 'asc' }}
+              rowHref={(r) => (r.entityId ? `/clients/${r.entityId}` : null)}
+              onOpen={(href) => navigate(href)}
+            />
           )}
         </>
       )}
@@ -277,5 +288,3 @@ function Pill({ label, count, active, tone, onClick }) {
   );
 }
 
-const Th = ({ children, align }) => <th style={{ textAlign: align || 'left', padding: '8px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{children}</th>;
-const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: align || 'left', ...style }}>{children}</td>;

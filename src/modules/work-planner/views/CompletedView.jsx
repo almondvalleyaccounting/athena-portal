@@ -1,125 +1,175 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { durFmt, formatDateShort, clientName, staffName } from '../lib/helpers';
 import Avatar from '../components/Avatar';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import { deleteCompletedTask } from '../lib/supabaseQueries';
+import DataTable from '../../../components/DataTable';
+
+const sourceLabel = (t) => (t.source_type === 'quick' ? 'Quick' : 'Scheduled');
 
 export default function CompletedView() {
   const { completedTasks, staffMap, entityMap, filters, progressNotes, staffColours } = useWorkPlanner();
+  // The module only listens for completed_tasks INSERTs, so a deleted row would
+  // otherwise stay on screen until a reload. Hide it here once the delete lands.
+  const [deletedIds, setDeletedIds] = useState(() => new Set());
+  const [sort, setSort] = useState({ key: 'completed', dir: 'desc' });
+  const [page, setPage] = useState(1);
 
-  let list = [...completedTasks];
-  if (filters.teamFilter) list = list.filter((t) => t.assignee_id === filters.teamFilter);
-  if (filters.clientFilter) list = list.filter((t) => t.entity_id === filters.clientFilter);
-  if (filters.serviceFilter) list = list.filter((t) => t.service === filters.serviceFilter);
-  // Already ordered by completed_at desc from DB
+  // Back to page 1 whenever the shared filters change, so a narrowed list is
+  // not shown from the middle.
+  const filterKey = `${filters.teamFilter || ''}|${filters.clientFilter || ''}|${filters.serviceFilter || ''}`;
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+  if (pageFilterKey !== filterKey) { setPageFilterKey(filterKey); setPage(1); }
+
+  const list = useMemo(() => {
+    let l = completedTasks.filter((t) => !deletedIds.has(t.id));
+    if (filters.teamFilter) l = l.filter((t) => t.assignee_id === filters.teamFilter);
+    if (filters.clientFilter) l = l.filter((t) => t.entity_id === filters.clientFilter);
+    if (filters.serviceFilter) l = l.filter((t) => t.service === filters.serviceFilter);
+    return l;
+  }, [completedTasks, deletedIds, filters.teamFilter, filters.clientFilter, filters.serviceFilter]);
 
   // Build a lookup for completion notes by source_id
-  const completionNoteMap = {};
-  progressNotes.forEach((n) => {
-    if (n.is_completion) {
-      if (!completionNoteMap[n.task_id]) completionNoteMap[n.task_id] = [];
-      completionNoteMap[n.task_id].push(n);
-    }
-  });
+  const completionNoteMap = useMemo(() => {
+    const m = {};
+    progressNotes.forEach((n) => {
+      if (n.is_completion) {
+        if (!m[n.task_id]) m[n.task_id] = [];
+        m[n.task_id].push(n);
+      }
+    });
+    return m;
+  }, [progressNotes]);
 
   async function handleDelete(task) {
     if (!window.confirm(`Delete completed task "${task.title}"?`)) return;
     try {
       await deleteCompletedTask(task.id);
+      setDeletedIds((prev) => new Set(prev).add(task.id));
     } catch (e) {
       alert('Failed to delete: ' + (e.message || 'Unknown error'));
     }
   }
 
-  return (
-    <div style={{ padding: '12px 20px' }}>
-      {list.map((task) => (
+  const columns = [
+    {
+      key: 'assignee', label: 'Who', width: 64,
+      sortValue: (t) => (t.assignee_id ? staffName(t.assignee_id, staffMap) : null),
+      render: (t) => (t.assignee_id ? (
+        <span title={staffName(t.assignee_id, staffMap)} style={{ display: 'inline-flex' }}>
+          <Avatar id={t.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[t.assignee_id]} />
+        </span>
+      ) : (
         <div
-          key={task.id}
+          title="Unassigned"
           style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '7px 11px', background: '#fff',
-            border: '1px solid #e5e7eb', borderRadius: 8,
-            marginBottom: 3, opacity: 0.6,
-            transition: 'opacity 0.15s',
-            fontFamily: "'Outfit', sans-serif",
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#cbd5e1', display: 'inline-flex',
+            alignItems: 'center', justifyContent: 'center',
+            fontSize: 9, fontWeight: 600, color: '#fff',
+          }}
+        >
+          ?
+        </div>
+      )),
+    },
+    {
+      key: 'title', label: 'Task', wrap: true,
+      sortValue: (t) => t.title || null,
+      render: (t) => (
+        <div>
+          <div style={{
+            fontSize: 13.5, fontWeight: 500, color: '#64748b',
+            textDecoration: t.not_required ? 'none' : 'line-through',
+          }}>
+            {t.title}
+            {t.not_required && (
+              <span style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginLeft: 4 }}>
+                not required
+              </span>
+            )}
+          </div>
+          {(completionNoteMap[t.source_id] || []).map((n) => (
+            <div key={n.id} style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>
+              &ldquo;{n.note}&rdquo;
+              <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 11 }}>
+                &mdash; {(n.created_by_name || '').split(' ')[0]}
+              </span>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'client', label: 'Client', width: '20%',
+      sortValue: (t) => (t.entity_id ? clientName(t.entity_id, entityMap) : null),
+      render: (t) => (
+        <span style={{ fontSize: 13, color: '#64748b' }}>
+          {t.entity_id ? clientName(t.entity_id, entityMap) : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'service', label: 'Service', width: '14%',
+      sortValue: (t) => t.service || null,
+      render: (t) => <span style={{ fontSize: 13, color: '#64748b' }}>{t.service || ''}</span>,
+    },
+    {
+      key: 'source', label: 'Type', width: 100,
+      sortValue: sourceLabel,
+      render: (t) => <span style={{ fontSize: 13, color: '#64748b' }}>{sourceLabel(t)}</span>,
+    },
+    {
+      key: 'mins', label: 'Time', width: 80, align: 'right',
+      sortValue: (t) => (t.completion_mins ? Number(t.completion_mins) : null),
+      render: (t) => (t.completion_mins ? (
+        <span style={{ fontSize: 13, color: '#0e7fe0', fontWeight: 500 }}>{durFmt(t.completion_mins)}</span>
+      ) : null),
+    },
+    {
+      key: 'completed', label: 'Completed', width: 110, align: 'right',
+      sortValue: (t) => t.completed_at || null,
+      render: (t) => (
+        <span style={{ fontSize: 13, color: '#94a3b8' }}>
+          {t.completed_at ? formatDateShort(t.completed_at) : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'delete', label: '', width: 48, align: 'center', sortable: false,
+      render: (t) => (
+        <button
+          onClick={() => handleDelete(t)}
+          title="Delete"
+          aria-label={`Delete completed task ${t.title || ''}`}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            padding: 3, opacity: 0.3, transition: 'opacity 0.15s', flexShrink: 0,
           }}
           onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
         >
-          {task.assignee_id ? (
-            <Avatar id={task.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[task.assignee_id]} />
-          ) : (
-            <div style={{
-              width: 20, height: 20, borderRadius: '50%',
-              background: '#cbd5e1', display: 'inline-flex',
-              alignItems: 'center', justifyContent: 'center',
-              fontSize: 9, fontWeight: 600, color: '#fff',
-            }}>
-              ?
-            </div>
-          )}
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+            <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      ),
+    },
+  ];
 
-          <div style={{ flex: 1 }}>
-            <div style={{
-              fontSize: 13, fontWeight: 500, color: '#64748b',
-              textDecoration: task.not_required ? 'none' : 'line-through',
-            }}>
-              {task.title}
-              {task.not_required && (
-                <span style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginLeft: 4 }}>
-                  not required
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>
-              {task.entity_id ? clientName(task.entity_id, entityMap) + ' \u00B7 ' : ''}
-              {task.service || ''}
-              {' \u00B7 '}
-              {task.source_type === 'quick' ? 'Quick' : 'Scheduled'}
-            </div>
-            {(completionNoteMap[task.source_id] || []).map((n) => (
-              <div key={n.id} style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', marginTop: 2 }}>
-                &ldquo;{n.note}&rdquo;
-                <span style={{ color: '#94a3b8', marginLeft: 4, fontSize: 10 }}>
-                  &mdash; {(n.created_by_name || '').split(' ')[0]}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {task.completion_mins ? (
-            <div style={{ fontSize: 11, color: '#0e7fe0', fontWeight: 500 }}>
-              {durFmt(task.completion_mins)}
-            </div>
-          ) : null}
-
-          <div style={{ fontSize: 10, color: '#94a3b8' }}>
-            {task.completed_at ? formatDateShort(task.completed_at) : ''}
-          </div>
-
-          <button
-            onClick={() => handleDelete(task)}
-            title="Delete"
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: 3, opacity: 0.3, transition: 'opacity 0.15s', flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
-          >
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-              <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-        </div>
-      ))}
-
-      {list.length === 0 && (
-        <div style={{ padding: 28, textAlign: 'center', color: '#cbd5e1', fontSize: 12 }}>
-          No completed tasks.
-        </div>
-      )}
+  return (
+    <div style={{ padding: '12px 20px', fontFamily: "'Outfit', sans-serif" }}>
+      <DataTable
+        columns={columns}
+        rows={list}
+        sort={sort}
+        onSort={(next) => { setSort(next); setPage(1); }}
+        page={page}
+        onPage={setPage}
+        // Done work reads faded and comes to full strength on hover, as before.
+        rowStyle={() => ({ opacity: 0.6 })}
+        empty="No completed tasks."
+      />
     </div>
   );
 }

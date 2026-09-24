@@ -8,6 +8,8 @@ import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
 import { fmtGbp } from '../../lib/money';
 import { tones } from '../../lib/tokens';
+import DataTable from '../../components/DataTable';
+import { Btn } from '../../components/ui';
 
 const font = "'Outfit', sans-serif";
 
@@ -40,26 +42,31 @@ export default function BillingAddNewPage() {
 
   const load = async () => {
     setLoading(true);
-    // `allocs` comes back as a plain array (fetchAllRows), the rest as { data }.
-    const [{ data: ents }, allocs, { data: items }] = await Promise.all([
-      supabase
+    // All three paged (fetchAllRows): the API silently stops at 1000 rows.
+    let ents = [], allocs = [], items = [];
+    try {
+      [ents, allocs, items] = await Promise.all([
+      fetchAllRows(() => supabase
         .from('entities')
         .select('id, name, type, bm_client_id')
         .eq('entity_status', 'active')
         .eq('source', 'brightmanager')
         .is('qbo_customer_id', null)
-        .order('name', { ascending: true }),
+        .order('name', { ascending: true })
+        .order('id')),
       // Paged: 909 rows, and the API silently stops at 1000.
       fetchAllRows(() => supabase
         .from('v_inferred_allocations')
         .select('entity_id, canonical_service_id')
         .order('entity_id').order('canonical_service_id')),
-      supabase
+      fetchAllRows(() => supabase
         .from('qbo_items')
         .select('qbo_item_id, name, description, type, unit_price, active')
         .eq('active', true)
-        .order('name', { ascending: true }),
-    ]);
+        .order('name', { ascending: true })
+        .order('qbo_item_id')),
+      ]);
+    } catch { /* leave the lists empty rather than stuck on Loading */ }
     setQboItems(items || []);
 
     const servicesByEntity = new Map();
@@ -140,6 +147,42 @@ export default function BillingAddNewPage() {
     await load();
   };
 
+  const typeLabel = (c) => c.type?.replace('_', ' ');
+  const serviceLabels = (c) => c.services.map((sid) => SERVICE_BY_ID[sid]?.label || sid);
+  const columns = [
+    {
+      key: 'name', label: 'Client',
+      render: (c) => (
+        <a href={`/clients/${c.id}`} onClick={(e) => { e.preventDefault(); navigate(`/clients/${c.id}`); }} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 500 }}>
+          {c.name}
+        </a>
+      ),
+    },
+    { key: 'type', label: 'Type', width: 150, sortValue: typeLabel, render: (c) => <span style={{ color: '#64748b', textTransform: 'capitalize' }}>{typeLabel(c)}</span> },
+    { key: 'bm_client_id', label: 'BM ref', width: 120, render: (c) => <span style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 12 }}>{c.bm_client_id || '—'}</span> },
+    {
+      key: 'services', label: 'Services switched on', wrap: true,
+      sortValue: (c) => serviceLabels(c).join(', '),
+      render: (c) => (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {c.services.map((sid) => (
+            <span key={sid} style={{ fontSize: 11, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: '#475569' }}>
+              {SERVICE_BY_ID[sid]?.label || sid}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: 'action', label: '', width: 150, align: 'right', sortable: false,
+      render: (c) => (
+        <Btn onClick={() => setAdding(c)} disabled={saving} className="inline-flex items-center gap-1">
+          <Plus size={12} /> Add billing
+        </Btn>
+      ),
+    },
+  ];
+
   return (
     <div style={{ padding: '20px 28px', fontFamily: font }}>
       <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 500, color: '#0f172a', marginBottom: 2 }}>
@@ -182,50 +225,13 @@ export default function BillingAddNewPage() {
               actions={[{ label: 'Show all', onClick: () => { setTypeFilter('all'); setSearch(''); } }]}
             />
           ) : (
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    <Th>Client</Th>
-                    <Th>Type</Th>
-                    <Th>BM Ref</Th>
-                    <Th>Services switched on</Th>
-                    <Th></Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((c) => (
-                    <tr key={c.id} style={{ borderTop: '1px solid #f1f5f9' }}>
-                      <Td>
-                        <a href={`/clients/${c.id}`} onClick={(e) => { e.preventDefault(); navigate(`/clients/${c.id}`); }} style={{ color: '#0f172a', textDecoration: 'none', fontWeight: 500 }}>
-                          {c.name}
-                        </a>
-                      </Td>
-                      <Td style={{ color: '#64748b', textTransform: 'capitalize' }}>{c.type?.replace('_', ' ')}</Td>
-                      <Td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 12 }}>{c.bm_client_id || '—'}</Td>
-                      <Td>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {c.services.map((sid) => (
-                            <span key={sid} style={{ fontSize: 11, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: '#475569' }}>
-                              {SERVICE_BY_ID[sid]?.label || sid}
-                            </span>
-                          ))}
-                        </div>
-                      </Td>
-                      <Td align="right">
-                        <button
-                          onClick={() => setAdding(c)}
-                          disabled={saving}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, padding: '5px 10px', background: '#1E4560', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font }}
-                        >
-                          <Plus size={12} /> Add billing
-                        </button>
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={columns}
+              rows={visible}
+              defaultSort={{ key: 'name', dir: 'asc' }}
+              rowHref={(c) => `/clients/${c.id}`}
+              onOpen={(href) => navigate(href)}
+            />
           )}
         </>
       )}

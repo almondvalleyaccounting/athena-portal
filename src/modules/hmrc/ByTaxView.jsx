@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Download, TriangleAlert } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbpDetailed } from '../../lib/money';
 import { downloadCSV } from '../../lib/exportUtils';
 import SearchInput from '../../components/SearchInput';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
+import DataTable from '../../components/DataTable';
 import {
   font, Pill, ErrorBar, shortDate, th, thNum, td, tdNum, card,
   LevelTrail, TAX_META,
@@ -73,6 +75,21 @@ export default function ByTaxView({ tax = 'corporation-tax', clients = [] }) {
   );
 }
 
+// The order DataTable puts rows in, so the export matches the screen.
+function sortLike(list, columns, sort) {
+  const col = columns.find((c) => c.key === sort?.key);
+  if (!col) return list;
+  const get = col.sortValue || ((r) => r[col.key]);
+  const dir = sort.dir === 'desc' ? -1 : 1;
+  return [...list].sort((a, b) => {
+    const va = get(a); const vb = get(b);
+    const ea = va == null || va === ''; const eb = vb == null || vb === '';
+    if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'en-GB', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+}
+
 // ── level 0-and-a-half: every client on this head ──────────────────
 function RankedList({ tax, onPick }) {
   const [rows, setRows] = useState([]);
@@ -81,7 +98,13 @@ function RankedList({ tax, onPick }) {
   const [search, setSearch] = useState('');
   const [letter, setLetter] = useState(null);
   const [owingOnly, setOwingOnly] = useState(true);
-  const [sort, setSort] = useState('total');
+  // Sorting is on the column headings. Total owed, largest first, is the
+  // default it always was.
+  const [sort, setSort] = useState({ key: 'total', dir: 'desc' });
+  const [page, setPage] = useState(1);
+
+  const onSearch = (v) => { setSearch(v); setPage(1); };
+  const onLetter = (v) => { setLetter(v); setPage(1); };
 
   const VIEW = {
     'corporation-tax': 'v_hmrc_ct_by_client',
@@ -92,29 +115,31 @@ function RankedList({ tax, onPick }) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    supabase.from(VIEW).select('*').limit(2000)
-      .then(({ data, error: e }) => {
-        if (cancelled) return;
-        if (e) setError(e.message); else setError('');
-        setRows(data || []);
-      })
-      .then(() => { if (!cancelled) setLoading(false); });
+    // A new head has different columns, so start again from its default.
+    setSort({ key: 'total', dir: 'desc' });
+    setPage(1);
+    // One row per client per tax (sql/222), but PostgREST still caps a fetch at
+    // 1000 and truncates SILENTLY — `.limit(2000)` does not raise it — so page
+    // through the lot. Unmatched rows have no entity_id, hence the tie-breakers.
+    fetchAllRows(() => supabase.from(VIEW).select('*')
+      .order('entity_id', { nullsFirst: false }).order('reference').order('name'))
+      .then((data) => { if (!cancelled) { setError(''); setRows(data); } })
+      .catch((e) => { if (!cancelled) { setError(e.message || 'Could not load this tax'); setRows([]); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [VIEW]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const out = rows.filter((r) => {
+    // The table does the sorting, from the column headings.
+    return rows.filter((r) => {
       const name = r.name || '';
       if (letter && letter !== 'All' && firstCharBucket(name) !== letter) return false;
       if (owingOnly && n(r.total) <= 0 && n(r.credit) <= 0) return false;
       if (q && !`${name} ${r.reference || ''}`.toLowerCase().includes(q)) return false;
       return true;
     });
-    return sort === 'name'
-      ? [...out].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-      : [...out].sort((a, b) => n(b[sort]) - n(a[sort]));
-  }, [rows, search, letter, owingOnly, sort]);
+  }, [rows, search, letter, owingOnly]);
 
   const sum = (k, set = filtered) => set.reduce((s, r) => s + n(r[k]), 0);
   const meta = TAX_META[tax];
@@ -146,46 +171,126 @@ function RankedList({ tax, onPick }) {
     };
   }, [rows]);
 
+  // Per-head columns. `get` is what is shown and exported; `sort` is what the
+  // heading sorts on where that differs (dates, and "3/5" period counts).
+  // Every option the old sort menu offered is one of these headings.
   const COLUMNS = {
     'corporation-tax': [
-      ['Periods',        (r) => `${r.unpaid_periods}/${r.periods}`, 'c'],
-      ['Oldest unpaid',  (r) => shortDate(r.oldest_unpaid), 'c'],
-      ['Tax',            (r) => r.tax_amount, 'n'],
-      ['Interest',       (r) => r.interest, 'n'],
-      ['Penalties',      (r) => r.penalties, 'n'],
-      ['Paid',           (r) => r.paid, 'n'],
-      ['Repaid/realloc', (r) => r.moved, 'n'],
+      { key: 'periods',       label: 'Periods',        get: (r) => `${r.unpaid_periods}/${r.periods}`, kind: 'c', sort: (r) => n(r.unpaid_periods) },
+      { key: 'oldest_unpaid', label: 'Oldest unpaid',  get: (r) => shortDate(r.oldest_unpaid), kind: 'c', sort: (r) => r.oldest_unpaid },
+      { key: 'tax_amount',    label: 'Tax',            get: (r) => r.tax_amount, kind: 'n' },
+      { key: 'interest',      label: 'Interest',       get: (r) => r.interest, kind: 'n' },
+      { key: 'penalties',     label: 'Penalties',      get: (r) => r.penalties, kind: 'n' },
+      { key: 'paid',          label: 'Paid',           get: (r) => r.paid, kind: 'n' },
+      { key: 'moved',         label: 'Repaid/realloc', get: (r) => r.moved, kind: 'n' },
     ],
     'vat': [
-      ['Lines',         (r) => r.lines, 'c'],
-      ['Overdue',       (r) => r.overdue_lines || '—', 'c'],
-      ['Assessed',      (r) => r.assessed_lines || '—', 'c'],
-      ['Assessed value',(r) => r.assessed_value, 'n'],
-      ['Oldest unpaid', (r) => shortDate(r.oldest_unpaid), 'c'],
+      { key: 'lines',          label: 'Lines',          get: (r) => r.lines, kind: 'c', sort: (r) => n(r.lines) },
+      { key: 'overdue_lines',  label: 'Overdue',        get: (r) => r.overdue_lines || '—', kind: 'c', sort: (r) => n(r.overdue_lines) },
+      { key: 'assessed_lines', label: 'Assessed',       get: (r) => r.assessed_lines || '—', kind: 'c', sort: (r) => n(r.assessed_lines) },
+      { key: 'assessed_value', label: 'Assessed value', get: (r) => r.assessed_value, kind: 'n' },
+      { key: 'oldest_unpaid',  label: 'Oldest unpaid',  get: (r) => shortDate(r.oldest_unpaid), kind: 'c', sort: (r) => r.oldest_unpaid },
     ],
     'self-assessment': [
-      ['Tax',        (r) => r.tax_amount, 'n'],
-      ['Surcharges', (r) => r.surcharges, 'n'],
-      ['Interest',   (r) => r.interest, 'n'],
-      ['Penalties',  (r) => r.penalties, 'n'],
-      ['Credit held',(r) => r.credit, 'n'],
-      ['Paid',       (r) => r.paid, 'n'],
-      ['Repaid out', (r) => r.repaid, 'n'],
-      ['Credit in',  (r) => r.credit_in, 'n'],
-      ['Last paid',  (r) => shortDate(r.last_paid), 'c'],
-      ['As at',      (r) => shortDate(r.as_at), 'c'],
+      { key: 'tax_amount', label: 'Tax',         get: (r) => r.tax_amount, kind: 'n' },
+      { key: 'surcharges', label: 'Surcharges',  get: (r) => r.surcharges, kind: 'n' },
+      { key: 'interest',   label: 'Interest',    get: (r) => r.interest, kind: 'n' },
+      { key: 'penalties',  label: 'Penalties',   get: (r) => r.penalties, kind: 'n' },
+      { key: 'credit',     label: 'Credit held', get: (r) => r.credit, kind: 'n' },
+      { key: 'paid',       label: 'Paid',        get: (r) => r.paid, kind: 'n' },
+      { key: 'repaid',     label: 'Repaid out',  get: (r) => r.repaid, kind: 'n' },
+      { key: 'credit_in',  label: 'Credit in',   get: (r) => r.credit_in, kind: 'n' },
+      { key: 'last_paid',  label: 'Last paid',   get: (r) => shortDate(r.last_paid), kind: 'c', sort: (r) => r.last_paid },
+      { key: 'as_at',      label: 'As at',       get: (r) => shortDate(r.as_at), kind: 'c', sort: (r) => r.as_at },
     ],
   }[tax];
+
+  const columns = [
+    {
+      key: 'name', label: 'Client',
+      sortValue: (r) => r.name || '',
+      render: (r) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {r.unreadable && (
+            <TriangleAlert size={12} style={{ color: '#b45309', flexShrink: 0 }}
+              title="At least one period could not be parsed — treat its figures as unknown, not zero" />
+          )}
+          <button onClick={() => r.entity_id && onPick(r.entity_id)}
+            disabled={!r.entity_id}
+            title={r.entity_id
+              ? `Open ${r.name}'s ${meta.label} — what this figure is made of`
+              : 'Not matched to an Athena client, so there is nothing to open'}
+            style={{
+              background: 'none', border: 'none', padding: 0,
+              cursor: r.entity_id ? 'pointer' : 'default',
+              fontFamily: font, fontSize: 13.5, fontWeight: 500,
+              color: r.entity_id ? '#0f172a' : '#94a3b8', textAlign: 'left',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+            }}>
+            {r.name}
+          </button>
+          {r.no_statement && (
+            <Pill colour="#b45309" style={{ fontSize: 11, flexShrink: 0 }}
+              title="HMRC would not show the statement, so a zero here is unknown rather than nil">
+              No statement
+            </Pill>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'reference', label: 'Reference', width: 140,
+      render: (r) => <span style={{ fontSize: 12.5, color: '#64748b' }}>{r.reference}</span>,
+    },
+    ...COLUMNS.map((c) => (c.kind === 'n' ? {
+      key: c.key, label: c.label, align: 'right', width: 120,
+      sortValue: (r) => n(c.get(r)),
+      render: (r) => {
+        const v = c.get(r);
+        return (
+          <span style={{ color: n(v) ? '#0f172a' : '#e2e8f0', fontVariantNumeric: 'tabular-nums' }}>
+            {n(v) ? fmtGbpDetailed(v) : '—'}
+          </span>
+        );
+      },
+    } : {
+      key: c.key, label: c.label, align: 'center', width: 115,
+      sortValue: c.sort,
+      render: (r) => <span style={{ fontSize: 12.5, color: '#64748b' }}>{c.get(r) ?? '—'}</span>,
+    })),
+    {
+      key: 'total', label: 'Total owed', align: 'right', width: 130,
+      sortValue: (r) => n(r.total),
+      render: (r) => (
+        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+                       color: n(r.total) > 0 ? '#b91c1c' : n(r.total) < 0 ? '#059669' : '#0f172a' }}>
+          {fmtGbpDetailed(r.total)}
+        </span>
+      ),
+    },
+  ];
+
+  // Totals over every filtered row, not just the page on screen.
+  const footer = (set) => ({
+    name: `${set.length} clients`,
+    ...Object.fromEntries(COLUMNS.filter((c) => c.kind === 'n').map((c) => [
+      c.key, fmtGbpDetailed(set.reduce((s, r) => s + n(c.get(r)), 0)),
+    ])),
+    total: <span style={{ color: '#b91c1c' }}>{fmtGbpDetailed(sum('total', set))}</span>,
+  });
+
+  // Enough room for every column before the table scrolls sideways.
+  const minWidth = 280 + 140 + 130 + COLUMNS.reduce((s, c) => s + (c.kind === 'n' ? 120 : 115), 0);
 
   const exportCsv = () => {
     downloadCSV(
       `hmrc-${tax}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Client', 'Reference', ...COLUMNS.map(([l]) => l), 'Total owed'],
-      filtered.map((r) => [
+      ['Client', 'Reference', ...COLUMNS.map((c) => c.label), 'Total owed'],
+      sortLike(filtered, columns, sort).map((r) => [
         r.name || '', r.reference || '',
-        ...COLUMNS.map(([, get, kind]) => {
-          const v = get(r);
-          return kind === 'n' ? n(v).toFixed(2) : String(v ?? '');
+        ...COLUMNS.map((c) => {
+          const v = c.get(r);
+          return c.kind === 'n' ? n(v).toFixed(2) : String(v ?? '');
         }),
         n(r.total).toFixed(2),
       ]),
@@ -215,27 +320,15 @@ function RankedList({ tax, onPick }) {
       )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Client or reference…" style={{ minWidth: 240 }} />
+        <SearchInput value={search} onChange={onSearch} placeholder="Client or reference…" style={{ minWidth: 240 }} />
         <label style={{ fontSize: 13, color: '#64748b', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <input type="checkbox" checked={owingOnly} onChange={(e) => setOwingOnly(e.target.checked)} />
+          <input type="checkbox" checked={owingOnly} onChange={(e) => { setOwingOnly(e.target.checked); setPage(1); }} />
           With a balance only
         </label>
         <span style={{ fontSize: 13, color: '#64748b' }}>
           {filtered.length} shown · <b style={{ color: '#b91c1c' }}>{fmtGbpDetailed(sum('total'))}</b>
         </span>
         <div style={{ flex: 1 }} />
-        <select value={sort} onChange={(e) => setSort(e.target.value)}
-                style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff' }}>
-          <option value="total">Sort: total owed</option>
-          {tax === 'corporation-tax' && <option value="interest">Sort: interest</option>}
-          {tax === 'corporation-tax' && <option value="moved">Sort: repaid / reallocated</option>}
-          {tax === 'vat' && <option value="assessed_value">Sort: assessed value</option>}
-          {tax === 'self-assessment' && <option value="credit">Sort: credit held</option>}
-          {tax === 'self-assessment' && <option value="paid">Sort: paid to HMRC</option>}
-          {tax === 'self-assessment' && <option value="repaid">Sort: repaid out</option>}
-          {tax === 'self-assessment' && <option value="credit_in">Sort: credit in from another tax</option>}
-          <option value="name">Sort: name</option>
-        </select>
         <button onClick={exportCsv} disabled={filtered.length === 0}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px',
@@ -247,101 +340,32 @@ function RankedList({ tax, onPick }) {
         </button>
       </div>
 
-      <AlphabetFilter items={rows} nameKey="name" selected={letter} onChange={setLetter} />
+      <AlphabetFilter items={rows} nameKey="name" selected={letter} onChange={onLetter} />
 
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 14, padding: 24 }}>Loading {meta.label}…</div>
       ) : (
-        <div style={{ ...card, marginTop: 8 }}>
+        <div style={{ marginTop: 8 }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 13.5, borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', fontSize: 11, color: '#64748b' }}>
-                  <th style={th}>Client</th>
-                  <th style={th}>Reference</th>
-                  {COLUMNS.map(([label, , kind]) => (
-                    <th key={label} style={kind === 'n' ? thNum : { ...th, textAlign: 'center' }}>{label}</th>
-                  ))}
-                  <th style={{ ...thNum, borderLeft: '1px solid #e5e7eb' }}>Total owed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 && (
-                  <tr><td colSpan={COLUMNS.length + 3} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-                    No clients match.
-                  </td></tr>
-                )}
-                {filtered.map((r) => (
-                  <tr key={r.entity_id || r.reference} style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <td style={td}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {r.unreadable && (
-                          <TriangleAlert size={12} style={{ color: '#b45309', flexShrink: 0 }}
-                            title="At least one period could not be parsed — treat its figures as unknown, not zero" />
-                        )}
-                        <button onClick={() => r.entity_id && onPick(r.entity_id)}
-                          disabled={!r.entity_id}
-                          title={r.entity_id
-                            ? `Open ${r.name}'s ${meta.label} — what this figure is made of`
-                            : 'Not matched to an Athena client, so there is nothing to open'}
-                          style={{
-                            background: 'none', border: 'none', padding: 0,
-                            cursor: r.entity_id ? 'pointer' : 'default',
-                            fontFamily: font, fontSize: 13.5, fontWeight: 500,
-                            color: r.entity_id ? '#0f172a' : '#94a3b8', textAlign: 'left',
-                          }}>
-                          {r.name}
-                        </button>
-                        {r.no_statement && (
-                          <Pill colour="#b45309" style={{ fontSize: 11 }}
-                            title="HMRC would not show the statement, so a zero here is unknown rather than nil">
-                            No statement
-                          </Pill>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ ...td, fontSize: 12.5, color: '#64748b' }}>{r.reference}</td>
-                    {COLUMNS.map(([label, get, kind]) => {
-                      const v = get(r);
-                      return kind === 'n' ? (
-                        <td key={label} style={{ ...tdNum, color: n(v) ? '#0f172a' : '#e2e8f0' }}>
-                          {n(v) ? fmtGbpDetailed(v) : '—'}
-                        </td>
-                      ) : (
-                        <td key={label} style={{ ...td, textAlign: 'center', fontSize: 12.5, color: '#64748b' }}>
-                          {v ?? '—'}
-                        </td>
-                      );
-                    })}
-                    <td style={{ ...tdNum, fontWeight: 700, borderLeft: '1px solid #f1f5f9',
-                                 color: n(r.total) > 0 ? '#b91c1c' : n(r.total) < 0 ? '#059669' : '#0f172a' }}>
-                      {fmtGbpDetailed(r.total)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              {filtered.length > 0 && (
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f8fafc', fontWeight: 700 }}>
-                    <td style={td} colSpan={2}>{filtered.length} clients</td>
-                    {COLUMNS.map(([label, get, kind]) => (
-                      <td key={label} style={kind === 'n' ? tdNum : { ...td, textAlign: 'center' }}>
-                        {kind === 'n' ? fmtGbpDetailed(filtered.reduce((s, r) => s + n(get(r)), 0)) : ''}
-                      </td>
-                    ))}
-                    <td style={{ ...tdNum, borderLeft: '1px solid #e5e7eb', color: '#b91c1c' }}>
-                      {fmtGbpDetailed(sum('total'))}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+            <div style={{ minWidth }}>
+              <DataTable
+                columns={columns}
+                rows={filtered}
+                rowKey={(r) => r.entity_id || r.reference}
+                sort={sort}
+                onSort={(s) => { setSort(s); setPage(1); }}
+                page={page}
+                onPage={setPage}
+                footer={footer}
+                empty="No clients match."
+              />
+            </div>
           </div>
 
           {orphaned.rows > 0 && (
             <div style={{
-              borderTop: '1px solid #fde68a', background: '#fffbeb', padding: '9px 14px',
-              fontSize: 13, color: '#78350f', lineHeight: 1.5, whiteSpace: 'normal',
+              border: '1px solid #fde68a', borderRadius: 8, background: '#fffbeb', padding: '9px 14px',
+              marginTop: 10, fontSize: 13, color: '#78350f', lineHeight: 1.5, whiteSpace: 'normal',
             }}>
               <b>{fmtGbpDetailed(orphaned.total)}</b> is excluded from this table:{' '}
               {orphaned.names.length} HMRC record{orphaned.names.length === 1 ? '' : 's'} could not be matched

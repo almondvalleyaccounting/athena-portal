@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Globe, RotateCcw } from 'lucide-react';
 import { useAuth } from './AppShell';
 import { listPortalClients, revokePortalAccess, reinvitePortalUser } from './portalAccessApi';
+import DataTable from '../components/DataTable';
+import SearchInput from '../components/SearchInput';
+import { Btn } from '../components/ui';
 
 const font = "'Outfit', sans-serif";
 
@@ -18,6 +21,11 @@ const font = "'Outfit', sans-serif";
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
+// Status as the words shown in the chip, so search matches what is read.
+const statusText = (row) =>
+  (row.claimed_at ? `Active since ${fmtDate(row.claimed_at)}` : `Invited ${fmtDate(row.invited_at)}`) +
+  (row.claimed_at && row.has_membership === false ? ' no data access' : '');
+
 export default function PortalClientsPage() {
   const { profile } = useAuth();
   const [rows, setRows] = useState([]);
@@ -25,6 +33,9 @@ export default function PortalClientsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null); // invite_id while revoking / re-inviting
   const [msg, setMsg] = useState(null); // { tone, text }
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState(null); // null = the RPC's order: client, then email
+  const [page, setPage] = useState(1);
 
   const canManage = profile?.can_manage_portal === true;
 
@@ -80,13 +91,76 @@ export default function PortalClientsPage() {
     setBusy(null);
   };
 
-  const thStyle = {
-    textAlign: 'left', padding: '10px 14px', fontWeight: 600, color: '#0f172a',
-    borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 14,
-  };
-  const tdStyle = {
-    padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 14, color: '#334155',
-  };
+  const visibleRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.email, r.entity_name, statusText(r), r.last_sign_in_at ? fmtDate(r.last_sign_in_at) : '']
+        .some((v) => (v || '').toLowerCase().includes(q)));
+  }, [rows, search]);
+
+  const columns = [
+    {
+      key: 'email', label: 'Email', width: '30%',
+      render: (row) => <span style={{ fontWeight: 500, color: '#0f172a' }}>{row.email}</span>,
+    },
+    {
+      key: 'entity_name', label: 'Client', width: '28%',
+      render: (row) => <span style={{ color: '#334155' }}>{row.entity_name}</span>,
+    },
+    {
+      key: 'status', label: 'Status', wrap: true,
+      // Active before invited; within each, the date.
+      sortValue: (row) => (row.claimed_at ? `0 ${row.claimed_at}` : `1 ${row.invited_at || ''}`),
+      render: (row) => (
+        <>
+          {row.claimed_at ? (
+            <span
+              style={{
+                fontSize: 13, fontWeight: 600, color: '#16a34a',
+                background: '#f0fdf4', border: '1px solid #bbf7d0',
+                borderRadius: 8, padding: '2px 10px', whiteSpace: 'nowrap',
+              }}
+            >
+              Active since {fmtDate(row.claimed_at)}
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: 13, fontWeight: 600, color: '#64748b',
+                background: '#f8fafc', border: '1px solid #e5e7eb',
+                borderRadius: 8, padding: '2px 10px', whiteSpace: 'nowrap',
+              }}
+            >
+              Invited {fmtDate(row.invited_at)}
+            </span>
+          )}
+          {row.claimed_at && row.has_membership === false && (
+            <span style={{ fontSize: 12, color: '#d97706', marginLeft: 8 }}>
+              no data access
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'last_sign_in_at', label: 'Last sign-in', width: 130,
+      sortValue: (row) => row.last_sign_in_at || null,
+      render: (row) => (
+        <span style={{ color: row.last_sign_in_at ? '#334155' : '#cbd5e1' }}>
+          {row.last_sign_in_at ? fmtDate(row.last_sign_in_at) : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'revoke', label: '', width: 120, align: 'right', sortable: false,
+      render: (row) => (
+        <Btn variant="danger" onClick={() => revoke(row)} disabled={busy === row.invite_id}>
+          {busy === row.invite_id ? 'Revoking...' : 'Revoke'}
+        </Btn>
+      ),
+    },
+  ];
 
   if (!canManage) {
     return (
@@ -126,7 +200,22 @@ export default function PortalClientsPage() {
         </div>
       )}
 
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+      {!loading && rows.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <SearchInput
+            value={search}
+            onChange={(v) => { setSearch(v); setPage(1); }}
+            placeholder="Email, client, status or date"
+            style={{ flex: '1 1 280px', maxWidth: 360 }}
+            inputStyle={{ padding: '8px 28px 8px 12px', fontSize: 14, borderRadius: 8 }}
+          />
+          <span style={{ fontSize: 13, color: '#94a3b8' }}>
+            {visibleRows.length === rows.length ? `${rows.length} invite${rows.length === 1 ? '' : 's'}` : `${visibleRows.length} of ${rows.length} shown`}
+          </span>
+        </div>
+      )}
+
+      <div style={loading || rows.length === 0 ? { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' } : undefined}>
         {loading ? (
           <p style={{ fontSize: 14.5, color: '#94a3b8', padding: '20px 24px' }}>Loading portal clients...</p>
         ) : rows.length === 0 ? (
@@ -137,71 +226,16 @@ export default function PortalClientsPage() {
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: font }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Client</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={thStyle}>Last sign-in</th>
-                  <th style={{ ...thStyle, width: '1%' }} />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.invite_id}>
-                    <td style={{ ...tdStyle, fontWeight: 500, color: '#0f172a' }}>{row.email}</td>
-                    <td style={tdStyle}>{row.entity_name}</td>
-                    <td style={tdStyle}>
-                      {row.claimed_at ? (
-                        <span
-                          style={{
-                            fontSize: 13, fontWeight: 600, color: '#16a34a',
-                            background: '#f0fdf4', border: '1px solid #bbf7d0',
-                            borderRadius: 8, padding: '2px 10px', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Active since {fmtDate(row.claimed_at)}
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: 13, fontWeight: 600, color: '#64748b',
-                            background: '#f8fafc', border: '1px solid #e5e7eb',
-                            borderRadius: 8, padding: '2px 10px', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          Invited {fmtDate(row.invited_at)}
-                        </span>
-                      )}
-                      {row.claimed_at && row.has_membership === false && (
-                        <span style={{ fontSize: 12, color: '#d97706', marginLeft: 8 }}>
-                          no data access
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ ...tdStyle, color: row.last_sign_in_at ? '#334155' : '#cbd5e1', whiteSpace: 'nowrap' }}>
-                      {row.last_sign_in_at ? fmtDate(row.last_sign_in_at) : '—'}
-                    </td>
-                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                      <button
-                        onClick={() => revoke(row)}
-                        disabled={busy === row.invite_id}
-                        style={{
-                          fontFamily: font, fontSize: 13, fontWeight: 600, color: '#ef4444',
-                          background: 'none', border: '1px solid #fecaca', borderRadius: 8,
-                          padding: '5px 12px', cursor: busy === row.invite_id ? 'wait' : 'pointer',
-                        }}
-                      >
-                        {busy === row.invite_id ? 'Revoking...' : 'Revoke'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={columns}
+            rows={visibleRows}
+            rowKey={(r) => r.invite_id}
+            sort={sort}
+            onSort={(next) => { setSort(next); setPage(1); }}
+            page={page}
+            onPage={setPage}
+            empty="No portal invites match. Try a different search."
+          />
         )}
       </div>
 

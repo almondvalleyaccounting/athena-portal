@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { LifeBuoy, Plus, X, Send, CheckCircle2, ExternalLink, Rows3, Rows2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { useAuth } from '../../shell/AppShell';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import ActionPlanSection from './ActionPlanSection';
@@ -80,9 +81,12 @@ export default function TriageBoardPage() {
   const load = useCallback(async () => {
     try {
       const [{ data: cs, error: e1 }, { data: st }, { data: ents }] = await Promise.all([
-        supabase.from('triage_cases')
+        // Every case, not the first 1000 — PostgREST caps a response silently.
+        fetchAllRows(() => supabase.from('triage_cases')
           .select('*, entity:entities(id, name, company_status, company_status_detail, entity_status)')
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true }))
+          .then((data) => ({ data, error: null }), (error) => ({ data: null, error })),
         supabase.from('staff_profiles').select('id, name, is_active'),
         supabase.from('entities').select('id, name, entity_status').order('name'),
       ]);

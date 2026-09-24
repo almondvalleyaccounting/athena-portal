@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation, useSearchParams } from 'react-router-dom';
 import { Landmark } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fetchLatestRunPerService, fetchStaleClients } from './hmrcApi';
 import AuthorisationsView from './AuthorisationsView';
 import CisCreditView from './CisCreditView';
@@ -77,14 +78,13 @@ export default function HmrcModule() {
     fetchStaleClients().then(setStale).catch(() => {});
     // One client list for the whole module, so the selector is instant and every
     // tab agrees on who exists and what they owe.
-    // 323 rows today. The explicit limit is the module rule rather than a
-    // guess: PostgREST caps a fetch at around a thousand and truncates SILENTLY,
-    // so every list here says out loud how much it expects.
-    supabase.from('v_hmrc_client_totals').select('*').limit(2000)
-      .then(({ data, error: e }) => {
-        if (e) setClientsError(e.message); else setClients(data || []);
-      })
-      .then(() => setClientsLoading(false));
+    // 323 rows today. PostgREST caps a fetch at 1000 and truncates SILENTLY —
+    // `.limit(2000)` does not raise it — so page through the lot, in a stable
+    // order (one row per entity) so no page repeats or skips a client.
+    fetchAllRows(() => supabase.from('v_hmrc_client_totals').select('*').order('entity_id'))
+      .then((data) => setClients(data))
+      .catch((e) => setClientsError(e.message || 'Could not load the client list'))
+      .finally(() => setClientsLoading(false));
   }, []);
 
   // Which tax tab we are on, if any — the selector needs it to show the right

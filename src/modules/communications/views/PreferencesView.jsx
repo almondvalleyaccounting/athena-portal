@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../shell/AppShell';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
+import DataTable from '../../../components/DataTable';
+import SearchInput from '../../../components/SearchInput';
 
 /*
   Client Preferences — the consent ledger for every client communication
@@ -29,11 +32,8 @@ const VIA_LABEL = {
   staff: 'Staff',
 };
 
-const th = {
-  padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b',
-  textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
-};
-const td = { padding: '7px 10px', fontSize: 13.5, color: '#1e293b', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
+// Status sorts in the order the summary chips read.
+const STATUS_ORDER = { opted_in: 0, opted_out: 1, pending: 2 };
 const selStyle = {
   padding: '4px 8px', fontSize: 13, fontFamily: font, color: '#334155',
   background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
@@ -71,19 +71,27 @@ export default function PreferencesView() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState({ key: 'client', dir: 'asc' });
+  const [page, setPage] = useState(1);
+
+  // Back to page 1 whenever a filter or the search changes.
+  const filterKey = `${typeFilter}|${statusFilter}|${search}`;
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey);
+  if (pageFilterKey !== filterKey) { setPageFilterKey(filterKey); setPage(1); }
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: types, error: e1 }, { data: p, error: e2 }, { data: ents, error: e3 }, { data: staff }] = await Promise.all([
+      // Preferences and entities both page past PostgREST's silent 1000-row cap:
+      // one row per client per type grows with every new type, and a truncated
+      // entities list would silently drop those clients' preferences below.
+      const [{ data: types, error: e1 }, p, ents, { data: staff }] = await Promise.all([
         supabase.from('comm_types').select('id, label, active').order('label'),
-        supabase.from('client_comm_preferences').select('*'),
-        supabase.from('entities').select('id, name, entity_status').order('name'),
+        fetchAllRows(() => supabase.from('client_comm_preferences').select('*').order('id')),
+        fetchAllRows(() => supabase.from('entities').select('id, name, entity_status').order('name').order('id')),
         supabase.from('staff_profiles').select('id, name'),
       ]);
       if (e1) throw e1;
-      if (e2) throw e2;
-      if (e3) throw e3;
       setCommTypes(types || []);
       setPrefs(p || []);
       setEntityById(Object.fromEntries((ents || []).map((e) => [e.id, e])));
@@ -154,6 +162,61 @@ export default function PreferencesView() {
     ));
   };
 
+  const columns = [
+    {
+      key: 'client', label: 'Client', width: '26%',
+      sortValue: (r) => r.entity.name || null,
+      render: (r) => <span style={{ fontWeight: 600 }}>{r.entity.name}</span>,
+    },
+    {
+      key: 'type', label: 'Communication type', width: '20%',
+      sortValue: (r) => typeLabel(r.comm_type),
+      render: (r) => typeLabel(r.comm_type),
+    },
+    {
+      key: 'status', label: 'Status', width: 120,
+      sortValue: (r) => STATUS_ORDER[r.status] ?? null,
+      render: (r) => <PrefChip status={r.status} />,
+    },
+    {
+      key: 'decided', label: 'Decided', width: 170,
+      sortValue: (r) => r.decided_at || null,
+      render: (r) => <span style={{ color: '#64748b' }}>{fmtDateTime(r.decided_at)}</span>,
+    },
+    {
+      key: 'source', label: 'Source', wrap: true,
+      sortValue: (r) => {
+        const via = VIA_LABEL[r.decided_via];
+        if (!via) return null;
+        return r.decided_via === 'staff' && staffById[r.decided_by] ? `${via} · ${staffById[r.decided_by]}` : via;
+      },
+      render: (r) => (
+        <span style={{ color: '#64748b' }}>
+          {VIA_LABEL[r.decided_via] || '—'}
+          {r.decided_via === 'staff' && staffById[r.decided_by] && (
+            <span style={{ color: '#94a3b8' }}> · {staffById[r.decided_by]}</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'set', label: 'Set', width: 140, sortable: false,
+      render: (r) => (
+        <select
+          value=""
+          onChange={(e) => { setPreference(r, e.target.value); e.target.value = ''; }}
+          style={selStyle}
+          aria-label={`Change preference for ${r.entity.name}`}
+        >
+          <option value="">Change…</option>
+          <option value="opted_in">Opted in</option>
+          <option value="opted_out">Opted out</option>
+          <option value="pending">Pending</option>
+        </select>
+      ),
+    },
+  ];
+
   const SummaryChip = ({ label, value, tone }) => (
     <div style={{ ...card, padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 96 }}>
       <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{label}</span>
@@ -192,61 +255,30 @@ export default function PreferencesView() {
           <option value="opted_out">Opted out</option>
           <option value="pending">Pending</option>
         </select>
-        <input
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Search client…"
-          style={{ ...selStyle, minWidth: 200, cursor: 'text' }}
+          style={{ minWidth: 200 }}
+          inputStyle={{ padding: '4px 26px 4px 8px', fontSize: 13, borderRadius: 8 }}
         />
         <span style={{ fontSize: 13, color: '#94a3b8' }}>{visible.length} shown</span>
       </div>
 
-      <div style={{ ...card, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>Client</th>
-              <th style={th}>Communication type</th>
-              <th style={th}>Status</th>
-              <th style={th}>Decided</th>
-              <th style={th}>Source</th>
-              <th style={th}>Set</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td style={td} colSpan={6}>Loading…</td></tr>
-            ) : visible.length === 0 ? (
-              <tr><td style={{ ...td, color: '#94a3b8' }} colSpan={6}>No recorded preferences match.</td></tr>
-            ) : visible.map((r) => (
-              <tr key={`${r.entity_id}:${r.comm_type}`}>
-                <td style={{ ...td, fontWeight: 600 }}>{r.entity.name}</td>
-                <td style={td}>{typeLabel(r.comm_type)}</td>
-                <td style={td}><PrefChip status={r.status} /></td>
-                <td style={{ ...td, color: '#64748b' }}>{fmtDateTime(r.decided_at)}</td>
-                <td style={{ ...td, color: '#64748b' }}>
-                  {VIA_LABEL[r.decided_via] || '—'}
-                  {r.decided_via === 'staff' && staffById[r.decided_by] && (
-                    <span style={{ color: '#94a3b8' }}> · {staffById[r.decided_by]}</span>
-                  )}
-                </td>
-                <td style={td}>
-                  <select
-                    value=""
-                    onChange={(e) => { setPreference(r, e.target.value); e.target.value = ''; }}
-                    style={selStyle}
-                  >
-                    <option value="">Change…</option>
-                    <option value="opted_in">Opted in</option>
-                    <option value="opted_out">Opted out</option>
-                    <option value="pending">Pending</option>
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {loading ? (
+        <div style={{ ...card, padding: '12px 14px', fontSize: 13.5, color: '#1e293b' }}>Loading…</div>
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={visible}
+          rowKey={(r) => `${r.entity_id}:${r.comm_type}`}
+          sort={sort}
+          onSort={(next) => { setSort(next); setPage(1); }}
+          page={page}
+          onPage={setPage}
+          empty="No recorded preferences match."
+        />
+      )}
     </div>
   );
 }

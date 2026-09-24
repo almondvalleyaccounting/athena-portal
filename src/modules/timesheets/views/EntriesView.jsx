@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Download, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Download, Search } from 'lucide-react';
+import DataTable from '../../../components/DataTable';
 import { SERVICES } from '../../work-planner/lib/constants';
 import {
   fetchAllCompletedForRange, fetchAllTimesheetEntriesForRange,
@@ -26,8 +27,6 @@ const SOURCE_COLOURS = { manual: '#0e7fe0', override: '#d97706', completed: '#05
 
 /* ─── EntriesView ─────────────────────────────────────────── */
 export default function EntriesView() {
-  const navigate = useNavigate();
-
   const [from, setFrom] = useState(() => formatISO(startOfMonth(new Date())));
   const [to, setTo] = useState(() => formatISO(endOfMonth(new Date())));
   const [staffList, setStaffList] = useState([]);
@@ -45,9 +44,10 @@ export default function EntriesView() {
   const [serviceFilter, setServiceFilter] = useState('');
   const [search, setSearch] = useState('');
 
-  // Sort
+  // Sort + page (the table's headings drive the sort)
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     (async () => {
@@ -88,7 +88,8 @@ export default function EntriesView() {
   // Merge manual/override timesheet entries + completed tasks (same approach as DashboardView)
   const allEntries = useMemo(() => {
     const arr = [];
-    completed.forEach((t) => arr.push({
+    completed.forEach((t, i) => arr.push({
+      _key: `c-${t.id ?? i}`,
       _mins: t.completion_mins || 0,
       _source: 'completed',
       _staff: t.assignee_id,
@@ -98,7 +99,8 @@ export default function EntriesView() {
       service: t.service || '',
       _editable: false,
     }));
-    entries.forEach((e) => arr.push({
+    entries.forEach((e, i) => arr.push({
+      _key: `e-${e.id ?? i}`,
       _id: e.id,
       _mins: e.minutes || 0,
       _source: e.source === 'override' ? 'override' : 'manual',
@@ -134,29 +136,99 @@ export default function EntriesView() {
     });
   }, [allEntries, staffFilter, clientFilter, serviceFilter, search]);
 
-  // Sort
-  const sorted = useMemo(() => {
-    const dir = sortDir === 'asc' ? 1 : -1;
+  // Sort. The comparator runs ascending (with its date tie-break) and the
+  // table flips it for descending, so each row's rank is its sort value.
+  const ascending = useMemo(() => {
     const staffName = (e) => staffMap[e._staff]?.name || '';
     const clientName = (e) => (e._entity ? (entityMap[e._entity]?.name || 'Unknown') : '');
     const arr = [...filtered];
     arr.sort((a, b) => {
       switch (sortKey) {
-        case 'staff': return dir * (staffName(a).localeCompare(staffName(b)) || a._date.localeCompare(b._date));
-        case 'client': return dir * (clientName(a).localeCompare(clientName(b)) || a._date.localeCompare(b._date));
-        case 'minutes': return dir * ((a._mins - b._mins) || a._date.localeCompare(b._date));
+        case 'staff': return staffName(a).localeCompare(staffName(b)) || a._date.localeCompare(b._date);
+        case 'client': return clientName(a).localeCompare(clientName(b)) || a._date.localeCompare(b._date);
+        case 'minutes': return (a._mins - b._mins) || a._date.localeCompare(b._date);
         case 'date':
-        default: return dir * a._date.localeCompare(b._date);
+        default: return a._date.localeCompare(b._date);
       }
     });
     return arr;
-  }, [filtered, sortKey, sortDir, staffMap, entityMap]);
+  }, [filtered, sortKey, staffMap, entityMap]);
+  const rank = useMemo(() => new Map(ascending.map((e, i) => [e, i])), [ascending]);
+  // Table order, which the CSV export follows too.
+  const sorted = useMemo(() => (sortDir === 'asc' ? ascending : [...ascending].reverse()), [ascending, sortDir]);
 
-  const totalMinutes = filtered.reduce((s, e) => s + e._mins, 0);
+  // Same key flips direction; a new key starts newest first for Date, A–Z otherwise.
+  const handleSort = (s) => {
+    if (s.key === sortKey) setSortDir(s.dir);
+    else { setSortKey(s.key); setSortDir(s.key === 'date' ? 'desc' : 'asc'); }
+    setPage(1);
+  };
+  const filterTo = (set) => (e) => { set(e.target.value); setPage(1); };
 
-  const handleSort = (key) => {
-    if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir(key === 'date' ? 'desc' : 'asc'); }
+  const canEditRow = (e) => e._editable && !isDateLocked(locks, e._date);
+  const rowTitle = (e) => {
+    if (canEditRow(e)) return 'Click to edit this timesheet entry';
+    return isDateLocked(locks, e._date) ? 'Locked period — cannot edit' : 'From completed work — not editable here';
+  };
+  // The table has no row tooltip, so each cell carries the row's.
+  const cell = (e, node, extra) => <div title={rowTitle(e)} style={{ overflow: 'hidden', textOverflow: 'ellipsis', ...extra }}>{node}</div>;
+  const byRank = (e) => rank.get(e);
+
+  const columns = [
+    {
+      key: 'date', label: 'Date', width: 140, sortValue: byRank,
+      render: (e) => cell(e, <>
+        {e._date ? new Date(e._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+        {isDateLocked(locks, e._date) && <span style={{ marginLeft: 6, fontSize: 11, color: '#94a3b8' }}>🔒</span>}
+      </>, { color: '#64748b' }),
+    },
+    {
+      key: 'staff', label: 'Staff', width: 150, sortValue: byRank,
+      render: (e) => cell(e, staffMap[e._staff]?.name || '—', { color: '#0f172a', fontWeight: 500 }),
+    },
+    {
+      key: 'client', label: 'Client', sortValue: byRank,
+      render: (e) => cell(e, e._entity ? (
+        <Link to={`/clients/${e._entity}`} title="Open client" style={{ color: '#0e7fe0', fontWeight: 500, textDecoration: 'none' }}>
+          {entityMap[e._entity]?.name || 'Unknown'}
+        </Link>
+      ) : <span style={{ color: '#94a3b8' }}>—</span>),
+    },
+    {
+      key: 'service', label: 'Service', width: 160, sortable: false,
+      render: (e) => cell(e, e.service || '—', { color: '#64748b' }),
+    },
+    {
+      key: 'minutes', label: 'Time', width: 90, align: 'right', sortValue: byRank,
+      render: (e) => cell(e, minutesToHMM(e._mins), { fontWeight: 600, color: '#0f172a' }),
+    },
+    {
+      key: 'source', label: 'Source', width: 115, sortable: false,
+      render: (e) => cell(e, (
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: SOURCE_COLOURS[e._source] || '#64748b',
+          background: `${SOURCE_COLOURS[e._source] || '#64748b'}14`,
+          padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '0.03em',
+        }}>
+          {SOURCE_LABELS[e._source] || e._source}
+        </span>
+      )),
+    },
+    {
+      key: 'notes', label: 'Notes / title', sortable: false,
+      render: (e) => <div title={e._text || ''} style={{ color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e._text || '—'}</div>,
+    },
+  ];
+
+  // Totals over every filtered row, not just the page on screen.
+  const footer = (rows) => {
+    const mins = rows.reduce((t, e) => t + e._mins, 0);
+    return {
+      date: <span style={{ fontWeight: 600, color: '#64748b' }}>Total</span>,
+      staff: <span style={{ fontWeight: 600, color: '#64748b' }}>{rows.length} {rows.length === 1 ? 'entry' : 'entries'}</span>,
+      minutes: <span style={{ color: '#0e7fe0', fontSize: 14.5 }}>{minutesToHMM(mins)}</span>,
+      source: <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 400 }}>{(mins / 60).toFixed(1)} hours</span>,
+    };
   };
 
   // CSV export (same pattern as AdminTasksPage exportCsv)
@@ -181,19 +253,6 @@ export default function EntriesView() {
     URL.revokeObjectURL(url);
   }
 
-  const SortHeader = ({ colKey, label, align = 'left' }) => (
-    <th
-      onClick={() => handleSort(colKey)}
-      style={{ ...thStyle, textAlign: align, cursor: 'pointer', userSelect: 'none' }}
-      title="Click to sort"
-    >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-        {label}
-        {sortKey === colKey && (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
-      </span>
-    </th>
-  );
-
   return (
     <div style={{ padding: '20px 24px', fontFamily: "'Outfit', sans-serif" }}>
       {/* Header */}
@@ -201,9 +260,9 @@ export default function EntriesView() {
         <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 500, color: '#0f172a', margin: 0 }}>All Entries</h2>
         <div style={{ flex: 1 }} />
         <span style={labelStyle}>From</span>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ ...selectStyle, width: 135 }} />
+        <input type="date" value={from} onChange={filterTo(setFrom)} style={{ ...selectStyle, width: 135 }} />
         <span style={{ color: '#94a3b8', fontSize: 13 }}>to</span>
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ ...selectStyle, width: 135 }} />
+        <input type="date" value={to} onChange={filterTo(setTo)} style={{ ...selectStyle, width: 135 }} />
         <button onClick={exportCsv} disabled={!sorted.length} style={{ ...navBtn, gap: 5, opacity: sorted.length ? 1 : 0.4 }}>
           <Download size={13} /> Export CSV
         </button>
@@ -211,15 +270,15 @@ export default function EntriesView() {
 
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <select value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)} style={{ ...selectStyle, minWidth: 140 }}>
+        <select value={staffFilter} onChange={filterTo(setStaffFilter)} style={{ ...selectStyle, minWidth: 140 }}>
           <option value="">All staff</option>
           {staffList.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} style={{ ...selectStyle, minWidth: 160 }}>
+        <select value={clientFilter} onChange={filterTo(setClientFilter)} style={{ ...selectStyle, minWidth: 160 }}>
           <option value="">All clients</option>
           {clientOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} style={{ ...selectStyle, minWidth: 140 }}>
+        <select value={serviceFilter} onChange={filterTo(setServiceFilter)} style={{ ...selectStyle, minWidth: 140 }}>
           <option value="">All services</option>
           {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
@@ -227,7 +286,7 @@ export default function EntriesView() {
           <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
           <input
             type="text" placeholder="Search notes / task title..."
-            value={search} onChange={(e) => setSearch(e.target.value)}
+            value={search} onChange={filterTo(setSearch)}
             style={{ ...selectStyle, width: '100%', boxSizing: 'border-box', paddingLeft: 26 }}
           />
         </div>
@@ -239,90 +298,19 @@ export default function EntriesView() {
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>Loading entries...</div>
       ) : (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8fafc' }}>
-                  <SortHeader colKey="date" label="Date" />
-                  <SortHeader colKey="staff" label="Staff" />
-                  <SortHeader colKey="client" label="Client" />
-                  <th style={thStyle}>Service</th>
-                  <SortHeader colKey="minutes" label="Time" align="right" />
-                  <th style={thStyle}>Source</th>
-                  <th style={thStyle}>Notes / Title</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.length === 0 && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 32, textAlign: 'center', color: '#cbd5e1', fontSize: 14 }}>
-                      No entries for this range and filters.
-                    </td>
-                  </tr>
-                )}
-                {sorted.map((e, i) => {
-                  const clientName = e._entity ? (entityMap[e._entity]?.name || 'Unknown') : '—';
-                  const locked = isDateLocked(locks, e._date);
-                  const canEdit = e._editable && !locked;
-                  return (
-                    <tr key={i}
-                      onClick={canEdit ? () => setEditRow(e) : undefined}
-                      title={canEdit ? 'Click to edit this timesheet entry' : (locked ? 'Locked period — cannot edit' : 'From completed work — not editable here')}
-                      style={{ borderBottom: '1px solid #f1f5f9', cursor: canEdit ? 'pointer' : 'default' }}
-                    >
-                      <td style={{ ...tdStyle, whiteSpace: 'nowrap', color: '#64748b' }}>
-                        {e._date ? new Date(e._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                        {locked && <span style={{ marginLeft: 6, fontSize: 11, color: '#94a3b8' }}>🔒</span>}
-                      </td>
-                      <td style={{ ...tdStyle, color: '#0f172a', fontWeight: 500 }}>{staffMap[e._staff]?.name || '—'}</td>
-                      <td style={tdStyle}>
-                        {e._entity ? (
-                          <span
-                            onClick={(ev) => { ev.stopPropagation(); navigate(`/clients/${e._entity}`); }}
-                            title="Open client"
-                            style={{ color: '#0e7fe0', fontWeight: 500, cursor: 'pointer' }}
-                          >{clientName}</span>
-                        ) : (
-                          <span style={{ color: '#94a3b8' }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ ...tdStyle, color: '#64748b' }}>{e.service || '—'}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{minutesToHMM(e._mins)}</td>
-                      <td style={tdStyle}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 600, color: SOURCE_COLOURS[e._source] || '#64748b',
-                          background: `${SOURCE_COLOURS[e._source] || '#64748b'}14`,
-                          padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '0.03em',
-                        }}>
-                          {SOURCE_LABELS[e._source] || e._source}
-                        </span>
-                      </td>
-                      <td style={{ ...tdStyle, color: '#64748b', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e._text || ''}>
-                        {e._text || '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {sorted.length > 0 && (
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', borderTop: '2px solid #e5e7eb' }}>
-                    <td colSpan={4} style={{ ...tdStyle, fontWeight: 600, color: '#64748b' }}>
-                      Total — {sorted.length} {sorted.length === 1 ? 'entry' : 'entries'}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700, color: '#0e7fe0', fontSize: 14.5, whiteSpace: 'nowrap' }}>
-                      {minutesToHMM(totalMinutes)}
-                    </td>
-                    <td colSpan={2} style={{ ...tdStyle, color: '#94a3b8', fontSize: 12 }}>
-                      {(totalMinutes / 60).toFixed(1)} hours
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(e) => e._key}
+          sort={{ key: sortKey, dir: sortDir }}
+          onSort={handleSort}
+          page={page}
+          onPage={setPage}
+          onRowClick={(e) => { if (canEditRow(e)) setEditRow(e); }}
+          rowStyle={(e) => ({ cursor: canEditRow(e) ? 'pointer' : 'default' })}
+          footer={footer}
+          empty="No entries for this range and filters."
+        />
       )}
 
       {editRow && (
@@ -402,8 +390,6 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
   );
 }
 
-const thStyle = { padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b', borderBottom: '2px solid #e5e7eb', fontFamily: "'Outfit', sans-serif", textAlign: 'left' };
-const tdStyle = { padding: '8px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif" };
 const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
 const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 const labelStyle = { fontSize: 12, fontWeight: 600, color: '#94a3b8' };

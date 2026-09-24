@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { downloadCSV } from '../lib/exportUtils';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
+import DataTable from '../components/DataTable';
+import { fetchAllRows } from '../lib/fetchAllRows';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
@@ -27,6 +29,22 @@ const VALID_CARDS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'
 // Whole-pound formatter for the status cards (no pennies).
 const fmtWhole = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(n) || 0);
 
+// Same ordering DataTable applies on screen (blanks last, numbers numerically,
+// text by en-GB collation), so the CSV/PDF export comes out in the order shown.
+function sortLikeTable(rows, columns, sort) {
+  const col = columns.find((c) => c.key === sort?.key);
+  if (!col) return rows;
+  const get = col.sortValue || ((r) => r[col.key]);
+  const dir = sort.dir === 'desc' ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const va = get(a); const vb = get(b);
+    const ea = va == null || va === ''; const eb = vb == null || vb === '';
+    if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'en-GB', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+}
+
 export default function QuotesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -36,8 +54,10 @@ export default function QuotesPage() {
   const [loading, setLoading] = useState(true);
   const [activeCard, setActiveCard] = useState(VALID_CARDS.includes(cardParam) ? cardParam : 'pipeline');
   const [search, setSearch] = useState('');
-  const [sortCol, setSortCol] = useState('created_at');
-  const [sortAsc, setSortAsc] = useState(false);
+  const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
+  // Page is remembered against the filters it was set under, so changing a
+  // card, the search, a letter or a chip drops back to page 1.
+  const [pageAt, setPageAt] = useState({ sig: '', n: 1 });
   const [selected, setSelected] = useState(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [acting, setActing] = useState(false);
@@ -72,9 +92,6 @@ export default function QuotesPage() {
     setChipFilters(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const chipClientFilters = chipFilters.filter(c => c.type === 'client').map(c => c.value);
-  const chipGroupFilter = chipFilters.find(c => c.type === 'group')?.groupId || null;
-
   useEffect(() => {
     supabase.from('billing_groups').select('*').order('name')
       .then(({ data }) => setGroups(data || []));
@@ -82,29 +99,25 @@ export default function QuotesPage() {
 
   const loadQuotes = async () => {
     try {
-      const { data } = await supabase
+      // Paged past PostgREST's 1000-row cap; id breaks ties so pages are stable.
+      const data = await fetchAllRows(() => supabase
         .from('quotes')
         .select('*')
-        .order('created_at', { ascending: false });
-      setQuotes(data || []);
-    } catch {}
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true }));
+      setQuotes(data);
+    } catch (e) { console.error('Loading quotes failed', e); }
     setLoading(false);
   };
 
   useEffect(() => { loadQuotes(); }, []);
 
-  const toggleSelect = (id, e) => {
-    e.stopPropagation();
+  const toggleSelect = (id) => {
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
-
-  const selectAll = () => {
-    if (selected.size === filtered.length) setSelected(new Set());
-    else setSelected(new Set(filtered.map(q => q.id)));
   };
 
   const exitSelectMode = () => { setSelectMode(false); setSelected(new Set()); };
@@ -207,7 +220,7 @@ export default function QuotesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotes, netGross]);
 
-  // ── Filtering & sorting ──
+  // ── Filtering (sorting is done by the table's headings) ──
   const filtered = useMemo(() => {
     let list = quotes.filter(q => q.status !== 'deleted');
 
@@ -218,6 +231,8 @@ export default function QuotesPage() {
     }
 
     // Apply chip filters (client/group only)
+    const chipClientFilters = chipFilters.filter(c => c.type === 'client').map(c => c.value);
+    const chipGroupFilter = chipFilters.find(c => c.type === 'group')?.groupId || null;
     chipClientFilters.forEach(cf => {
       const lower = cf.toLowerCase();
       list = list.filter(q => q.relationship_group?.toLowerCase().includes(lower));
@@ -235,29 +250,12 @@ export default function QuotesPage() {
         q.relationship_group?.toLowerCase().includes(s)
       );
     }
-    list = [...list].sort((a, b) => {
-      let va = a[sortCol], vb = b[sortCol];
-      if (sortCol === 'created_at') { va = new Date(va); vb = new Date(vb); }
-      if (sortCol === 'monthly_gross' || sortCol === 'annual_total' || sortCol === 'monthly_net') { va = va || 0; vb = vb || 0; }
-      if (sortCol === 'quote_ref' || sortCol === 'relationship_group' || sortCol === 'status') { va = (va || '').toLowerCase(); vb = (vb || '').toLowerCase(); }
-      if (va < vb) return sortAsc ? -1 : 1;
-      if (va > vb) return sortAsc ? 1 : -1;
-      return 0;
-    });
     return list;
-  }, [quotes, activeCard, search, sortCol, sortAsc, chipClientFilters, chipGroupFilter, letter]);
+  }, [quotes, activeCard, search, chipFilters, letter]);
 
-  const toggleSort = (col) => {
-    if (sortCol === col) setSortAsc(!sortAsc);
-    else { setSortCol(col); setSortAsc(true); }
-  };
-
-  const SortHeader = ({ col, children, className = '' }) => (
-    <button onClick={() => toggleSort(col)} className={`text-left text-xs text-gray-400 hover:text-gray-600 flex items-center gap-0.5 ${className}`}>
-      {children}
-      {sortCol === col && <span className="text-ocean-500">{sortAsc ? '\u25B2' : '\u25BC'}</span>}
-    </button>
-  );
+  const filterSig = JSON.stringify([activeCard, search, letter, chipFilters]);
+  const page = pageAt.sig === filterSig ? pageAt.n : 1;
+  const setPage = (n) => setPageAt({ sig: filterSig, n });
 
   const groupMap = useMemo(() => {
     const m = {};
@@ -266,7 +264,7 @@ export default function QuotesPage() {
   }, [groups]);
 
   // ── Export helpers ──
-  const getExportRows = () => filtered.map(q => [
+  const getExportRows = () => sortLikeTable(filtered, columns, sort).map(q => [
     q.quote_ref || '',
     q.relationship_group || '',
     (q.group_id && groupMap[q.group_id]) || '',
@@ -317,10 +315,6 @@ export default function QuotesPage() {
     doc.save('quotes_export.pdf');
   };
 
-  const gridCols = selectMode
-    ? '24px 2fr 1fr 1fr 1fr 1fr 1fr 1fr 36px'
-    : '2fr 1fr 1fr 1fr 1fr 1fr 1fr 36px';
-
   const [menuQuoteId, setMenuQuoteId] = useState(null);
   // Fixed-position coords for the row actions menu so it isn't clipped by the
   // table card's overflow-hidden (which the last row otherwise hits).
@@ -342,6 +336,100 @@ export default function QuotesPage() {
     if (error) { alert('Delete failed: ' + error.message); return; }
     await loadQuotes();
   };
+
+  const monthlyOf = (q) => (netGross === 'net' ? q.monthly_net : q.monthly_gross);
+
+  const columns = [
+    {
+      key: 'quote_ref', label: 'Quote Ref', width: '20%',
+      sortValue: (q) => (q.quote_ref || '').toLowerCase(),
+      render: (q) => (
+        <span className="font-medium text-gray-700">
+          {q.quote_ref}
+          {q.group_id && <span className="ml-1 text-[10px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'relationship_group', label: 'Client',
+      sortValue: (q) => (q.relationship_group || '').toLowerCase(),
+      render: (q) => <span className="text-gray-500">{q.relationship_group || '—'}</span>,
+    },
+    {
+      key: 'group', label: 'Group', width: '14%', sortable: false,
+      render: (q) => (q.group_id && groupMap[q.group_id] ? (
+        <button
+          onClick={() => navigate('/manage/quotes/group/' + q.group_id)}
+          className="text-ocean-600 hover:text-ocean-700 hover:underline"
+          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
+        >
+          {groupMap[q.group_id]}
+        </button>
+      ) : (
+        <span className="text-gray-300">{'—'}</span>
+      )),
+    },
+    {
+      key: 'status', label: 'Status', width: 160,
+      sortValue: (q) => (q.status || '').toLowerCase(),
+      render: (q) => <StatusBadge status={q.status} />,
+    },
+    {
+      key: 'monthly', label: netGross === 'net' ? 'Monthly (Net)' : 'Monthly (Gross)', width: 140, align: 'right',
+      sortValue: (q) => Number(monthlyOf(q)) || 0,
+      render: (q) => <span className="font-mono text-ocean-600">{fmt(monthlyOf(q))}</span>,
+    },
+    {
+      key: 'annual_total', label: 'Annual (Net)', width: 130, align: 'right',
+      sortValue: (q) => Number(q.annual_total) || 0,
+      render: (q) => <span className="font-mono text-gray-500">{fmt(q.annual_total)}</span>,
+    },
+    {
+      key: 'created_at', label: 'Created', width: 110, align: 'right',
+      sortValue: (q) => (q.created_at ? new Date(q.created_at).getTime() : null),
+      render: (q) => <span className="text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>,
+    },
+    {
+      key: 'actions', label: '', width: 48, align: 'right', sortable: false,
+      render: (q) => (
+        <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (menuQuoteId === q.id) { setMenuQuoteId(null); return; }
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenuPos({ top: r.bottom + 4, left: r.right - 140 });
+              setMenuQuoteId(q.id);
+            }}
+            title="Actions"
+            aria-label="Actions"
+            style={{
+              width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              border: 'none', background: 'none', borderRadius: 4, cursor: 'pointer', color: '#94a3b8',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
+          >
+            &#8942;
+          </button>
+          {menuQuoteId === q.id && (
+            <div style={{
+              position: 'fixed', top: menuPos.top, left: menuPos.left,
+              background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, minWidth: 140,
+              fontSize: 13, padding: 4, textAlign: 'left',
+            }}>
+              <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id); }}>Open</MenuItem>
+              <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id + '/edit'); }}>Edit</MenuItem>
+              {q.status !== 'deleted' && (
+                <MenuItem danger onClick={() => { setMenuQuoteId(null); handleSoftDelete(q); }}>Delete</MenuItem>
+              )}
+            </div>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="p-6">
@@ -529,105 +617,20 @@ export default function QuotesPage() {
           {quotes.length === 0 && <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>}
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {/* Column headers */}
-          <div className="grid gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50" style={{ gridTemplateColumns: gridCols }}>
-            {selectMode && (
-              <input
-                type="checkbox"
-                checked={selected.size === filtered.length && filtered.length > 0}
-                onChange={selectAll}
-                className="w-3 h-3 accent-ocean-600"
-              />
-            )}
-            <SortHeader col="quote_ref">Quote Ref</SortHeader>
-            <SortHeader col="relationship_group">Client</SortHeader>
-            <span className="text-xs text-gray-400">Group</span>
-            <SortHeader col="status">Status</SortHeader>
-            <SortHeader col={netGross === 'net' ? 'monthly_net' : 'monthly_gross'} className="justify-end">{netGross === 'net' ? 'Monthly (Net)' : 'Monthly (Gross)'}</SortHeader>
-            <SortHeader col="annual_total" className="justify-end">Annual (Net)</SortHeader>
-            <SortHeader col="created_at" className="justify-end">Created</SortHeader>
-            <span />
-          </div>
-          {/* Rows */}
-          {filtered.map(q => (
-            <div
-              key={q.id}
-              onClick={() => selectMode ? toggleSelect(q.id, { stopPropagation: () => {} }) : navigate('/manage/quotes/' + q.id)}
-              className={`grid gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0 cursor-pointer items-center text-xs transition-all ${
-                selected.has(q.id) ? 'bg-ocean-50' : 'hover:bg-gray-50'
-              }`}
-              style={{ gridTemplateColumns: gridCols }}
-            >
-              {selectMode && (
-                <input
-                  type="checkbox"
-                  checked={selected.has(q.id)}
-                  onChange={(e) => toggleSelect(q.id, e)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-3 h-3 accent-ocean-600"
-                />
-              )}
-              <span className="font-medium text-gray-700 truncate">
-                {q.quote_ref}
-                {q.group_id && <span className="ml-1 text-[10px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
-              </span>
-              <span className="text-gray-500 truncate">{q.relationship_group || '\u2014'}</span>
-              <span className="truncate">
-                {q.group_id && groupMap[q.group_id] ? (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigate('/manage/quotes/group/' + q.group_id); }}
-                    className="text-ocean-600 hover:text-ocean-700 hover:underline text-xs"
-                  >
-                    {groupMap[q.group_id]}
-                  </button>
-                ) : (
-                  <span className="text-gray-300">{'\u2014'}</span>
-                )}
-              </span>
-              <span className="whitespace-nowrap"><StatusBadge status={q.status} /></span>
-              <span className="text-right font-mono text-ocean-600">{fmt(netGross === 'net' ? q.monthly_net : q.monthly_gross)}</span>
-              <span className="text-right font-mono text-gray-500">{fmt(q.annual_total)}</span>
-              <div className="text-right">
-                <span className="text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>
-              </div>
-              <div className="flex justify-end" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (menuQuoteId === q.id) { setMenuQuoteId(null); return; }
-                    const r = e.currentTarget.getBoundingClientRect();
-                    setMenuPos({ top: r.bottom + 4, left: r.right - 140 });
-                    setMenuQuoteId(q.id);
-                  }}
-                  title="Actions"
-                  style={{
-                    width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    border: 'none', background: 'none', borderRadius: 4, cursor: 'pointer', color: '#94a3b8',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
-                >
-                  &#8942;
-                </button>
-                {menuQuoteId === q.id && (
-                  <div style={{
-                    position: 'fixed', top: menuPos.top, left: menuPos.left,
-                    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, minWidth: 140,
-                    fontSize: 13, padding: 4,
-                  }}>
-                    <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id); }}>Open</MenuItem>
-                    <MenuItem onClick={() => { setMenuQuoteId(null); navigate('/manage/quotes/' + q.id + '/edit'); }}>Edit</MenuItem>
-                    {q.status !== 'deleted' && (
-                      <MenuItem danger onClick={() => { setMenuQuoteId(null); handleSoftDelete(q); }}>Delete</MenuItem>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(q) => q.id}
+          // In Select mode a row click ticks the row, as before; otherwise it opens the quote.
+          rowHref={selectMode ? undefined : (q) => '/manage/quotes/' + q.id}
+          onOpen={(href) => navigate(href)}
+          onRowClick={selectMode ? (q) => toggleSelect(q.id) : undefined}
+          sort={sort}
+          onSort={(s) => { setSort(s); setPage(1); }}
+          page={page}
+          onPage={setPage}
+          selection={selectMode ? { selected, onChange: setSelected } : undefined}
+        />
       )}
     </div>
   );

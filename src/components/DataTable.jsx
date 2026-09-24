@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const font = "'Outfit', sans-serif";
@@ -14,24 +14,46 @@ const font = "'Outfit', sans-serif";
 
   columns: [{ key, label, width?, align?: 'left'|'right'|'center',
               render?: (row) => node, sortValue?: (row) => string|number|null,
-              sortable?: boolean (default true), wrap?: boolean }]
+              sortable?: boolean (default true), wrap?: boolean,
+              firstDir?: 'asc'|'desc' — direction of the first click (dates: 'desc') }]
   rowHref:    (row) => string — where a row goes; onOpen(href) navigates in-app
   onRowClick: (row) => void — for rows that open a drawer or modal instead
-  rowStyle:   (row) => style — e.g. dim a deleted row
-  footer:     (sortedRows) => { [colKey]: node } — a totals row over ALL
-              filtered rows (not just the page)
+  rowStyle:   (row) => style — e.g. dim a deleted row; a row given an
+              `opacity` comes to full strength while hovered
+  footer:     (sortedRows) => { [colKey]: node | { content, span } } — a totals
+              row over ALL filtered rows (not just the page); `span` lets one
+              cell run across the next columns
+  rowTitle:   (row) => string — hover hint for the whole row
   selection:  { selected: Set<key>, onChange(nextSet) } — adds a tickbox
               column; the heading box ticks every filtered row, not just the page
   pageSize:   default 50; 0 turns paging off
+  renderExpanded: (row) => node | null — detail shown full-width under a
+              row (expand in place); the caller decides which rows are open
 
   Clicks on a button, link, input, select or label inside a row act on that
   control and do not open the row.
 */
+// Shared with callers that export (CSV/PDF) so the file comes out in the
+// order the table shows. Blanks always last, whichever way it is sorted.
+export function sortRows(rows, columns, sort) {
+  const col = columns.find((c) => c.key === sort?.key);
+  if (!col) return rows;
+  const get = col.sortValue || ((r) => r[col.key]);
+  const dir = sort.dir === 'desc' ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const va = get(a); const vb = get(b);
+    const ea = va == null || va === ''; const eb = vb == null || vb === '';
+    if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'en-GB', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+}
+
 export default function DataTable({
-  columns, rows, rowKey = (r) => r.id, rowHref, onOpen, onRowClick, rowStyle,
+  columns, rows, rowKey = (r) => r.id, rowHref, onOpen, onRowClick, rowStyle, rowTitle,
   sort: sortProp, onSort: onSortProp, defaultSort = null,
   page: pageProp, onPage: onPageProp, pageSize = 50,
-  footer, selection, empty = 'Nothing to show.',
+  footer, selection, renderExpanded, empty = 'Nothing to show.',
 }) {
   const [sortState, setSortState] = useState(defaultSort);
   const [pageState, setPageState] = useState(1);
@@ -40,20 +62,13 @@ export default function DataTable({
   const page = pageProp !== undefined ? pageProp : pageState;
   const onPage = onPageProp || setPageState;
 
-  const sorted = useMemo(() => {
-    const col = columns.find((c) => c.key === sort?.key);
-    if (!col) return rows;
-    const get = col.sortValue || ((r) => r[col.key]);
-    const dir = sort.dir === 'desc' ? -1 : 1;
-    return [...rows].sort((a, b) => {
-      const va = get(a); const vb = get(b);
-      // Blanks always last, whichever way the column is sorted.
-      const ea = va == null || va === ''; const eb = vb == null || vb === '';
-      if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
-      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
-      return String(va).localeCompare(String(vb), 'en-GB', { numeric: true, sensitivity: 'base' }) * dir;
-    });
-  }, [rows, columns, sort]);
+  const sorted = useMemo(() => sortRows(rows, columns, sort), [rows, columns, sort]);
+
+  // Uncontrolled paging: a filter that changes the rows goes back to page 1.
+  // Keyed on a cheap signature, not the array, so a caller that rebuilds the
+  // same rows every render does not keep resetting the page.
+  const sig = `${rows.length}:${rows.length ? rowKey(rows[0]) : ''}:${rows.length ? rowKey(rows[rows.length - 1]) : ''}`;
+  useEffect(() => { if (pageProp === undefined) setPageState(1); }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const paged = pageSize > 0;
   const pages = paged ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
@@ -63,7 +78,8 @@ export default function DataTable({
 
   const clickSort = (col) => {
     if (col.sortable === false) return;
-    const dir = sort?.key === col.key && sort.dir === 'asc' ? 'desc' : 'asc';
+    const first = col.firstDir || 'asc';
+    const dir = sort?.key === col.key ? (sort.dir === 'asc' ? 'desc' : 'asc') : first;
     onSort({ key: col.key, dir });
   };
 
@@ -145,14 +161,16 @@ export default function DataTable({
           <tbody>
             {visible.map((row) => {
               const k = rowKey(row);
+              const detail = renderExpanded?.(row);
               return (
+                <React.Fragment key={k}>
                 <tr
-                  key={k}
+                  title={rowTitle?.(row) || undefined}
                   onClick={(e) => open(e, row)}
                   onAuxClick={(e) => { if (e.button === 1 && rowHref) open(e, row); }}
                   style={{ cursor: clickable ? 'pointer' : 'default', ...(sel?.has(k) ? { background: '#eff6ff' } : {}), ...(rowStyle?.(row) || {}) }}
-                  onMouseEnter={(e) => { if (!sel?.has(k)) e.currentTarget.style.background = '#f8fafc'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = sel?.has(k) ? '#eff6ff' : ''; }}
+                  onMouseEnter={(e) => { if (!sel?.has(k)) e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = sel?.has(k) ? '#eff6ff' : ''; e.currentTarget.style.opacity = rowStyle?.(row)?.opacity ?? ''; }}
                 >
                   {selection && (
                     <td style={{ ...td, textAlign: 'center', padding: '11px 0' }}>
@@ -165,6 +183,14 @@ export default function DataTable({
                     </td>
                   ))}
                 </tr>
+                {detail && (
+                  <tr>
+                    <td colSpan={columns.length + (selection ? 1 : 0)} style={{ ...td, background: '#f8fafc', padding: '14px 18px', whiteSpace: 'normal' }}>
+                      {detail}
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
               );
             })}
             {visible.length === 0 && (
@@ -175,11 +201,22 @@ export default function DataTable({
             <tfoot>
               <tr>
                 {selection && <td style={{ ...td, background: '#f8fafc', borderTop: '1px solid #e5e7eb' }} />}
-                {columns.map((c) => (
-                  <td key={c.key} style={{ ...cellStyle(c), fontWeight: 700, background: '#f8fafc', borderTop: '1px solid #e5e7eb', borderBottom: 'none' }}>
-                    {foot[c.key] ?? ''}
-                  </td>
-                ))}
+                {(() => {
+                  const cells = [];
+                  for (let i = 0; i < columns.length; i++) {
+                    const c = columns[i];
+                    const v = foot[c.key];
+                    const spanned = v && typeof v === 'object' && !React.isValidElement(v) && 'content' in v;
+                    const span = spanned ? Math.max(1, Math.min(v.span || 1, columns.length - i)) : 1;
+                    cells.push(
+                      <td key={c.key} colSpan={span} style={{ ...cellStyle(c), fontWeight: 700, background: '#f8fafc', borderTop: '1px solid #e5e7eb', borderBottom: 'none' }}>
+                        {spanned ? v.content : (v ?? '')}
+                      </td>,
+                    );
+                    i += span - 1;
+                  }
+                  return cells;
+                })()}
               </tr>
             </tfoot>
           )}

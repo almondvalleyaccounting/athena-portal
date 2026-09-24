@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { fmt, StatusBadge, Btn } from '../components/ui';
 import { useAuth } from '../shell/AppShell';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
+import DataTable from '../components/DataTable';
+import { fetchAllRows } from '../lib/fetchAllRows';
 
 const STATUS_ORDER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'committed', 'declined', 'expired', 'deleted'];
 
@@ -44,11 +46,12 @@ export default function GroupsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [{ data: bg }, { data: bgm }, { data: q }, { data: ent }] = await Promise.all([
-        supabase.from('billing_groups').select('*').order('name'),
-        supabase.from('billing_group_members').select('*'),
-        supabase.from('quotes').select('id, group_id, status, monthly_gross, annual_total').not('group_id', 'is', null),
-        supabase.from('entities').select('id, name, company_number'),
+      // Every table read in full: PostgREST stops at 1000 rows without saying so.
+      const [bg, bgm, q, ent] = await Promise.all([
+        fetchAllRows(() => supabase.from('billing_groups').select('*').order('name').order('id')),
+        fetchAllRows(() => supabase.from('billing_group_members').select('*').order('group_id').order('entity_id')),
+        fetchAllRows(() => supabase.from('quotes').select('id, group_id, status, monthly_gross, annual_total').not('group_id', 'is', null).order('id')),
+        fetchAllRows(() => supabase.from('entities').select('id, name, company_number').order('id')),
       ]);
       setGroups(bg || []);
       setMembers(bgm || []);
@@ -86,6 +89,25 @@ export default function GroupsPage() {
   const filteredGroups = letter
     ? visibleGroups.filter((g) => firstCharBucket(g.name) === letter)
     : visibleGroups;
+
+  // One row per group, with the figures the table shows and sorts on.
+  const groupRows = filteredGroups.map((g) => {
+    const gQuotes = quotesByGroup[g.id] || [];
+    return {
+      ...g,
+      memberCount: (membersByGroup[g.id] || []).length,
+      monthlyGross: gQuotes.reduce((s, q) => s + (Number(q.monthly_gross) || 0), 0),
+      status: worstStatus(gQuotes),
+    };
+  });
+  const groupColumns = [
+    { key: 'name', label: 'Group name', render: (r) => <span style={{ fontWeight: 500 }}>{r.name}</span> },
+    { key: 'memberCount', label: 'Entities', width: 120, align: 'right' },
+    { key: 'monthlyGross', label: 'Monthly DD', width: 150, align: 'right',
+      render: (r) => <span className="font-mono text-ocean-600">{fmt(r.monthlyGross)}</span> },
+    { key: 'status', label: 'Status', width: 170, align: 'right',
+      sortValue: (r) => STATUS_ORDER.indexOf(r.status), render: (r) => <StatusBadge status={r.status} /> },
+  ];
 
   // Client search results
   const filteredEntities = searchTerm.trim()
@@ -289,39 +311,14 @@ export default function GroupsPage() {
           <p className="text-sm text-gray-400 mb-3">No billing groups yet. Create one to get started.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          {/* Column headers */}
-          <div
-            className="grid gap-2 px-4 py-2 border-b border-gray-200 bg-gray-50"
-            style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}
-          >
-            <span className="text-xs text-gray-400 font-medium">Group Name</span>
-            <span className="text-xs text-gray-400 font-medium text-right">Entities</span>
-            <span className="text-xs text-gray-400 font-medium text-right">Monthly DD</span>
-            <span className="text-xs text-gray-400 font-medium text-right">Status</span>
-          </div>
-          {/* Rows */}
-          {filteredGroups.map(g => {
-            const gMembers = membersByGroup[g.id] || [];
-            const gQuotes = quotesByGroup[g.id] || [];
-            const totalMonthlyGross = gQuotes.reduce((s, q) => s + (Number(q.monthly_gross) || 0), 0);
-            const status = worstStatus(gQuotes);
-
-            return (
-              <div
-                key={g.id}
-                onClick={() => navigate(`/manage/quotes/group/${g.id}`)}
-                className="grid gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0 cursor-pointer items-center text-xs hover:bg-gray-50 transition-all"
-                style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}
-              >
-                <span className="font-medium text-gray-700 truncate">{g.name}</span>
-                <span className="text-right text-gray-500">{gMembers.length}</span>
-                <span className="text-right font-mono text-ocean-600">{fmt(totalMonthlyGross)}</span>
-                <span className="text-right"><StatusBadge status={status} /></span>
-              </div>
-            );
-          })}
-        </div>
+        <DataTable
+          columns={groupColumns}
+          rows={groupRows}
+          defaultSort={{ key: 'name', dir: 'asc' }}
+          rowHref={(r) => `/manage/quotes/group/${r.id}`}
+          onOpen={(href) => navigate(href)}
+          empty="No groups match. Try another letter, or show deleted groups."
+        />
       )}
     </div>
   );
