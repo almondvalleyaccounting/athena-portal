@@ -51,7 +51,8 @@ export function TabRow({ cells, header, bold: isBold }) {
 
 export function Section({ title, enabled, onToggle, children, annual }) {
   return (
-    <div className={`rounded-lg border mb-2 transition-all ${enabled ? 'border-ocean-300 bg-white' : 'border-gray-200 bg-gray-50'}`}>
+    // Under 900px (quoting on a phone) ticked sections float to the top.
+    <div className={`rounded-lg border mb-2 transition-all ${enabled ? 'border-ocean-300 bg-white max-[899px]:-order-1' : 'border-gray-200 bg-gray-50'}`}>
       <div className="flex items-center justify-between p-3 cursor-pointer" onClick={onToggle}>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={enabled} onChange={onToggle} onClick={(e) => e.stopPropagation()} className="w-4 h-4 accent-ocean-600" />

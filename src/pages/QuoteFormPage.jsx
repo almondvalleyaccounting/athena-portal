@@ -47,6 +47,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
   const seedParam = searchParams.get('seed'); // 'source' → open cross-client picker
 
   const [saving, setSaving] = useState(false);
+  const [showMobileTotals, setShowMobileTotals] = useState(false);
   const [error, setError] = useState('');
   const [entity, setEntity] = useState(null);
   const [existingQuoteRef, setExistingQuoteRef] = useState(null);
@@ -360,8 +361,14 @@ export default function QuoteFormPage({ mode = 'new' }) {
     return <div className="p-6"><p className="text-sm text-gray-400">Loading quote...</p></div>;
   }
 
+  // Full width (UI audit, Sprint 3): services in two columns and the quote
+  // total pinned on the right while you scroll. Under 900px it becomes one
+  // column with ticked services first and a monthly-total bar fixed to the
+  // bottom — built for quoting on a phone with the client.
   return (
-    <div className="p-6 max-w-2xl">
+    <div className="p-6 pb-28 min-[900px]:pb-6">
+      <div className="min-[900px]:grid min-[900px]:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+      <div>
       <div className="flex justify-between items-start mb-4">
         <div>
           <h2 className="text-lg font-bold text-ocean-700">
@@ -440,7 +447,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
 
       {/* Client info */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 min-[900px]:grid-cols-6 gap-2">
           <input value={f.client.name} onChange={(e) => f.setClient({ ...f.client, name: e.target.value })} placeholder="Client name" className="text-sm border border-gray-200 rounded px-2 py-1.5 col-span-2" />
           <input value={f.client.companyNumber} onChange={(e) => f.setClient({ ...f.client, companyNumber: e.target.value })} placeholder="Company number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
           <select value={f.client.entityType} onChange={(e) => f.setClient({ ...f.client, entityType: e.target.value })} className="text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
@@ -450,7 +457,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
             <option value="llp">LLP</option>
           </select>
           <input value={f.client.turnover} onChange={(e) => f.setClient({ ...f.client, turnover: e.target.value })} placeholder="Est. turnover (£)" type="number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
-          <div className="col-span-2 flex items-center gap-2">
+          <div className="col-span-2 min-[900px]:col-span-1 flex items-center gap-2">
             <label className="text-xs text-gray-500 whitespace-nowrap">Valid until</label>
             <input type="date" value={f.validUntil} onChange={e => f.setValidUntil(e.target.value)} className="text-sm border border-gray-200 rounded px-2 py-1.5" />
           </div>
@@ -474,6 +481,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
         </div>
       )}
 
+      <div className="grid grid-cols-1 min-[900px]:grid-cols-2 gap-x-3 items-start">
       {/* Setup Fees */}
       <Section title="One-Off Setup Fees" enabled={f.setupTotal > 0 || f.suFormation || f.suHmrc} onToggle={() => { if (!f.suFormation && !f.suHmrc) f.setSuFormation(true); else { f.setSuFormation(false); f.setSuHmrc(false); f.setSuRegFee(0); f.setSuOthers([]); } }} annual={f.setupTotal}>
         <TabRow cells={['Item', 'Qty', 'Rate', 'Total']} header />
@@ -653,6 +661,11 @@ export default function QuoteFormPage({ mode = 'new' }) {
         {f.swMonthly > 0 && <TabRow cells={['Total software', fmt(f.swMonthly) + '/mo', fmt(f.swAnnual)]} bold />}
       </div>
 
+      </div>
+      </div>
+
+      {/* Right column: total + save, pinned while scrolling (desktop only) */}
+      <aside className="hidden min-[900px]:block min-[900px]:sticky min-[900px]:top-4">
       {/* Totals */}
       <div className="bg-ocean-700 text-white rounded-lg p-4 mb-3">
         {f.setupTotal > 0 && <div className="flex justify-between text-xs mb-2 pb-2 border-b border-ocean-600"><span className="text-ocean-300">One-Off Setup</span><span className="font-mono">{fmt(f.setupTotal)}</span></div>}
@@ -669,7 +682,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
       </div>
 
       {/* Save */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-col gap-2">
         <Btn onClick={() => handleSave()} disabled={saving || !f.client.name} className="flex-1">
           {saving ? 'Saving...' : mode === 'edit' ? 'Update Quote' : 'Save Quote'}
         </Btn>
@@ -679,6 +692,36 @@ export default function QuoteFormPage({ mode = 'new' }) {
           </Btn>
         )}
         <Btn onClick={() => navigate(-1)} variant="ghost">Cancel</Btn>
+      </div>
+      </aside>
+      </div>
+
+      {/* Phone: the monthly total and Save, fixed to the bottom; tap for the breakdown */}
+      <div className="min-[900px]:hidden fixed bottom-0 inset-x-0 z-40 bg-ocean-700 text-white shadow-[0_-8px_24px_rgba(15,23,42,0.25)]">
+        {showMobileTotals && (
+          <div className="px-4 pt-3 pb-1 space-y-1 max-h-[50vh] overflow-y-auto border-b border-ocean-600">
+            {f.setupTotal > 0 && <div className="flex justify-between text-xs"><span className="text-ocean-300">One-Off Setup</span><span className="font-mono">{fmt(f.setupTotal)}</span></div>}
+            {f.lines.map((l, i) => <div key={i} className="flex justify-between text-xs"><span className="text-ocean-300 truncate mr-3">{l.name}</span><span className="font-mono whitespace-nowrap">{fmt(l.annual)}</span></div>)}
+            {f.swAnnual > 0 && <div className="flex justify-between text-xs"><span className="text-ocean-300">Software</span><span className="font-mono">{fmt(f.swAnnual)}</span></div>}
+            <div className="flex justify-between text-xs pt-1 border-t border-ocean-600"><span className="text-ocean-300">Annual Total (Net)</span><span className="font-mono">{fmt(f.annualTotal)}</span></div>
+            <div className="flex justify-between text-xs"><span className="text-ocean-300">Monthly (Net) + VAT</span><span className="font-mono">{fmt(f.monthlyNet)} + {fmt(f.monthlyVat)}</span></div>
+            {mode !== 'edit' && (
+              <button onClick={() => handleSave('add-another')} disabled={saving || !f.client.name} className="w-full mt-2 mb-1 text-xs text-ocean-200 underline disabled:opacity-40">
+                Save &amp; Add Another Entity
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <button onClick={() => setShowMobileTotals((v) => !v)} className="flex-1 text-left">
+            <div className="text-[11px] text-ocean-300">Monthly Direct Debit (inc VAT) {showMobileTotals ? '▾' : '▴'}</div>
+            <div className="text-lg font-bold font-mono text-sun-300">{fmt(f.monthlyGross)}</div>
+          </button>
+          <button onClick={() => handleSave()} disabled={saving || !f.client.name}
+            className="px-5 py-2.5 rounded-lg bg-white text-ocean-700 text-sm font-semibold disabled:opacity-40">
+            {saving ? 'Saving…' : mode === 'edit' ? 'Update' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   );
