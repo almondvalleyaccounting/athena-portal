@@ -7,4 +7,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Readable line length (UI audit, Sprint 3). Pages are full width, so a
+   paragraph would otherwise run the whole screen; ~80 characters is where
+   reading stays comfortable. Tables, cards and the page itself stay full
+   width. Centred paragraphs (empty states) keep centring themselves. */
+main p { max-width: 80ch; }
+main p[style*="text-align: center"],
+main p.text-center,
+main .text-center > p { margin-left: auto; margin-right: auto; }
+
 /* ── Work Planner: @dnd-kit handles all drag visuals now ── */
