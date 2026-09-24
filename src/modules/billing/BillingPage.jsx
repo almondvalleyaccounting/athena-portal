@@ -12,6 +12,7 @@ import DataTable, { tablePageSize, sortRows } from '../../components/DataTable';
 import RowMenu from '../../components/RowMenu';
 import SearchInput from '../../components/SearchInput';
 import { fetchAllRows } from '../../lib/fetchAllRows';
+import { BTN } from '../../lib/buttonStyles';
 
 const VAT_RATE = 0.20;
 const STATUS_CONFIG = {
@@ -1628,13 +1629,13 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   );
 }
 
-const btnPrimary ={display:'inline-flex',alignItems:'center',gap:5,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#1E4560',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
-const btnOutline = {display:'inline-flex',alignItems:'center',gap:4,padding:'8px 14px',fontSize:14,fontWeight:600,background:'#fff',color:'#0f172a',border:'1px solid #e5e7eb',borderRadius:10,cursor:'pointer',fontFamily:"'Outfit', sans-serif"};
+const btnPrimary ={ ...BTN.primary.md, display:'inline-flex', alignItems:'center', gap:5, cursor:'pointer' };
+const btnOutline = { ...BTN.secondary.md, display:'inline-flex', alignItems:'center', gap:4, cursor:'pointer' };
 const inputStyle = {width:'100%',padding:'8px 12px',fontSize:14,border:'1px solid #e5e7eb',borderRadius:8,outline:'none',fontFamily:"'Outfit', sans-serif",boxSizing:'border-box'};
 // Narrower gutters for the qty/rate/amount boxes — seven columns on one row.
 const numInput = {...inputStyle,padding:'8px 7px',textAlign:'right'};
 const modeBtn = {flex:1,textAlign:'left',padding:'10px 12px',borderRadius:10,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",color:'#0f172a'};
-const navBtn = {padding:'2px 8px',borderRadius:6,border:'1px solid #e5e7eb',background:'#fff',cursor:'pointer',fontFamily:"'Outfit', sans-serif",fontSize:14,color:'#475569'};
+const navBtn = { ...BTN.secondary.sm, cursor:'pointer' };
 // Client · Service · Type · QuickBooks customer · Send · Net · VAT · Gross.
 // The customer column carries a full QBO customer name, so it needs room —
 // truncating it to "GJ Cummins Plumbing a…" defeats the point of showing it.

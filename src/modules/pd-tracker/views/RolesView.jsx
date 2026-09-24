@@ -6,6 +6,7 @@ import {
   createRoleProfile, updateRoleProfile, deleteRoleProfile,
   upsertRoleCategory, deleteRoleCategory, createSkill, LEVEL_LABELS,
 } from '../lib/api';
+import { BTN } from '../../../lib/buttonStyles';
 
 export default function RolesView() {
   const { profile } = useAuth();
@@ -260,10 +261,10 @@ function Field({ label, children, grow }) {
 }
 
 const input = { padding: '7px 10px', fontSize: 14, fontFamily: FONT, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
-const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
-const btnPrimarySm = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
-const btnDanger = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 14px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c' };
-const btnGhost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
+const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
+const btnPrimarySm = { ...BTN.primary.sm, cursor: 'pointer' };
+const btnDanger = { ...BTN.danger.sm, cursor: 'pointer' };
+const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 
 function Msg({ children }) {
   return <div style={{ padding: 24, fontFamily: FONT, color: '#64748b', fontSize: 14.5, textAlign: 'center' }}>{children}</div>;

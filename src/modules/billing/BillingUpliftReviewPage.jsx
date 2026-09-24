@@ -14,6 +14,7 @@ import { tones } from '../../lib/tokens';
 import { composeUpliftEmail } from './composeUpliftEmail';
 import { explainRows, explainBlocked } from './pushOutcome';
 import { fmtGbp } from '../../lib/money';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -684,7 +685,7 @@ const btnApprove = { padding: '6px 14px', fontSize: 13, fontWeight: 600, backgro
 const btnReject = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#b91c1c', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnUndo = { padding: '6px 14px', fontSize: 13, fontWeight: 500, background: '#64748b', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnGhost = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: 'none', color: '#cbd5e1', border: 'none', cursor: 'pointer', fontFamily: font };
-const btnSecondary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnSecondary = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
 const btnPushDry = { padding: '6px 14px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#6d28d9', border: '1px solid #c4b5fd', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const btnPushLive = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
 const pushFooterStyle = {
@@ -1016,5 +1017,5 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   );
 }
 
-const modalBtnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const modalBtnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnPrimary = { ...BTN.primary.md, cursor: 'pointer' };
+const modalBtnGhost = { ...BTN.secondary.md, cursor: 'pointer' };

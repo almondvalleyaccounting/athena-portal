@@ -15,6 +15,7 @@ import { parseBmClientsCsv } from '../lib/parsers/bmClients';
 import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmClients, raiseBmImportTasks } from '../lib/writers/bmClients';
 import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
 import { classifyBmTasks, writeBmTasks } from '../lib/writers/bmTasks';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -2520,17 +2521,8 @@ const pillBig = {
   fontSize: 13, padding: '4px 10px', borderRadius: 999,
   background: '#f0f9ff', color: '#0e7fe0', fontWeight: 500,
 };
-const btnPrimary = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 14, fontWeight: 600, padding: '8px 14px',
-  background: '#1E4560', border: 'none', borderRadius: 8,
-  color: '#fff', cursor: 'pointer', fontFamily: font,
-};
-const btnSecondary = {
-  fontSize: 14, fontWeight: 500, padding: '8px 14px',
-  background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-  color: '#1e293b', cursor: 'pointer', fontFamily: font,
-};
+const btnPrimary = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
+const btnSecondary = { ...BTN.secondary.md, cursor: 'pointer' };
 const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   fontSize: 13, padding: '6px 10px',

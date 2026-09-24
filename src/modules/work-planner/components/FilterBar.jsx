@@ -4,18 +4,13 @@ import Avatar from './Avatar';
 import AlphabetFilter from '../../../components/AlphabetFilter';
 import { SERVICES, STATUSES, CALENDAR_VIEWS, KANBAN_DUE_FILTERS } from '../lib/constants';
 import { teamColour } from '../lib/helpers';
+import { BTN } from '../../../lib/buttonStyles';
 
 const sepStyle = { width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' };
 const labelStyle = {
   fontWeight: 600, color: '#94a3b8', fontSize: 12, fontFamily: "'Outfit', sans-serif",
 };
-const btnStyle = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '4px 10px', fontSize: 13, fontWeight: 500,
-  fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb',
-  borderRadius: 8, background: '#fff', color: '#1e293b',
-  cursor: 'pointer', whiteSpace: 'nowrap',
-};
+const btnStyle = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap' };
 const btnActiveStyle = { ...btnStyle, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' };
 const selectStyle = {
   padding: '3px 8px', fontSize: 13, fontFamily: "'Outfit', sans-serif",

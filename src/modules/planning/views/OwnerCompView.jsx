@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { usePlanning } from '../PlanningModule';
 import { fmtGBP } from '../lib/projection';
+import { BTN } from '../../../lib/buttonStyles';
 
 const TYPES = [
   { value: 'salary',      label: 'Salary (PAYE)' },
@@ -239,4 +240,4 @@ const help = { fontSize: 13, color: '#94a3b8', marginBottom: 14, lineHeight: 1.5
 const th = { padding: '10px 12px', textAlign: 'left', fontWeight: 600 };
 const td = { padding: '8px 12px', color: '#0f172a', verticalAlign: 'middle' };
 const inputStyle = { width: '100%', padding: '7px 10px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 6, fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box', background: '#fff' };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnOutline = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { OUTFIT, cardStyle, inputStyle } from './dashboardData';
 import { checkFormula, FINANCIAL_KEYS } from './kpiEngine';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   KPI Packs — /admin/kpi-packs (can_manage_kpi_packs only).
@@ -560,16 +561,8 @@ const pill = {
   fontSize: 12, fontFamily: 'ui-monospace, monospace', padding: '3px 8px', borderRadius: 6,
   border: '1px solid #e5e7eb', backgroundColor: '#f8fafc', color: '#334155', cursor: 'pointer',
 };
-const smallBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
-  borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#475569',
-  fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
-};
-const primaryBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 17px',
-  border: 'none', borderRadius: 10, backgroundColor: '#1E4560', color: '#fff',
-  fontFamily: OUTFIT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-};
+const smallBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
+const primaryBtn = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
 const iconAdd = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 9px',

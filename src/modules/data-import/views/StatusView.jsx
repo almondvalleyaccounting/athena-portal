@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Clipboard, BarChart2, Link as LinkIcon, ArrowRight, X } from 'lucide-react';
 import { SOURCES, SYSTEMS, getSystemLabel } from '../lib/sources';
 import { fetchStatusCounts, fetchLatestPerSource, fetchStaffNames, fetchImportAccessStaff } from '../lib/importQueries';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const ICONS = { bm: Clipboard, tc: BarChart2, qbo: LinkIcon };
@@ -249,14 +250,5 @@ function PullModal({ source, onClose, onGoToImport }) {
   );
 }
 
-const btnSecondary = {
-  fontSize: 13, fontWeight: 500, padding: '6px 12px',
-  background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-  color: '#1e293b', cursor: 'pointer', fontFamily: font,
-};
-const btnPrimary = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 13, fontWeight: 600, padding: '6px 12px',
-  background: '#1E4560', border: 'none', borderRadius: 8,
-  color: '#fff', cursor: 'pointer', fontFamily: font,
-};
+const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer' };
+const btnPrimary = { ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };

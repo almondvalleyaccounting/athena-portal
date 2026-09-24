@@ -7,6 +7,7 @@ import {
 import { runPlanner } from '../setup/planner';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import { useAuth } from '../../../shell/AppShell';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -586,16 +587,8 @@ function findColumn(dateISO, columns) {
 
 const gridTh = { padding: '8px 6px', fontSize: 11, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb' };
 
-const navBtn = {
-  width: 28, height: 28, border: '1px solid #e5e7eb', background: '#fff',
-  borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  color: '#475569', fontFamily: font,
-};
-const todayBtn = {
-  padding: '6px 10px', fontSize: 13, fontWeight: 500,
-  border: '1px solid #e5e7eb', background: '#fff', borderRadius: 6,
-  cursor: 'pointer', color: '#475569', fontFamily: font,
-};
+const navBtn = { ...BTN.secondary.md, width: 28, height: 28, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
+const todayBtn = { ...BTN.secondary.sm, cursor: 'pointer' };
 const selStyle = {
   padding: '6px 10px', fontSize: 13, fontFamily: font,
   border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff',

@@ -8,6 +8,7 @@ import {
   fetchStaffList, fetchEntities, fetchTimesheetLocks, isDateLocked,
   updateTimesheetEntry, deleteTimesheetEntryById,
 } from '../lib/timesheetQueries';
+import { BTN } from '../../../lib/buttonStyles';
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 function formatISO(d) {
@@ -390,6 +391,6 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
   );
 }
 
-const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
+const navBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', whiteSpace: 'nowrap' };
 const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 const labelStyle = { fontSize: 12, fontWeight: 600, color: '#94a3b8' };

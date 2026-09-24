@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../shell/AppShell';
 import { fetchOpenCycle, fetchCycleItems, fetchReasons, fetchNextActions, openCurrentCycle, sendNudges } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -305,8 +306,8 @@ const td = { padding: '7px 10px', verticalAlign: 'middle' };
 function Th({ children }) {
   return <th style={{ padding: '6px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb' }}>{children}</th>;
 }
-const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff' };
-const btnSecondary = { fontSize: 13, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569' };
+const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
+const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer' };
 
 function Msg({ children, colour = '#64748b' }) {
   return <div style={{ padding: 28, fontFamily: font, color: colour, fontSize: 14.5, textAlign: 'center' }}>{children}</div>;

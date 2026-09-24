@@ -7,6 +7,7 @@ import {
 } from './queries';
 import { runPlanner } from './planner';
 import ClientTypeAhead from '../components/ClientTypeAhead';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -470,18 +471,8 @@ const ovTh = { textAlign: 'left', padding: '4px 8px', fontSize: 11, fontWeight: 
 const ovTd = { padding: '5px 8px', fontSize: 13, color: '#1e293b' };
 const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: font, background: '#fff' };
 
-const btnPrimary = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 14, fontWeight: 600, padding: '8px 14px',
-  background: '#1E4560', border: 'none', borderRadius: 8,
-  color: '#fff', cursor: 'pointer', fontFamily: font,
-};
-const btnSecondary = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 14, fontWeight: 600, padding: '8px 14px',
-  background: '#fff', border: '1px solid #cbd5e1', borderRadius: 8,
-  color: '#0f172a', cursor: 'pointer', fontFamily: font,
-};
+const btnPrimary = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
+const btnSecondary = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
 const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   padding: '4px 8px', background: 'none', border: 'none',

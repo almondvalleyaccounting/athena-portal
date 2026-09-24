@@ -1,4 +1,5 @@
 import React from 'react';
+import { BTN } from '../../lib/buttonStyles';
 
 // Shared vocabulary for Working Papers.
 //
@@ -22,11 +23,7 @@ export const inputStyle = {
   borderRadius: 6, fontFamily: font, boxSizing: 'border-box', background: '#fff',
 };
 
-export const btn = {
-  padding: '6px 13px', fontSize: 13.5, fontWeight: 500, fontFamily: font,
-  border: '1px solid #0f172a', borderRadius: 8, background: '#1E4560',
-  color: '#fff', cursor: 'pointer',
-};
+export const btn = { ...BTN.primary.sm, cursor: 'pointer' };
 
 export const btnQuiet = {
   ...btn, border: '1px solid #e5e7eb', background: '#fff', color: '#334155',

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Reminder queue — the human review step, and the sent history.
@@ -21,10 +22,7 @@ const overlay = {
   position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 210,
   display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
 };
-const btnGhost = {
-  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: '#334155', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const btnPrimary = (on) => ({
   padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: on ? '#1E4560' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',

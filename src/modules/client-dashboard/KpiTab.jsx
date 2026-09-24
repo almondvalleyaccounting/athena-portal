@@ -5,6 +5,7 @@ import { GRAINS, BASES } from './overviewGrain';
 import { Segmented, LoadingCard } from './DashboardUI';
 import { BucketChart, LineChart } from './DashboardCharts';
 import { buildKpiModel, formatKpi } from './kpiEngine';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   KPI tab.
@@ -583,8 +584,4 @@ const addBtn = {
   borderRadius: '10px', padding: '8px 14px', background: '#fff', color: '#0369a1',
   fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, cursor: 'pointer',
 };
-const primaryBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '10px 20px',
-  border: 'none', borderRadius: '10px', backgroundColor: '#1E4560', color: '#fff',
-  fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700, cursor: 'pointer',
-};
+const primaryBtn = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: '7px', cursor: 'pointer' };

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { buildEmailPreview, sampleTemplateVars } from './lib';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Email templates — review and (for managers) edit the copy that the
@@ -21,10 +22,7 @@ const input = {
   width: '100%', padding: '7px 10px', fontSize: 13.5, fontFamily: font,
   border: '1px solid #e5e7eb', borderRadius: 8, boxSizing: 'border-box', color: '#0f172a',
 };
-const btnGhost = {
-  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: '#334155', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const btnPrimary = (on) => ({
   padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
   background: on ? '#1E4560' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',

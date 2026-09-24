@@ -10,6 +10,7 @@ import { fmtGbp } from '../../lib/money';
 import { tones } from '../../lib/tokens';
 import DataTable from '../../components/DataTable';
 import { Btn } from '../../components/ui';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -450,6 +451,6 @@ const Td = ({ children, align, style }) => <td style={{ padding: '8px 12px', ver
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font };
 const modalStyle = { background: '#fff', borderRadius: 12, width: 720, maxWidth: '95vw', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' };
 const inlineInput = { padding: '4px 8px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const modalBtnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const modalBtnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnPrimary = { ...BTN.primary.md, cursor: 'pointer' };
+const modalBtnGhost = { ...BTN.secondary.md, cursor: 'pointer' };
 const iconBtnSmall = { width: 22, height: 22, padding: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, color: '#b91c1c', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };

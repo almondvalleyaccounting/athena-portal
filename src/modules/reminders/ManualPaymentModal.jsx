@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import ClientTypeAhead from '../work-planner/components/ClientTypeAhead';
 import { fmtDateLong, fmtMoney, taxPaymentRef, utr10 } from './lib';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -34,11 +35,7 @@ const btnPrimary = (enabled) => ({
   background: enabled ? ACCENT : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
-const btnGhost = {
-  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
-  borderRadius: 8, cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const lbl = { fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4, display: 'block' };
 const input = {
   padding: '6px 10px', fontSize: 13.5, fontFamily: font, border: '1px solid #e5e7eb',

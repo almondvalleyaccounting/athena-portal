@@ -101,18 +101,26 @@ export function StatusBadge({ status }) {
   );
 }
 
-export function Btn({ children, onClick, variant = 'primary', disabled, className = '' }) {
-  const base = 'px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40';
+// Athena's button (P3 design sprint). Same values as BTN in lib/buttonStyles.js
+// — primary ocean, secondary white with a grey border, danger white with red —
+// in two sizes; Tailwind here so it gets hover states. Extra props (title,
+// type, aria-*, style…) pass straight through to the <button>.
+export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, className = '', type = 'button', ...rest }) {
+  const base = 'inline-flex items-center justify-center gap-1.5 border font-medium leading-tight transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+  const sizes = {
+    md: 'px-4 py-2 text-sm rounded-lg',
+    sm: 'px-2.5 py-[5px] text-[13px] rounded-md',
+  };
   const variants = {
     // One main-action colour across Athena (UI audit, Sprint 3): ocean with
     // white text. Secondary is quiet; danger is white with red, not a fill.
-    primary: 'bg-ocean-600 text-white hover:bg-ocean-700 font-semibold',
-    secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50',
-    danger: 'bg-white text-red-700 border border-red-200 hover:bg-red-50',
-    ghost: 'text-gray-500 hover:text-ocean-600 hover:bg-gray-50',
+    primary: 'bg-ocean-600 border-ocean-600 text-white hover:bg-ocean-700 hover:border-ocean-700 font-semibold',
+    secondary: 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50',
+    danger: 'bg-white text-red-700 border-red-200 hover:bg-red-50 font-semibold',
+    ghost: 'border-transparent text-gray-500 hover:text-ocean-600 hover:bg-gray-50',
   };
   return (
-    <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
+    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sizes[size] || sizes.md} ${variants[variant] || variants.primary} ${className}`} {...rest}>
       {children}
     </button>
   );

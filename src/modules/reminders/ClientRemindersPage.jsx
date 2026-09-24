@@ -14,6 +14,7 @@ import {
 import EmailTemplatesModal from './EmailTemplatesModal';
 import ReminderQueueModal from './ReminderQueueModal';
 import ManualPaymentModal from './ManualPaymentModal';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -38,11 +39,7 @@ const btnPrimary = (enabled) => ({
   background: enabled ? ACCENT : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
-const btnGhost = {
-  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
-  borderRadius: 8, cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const PREF_META = {
   opted_in: { label: 'Opted in', bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
   opted_out: { label: 'Opted out', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },

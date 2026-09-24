@@ -5,6 +5,7 @@ import { useAuth } from '../../shell/AppShell';
 import { MODULES } from '../../modules.config';
 import DataTable from '../../components/DataTable';
 import { fetchAllRows } from '../../lib/fetchAllRows';
+import { BTN } from '../../lib/buttonStyles';
 
 /* ─── Bug Reports Module ───────────────────────────────────────────────
  *
@@ -836,8 +837,8 @@ const tabBtn = (active) => ({
 });
 const input = { width: '100%', padding: '9px 12px', fontSize: 14, border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none', fontFamily: "'Outfit', sans-serif", boxSizing: 'border-box' };
 const textarea = { ...input, resize: 'vertical', lineHeight: 1.5 };
-const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 18px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 14, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
+const btnPrimary = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
+const btnOutline = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
 const btnSmall = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" };
 const linkBtn = { background: 'none', border: 'none', color: '#0e7fe0', fontSize: 13, cursor: 'pointer', fontFamily: "'Outfit', sans-serif", padding: 0 };
 const chip = { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#eff6ff', color: '#0e7fe0', fontSize: 13.5, fontWeight: 500, padding: '5px 10px', borderRadius: 7 };

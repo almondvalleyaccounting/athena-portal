@@ -7,6 +7,7 @@ import {
   fetchAllCompletedForRange, fetchAllTimesheetEntriesForRange, fetchStaffList, fetchEntities,
   fetchTimesheetLocks, createTimesheetLock, removeTimesheetLock,
 } from '../lib/timesheetQueries';
+import { BTN } from '../../../lib/buttonStyles';
 
 /* ─── Helpers ──────────────────────────────────────────────── */
 function startOfWeek(d) {
@@ -509,6 +510,6 @@ const thStyle = { padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#6
 const cardStyle = { background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '20px 24px' };
 const sectionTitle = { fontFamily: "'Outfit', sans-serif", fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 16, marginTop: 0 };
 const emptyStyle = { padding: 20, textAlign: 'center', color: '#cbd5e1', fontSize: 14 };
-const navBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '5px 10px', fontSize: 14, fontWeight: 500, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#1e293b', cursor: 'pointer', whiteSpace: 'nowrap' };
+const navBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', whiteSpace: 'nowrap' };
 const selectStyle = { padding: '5px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif", border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
 const labelStyle = { fontSize: 12, fontWeight: 600, color: '#94a3b8' };

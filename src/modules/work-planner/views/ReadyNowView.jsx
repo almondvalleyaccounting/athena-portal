@@ -6,6 +6,7 @@ import {
   fetchPendingChangeRequests, upsertChangeRequest,
   markChangeRequestApplied, cancelChangeRequest, reconcilePendingChangeRequests,
 } from '../lib/readyNowChanges';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -1285,15 +1286,9 @@ const selectInput = {
   border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#0f172a',
   boxSizing: 'border-box', outline: 'none',
 };
-const btnPrimary = {
-  fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
-  borderRadius: 6, border: '1px solid #0f172a', background: '#1E4560', color: '#fff', fontWeight: 600,
-};
+const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
 const btnPrimaryDisabled = { ...btnPrimary, background: '#94a3b8', border: '1px solid #94a3b8', cursor: 'not-allowed' };
-const btnSecondary = {
-  fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: 'pointer',
-  borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 500,
-};
+const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer' };
 const qmTh = { padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', borderBottom: '1px solid #e5e7eb' };
 const qmTd = { padding: '7px 10px', verticalAlign: 'middle' };
 

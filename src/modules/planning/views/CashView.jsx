@@ -4,6 +4,7 @@ import { usePlanning } from '../PlanningModule';
 import { loadBsCache, pullQboBalanceSheet, loadBaselineHealth } from '../lib/queries';
 import { buildCashForecast, classifyBalanceSheet } from '../lib/cashflow';
 import { fmtGBP } from '../lib/projection';
+import { BTN } from '../../../lib/buttonStyles';
 
 // Cash & Owner — Phase 3 of the overhaul. The question this page answers is
 // the one every owner actually asks: "what can I safely take out?"
@@ -370,5 +371,5 @@ const h3 = { fontFamily: "'Playfair Display', serif", fontSize: 16, fontWeight: 
 const sub = { fontSize: 13, color: '#64748b', margin: '6px 0 0', lineHeight: 1.6 };
 const th = { padding: '9px 12px', textAlign: 'right', fontWeight: 600 };
 const td = { padding: '7px 12px', textAlign: 'right', color: '#0f172a', fontVariantNumeric: 'tabular-nums' };
-const btnDark = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 7, cursor: 'pointer', fontFamily: font };
-const btnOutline = { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 7, cursor: 'pointer', fontFamily: font };
+const btnDark = { ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
+const btnOutline = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };

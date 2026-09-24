@@ -7,6 +7,7 @@ import { GRAINS, BASES, VIEWS } from './overviewGrain';
 import { Segmented, LoadingCard } from './DashboardUI';
 import { FINANCIAL_KEYS } from './kpiEngine';
 import ReportView from './ReportView';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Custom reports.
@@ -316,17 +317,6 @@ const pill = {
   fontSize: 12.5, padding: '4px 10px', borderRadius: 999, border: '1px solid #e5e7eb',
   backgroundColor: '#f8fafc', color: '#334155', cursor: 'pointer', fontFamily: OUTFIT,
 };
-const tinyBtn = {
-  border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px', background: '#fff',
-  color: '#64748b', fontSize: 12, cursor: 'pointer', fontFamily: OUTFIT, lineHeight: 1.4,
-};
-const smallBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
-  borderRadius: 8, padding: '7px 13px', background: '#fff', color: '#475569',
-  fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
-};
-const primaryBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 17px',
-  border: 'none', borderRadius: 10, backgroundColor: '#1E4560', color: '#fff',
-  fontFamily: OUTFIT, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-};
+const tinyBtn = { ...BTN.secondary.sm, cursor: 'pointer' };
+const smallBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
+const primaryBtn = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };

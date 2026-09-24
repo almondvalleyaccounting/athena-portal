@@ -8,6 +8,7 @@ import SearchInput from '../../components/SearchInput';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
 import { fmtGbp } from '../../lib/money';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -1104,12 +1105,12 @@ const cellTd = { padding: '6px 8px', textAlign: 'right', verticalAlign: 'middle'
 
 const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
 const btnAction = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnGhost = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const btnPrimary = { padding: '6px 14px', fontSize: 13, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnGhost = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
+const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
 const clearBtnStyle = { width: 16, height: 16, padding: 0, fontSize: 14.5, lineHeight: 1, background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' };
 
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font };
 const modalStyle = { background: '#fff', borderRadius: 12, width: 460, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' };
 const inputStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
-const modalBtnPrimary = { padding: '8px 16px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
-const modalBtnGhost = { padding: '8px 14px', fontSize: 14, fontWeight: 500, background: '#fff', color: '#475569', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const modalBtnPrimary = { ...BTN.primary.md, cursor: 'pointer' };
+const modalBtnGhost = { ...BTN.secondary.md, cursor: 'pointer' };

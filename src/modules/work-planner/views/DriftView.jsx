@@ -6,6 +6,7 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../shell/AppShell';
 import ClientTypeAhead from '../components/ClientTypeAhead';
+import { BTN } from '../../../lib/buttonStyles';
 
 /*
  * Work → Bookkeeping Health (was "Drifting").
@@ -295,10 +296,7 @@ const inputStyle = {
   fontFamily: FONT, fontSize: '13.5px', padding: '6px 9px', borderRadius: '8px',
   border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#0f172a',
 };
-const btnGhost = {
-  fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, padding: '6px 12px', borderRadius: '8px',
-  border: '1px solid #e2e8f0', backgroundColor: '#fff', color: '#475569', cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.md, cursor: 'pointer' };
 const btnPrimary = (disabled) => ({
   fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, padding: '6px 14px', borderRadius: '8px',
   border: 'none', backgroundColor: disabled ? '#cbd5e1' : '#0ea5e9', color: '#fff',

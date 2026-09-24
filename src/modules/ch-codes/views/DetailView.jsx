@@ -11,13 +11,11 @@ import {
   reopenRequest, advanceStage, setComms, addNote, recordClientReply, setPersonEmail,
   CALL_OUTCOMES, callOutcomeMeta, isEscalated, clearEscalation,
 } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
-const btnGhost = {
-  padding: '8px 14px', fontSize: 14, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 10, cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.md, cursor: 'pointer' };
 const isEmail = (e) => typeof e === 'string' && e.includes('@');
 function localNowValue() {
   const d = new Date();

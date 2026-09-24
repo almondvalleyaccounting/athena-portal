@@ -4,6 +4,7 @@ import {
   loadStaff, loadMandatoryTrainings, loadMandatoryCompletions,
   recordMandatoryCompletion, createMandatoryTraining, mandatoryStatus,
 } from '../lib/api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -244,8 +245,8 @@ function Field({ label, children, grow }) {
 
 const inputStyle = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#0f172a', outline: 'none' };
 const selectStyle = { padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' };
-const btnPrimary = { fontSize: 13, fontWeight: 600, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #0f172a', background: '#1E4560', color: '#fff', whiteSpace: 'nowrap' };
-const btnSecondary = { fontSize: 13, fontWeight: 500, fontFamily: font, cursor: 'pointer', padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', whiteSpace: 'nowrap' };
+const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer', whiteSpace: 'nowrap' };
+const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer', whiteSpace: 'nowrap' };
 const th = { padding: '8px 10px', textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#64748b' };
 const thLeft = { ...th, textAlign: 'left' };
 const td = { padding: '7px 10px', verticalAlign: 'middle' };

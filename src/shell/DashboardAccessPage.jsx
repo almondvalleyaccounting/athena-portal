@@ -11,6 +11,7 @@ import { SECTIONS } from '../modules/client-dashboard/ClientAccessTab';
 import {
   personStatus, sendPortalLink, confirmSendLink, sendLinkLabel, sendLinkIsPending, sendLinkTitle,
 } from '../modules/client-dashboard/portalLink';
+import { BTN } from '../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -533,11 +534,7 @@ const input = {
   border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 12px',
   fontSize: 14.5, fontFamily: font, outline: 'none', boxSizing: 'border-box', width: '100%',
 };
-const dangerBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #fecaca',
-  borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#b91c1c',
-  fontFamily: font, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
-};
+const dangerBtn = { ...BTN.danger.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
 const linkishBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
   borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#475569',

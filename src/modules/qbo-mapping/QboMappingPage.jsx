@@ -9,6 +9,7 @@ import { insertEntity } from '../work-planner/lib/supabaseQueries';
 import AlphabetFilter, { firstCharBucket } from '../../components/AlphabetFilter';
 import DataTable from '../../components/DataTable';
 import RowMenu from '../../components/RowMenu';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -694,10 +695,10 @@ function EmptyState({ filter, total }) {
 
 // ─── Styles ────────────────────────────────────────────────
 const selectStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#1e293b', outline: 'none' };
-const btnPrimary = { padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font };
-const btnSecondary = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#1e293b', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnPrimary = { ...BTN.primary.md, cursor: 'pointer' };
+const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer' };
 const btnGhost = { padding: '6px 12px', fontSize: 13, fontWeight: 500, background: 'none', color: '#64748b', border: 'none', cursor: 'pointer', fontFamily: font };
-const btnAutoAccept = { padding: '7px 14px', fontSize: 13, fontWeight: 600, background: '#1E4560', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnAutoAccept = { ...BTN.primary.sm, cursor: 'pointer' };
 
 const backLinkStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 4,

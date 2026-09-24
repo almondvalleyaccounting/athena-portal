@@ -13,6 +13,7 @@ import {
   loadContacts, loadSignatures, loadTagRules, mailboxNeedsReconnect, parseAddress, recordTagRule,
   saveSignature, syncContacts,
 } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -1659,17 +1660,9 @@ const suggChipBtn = {
 };
 
 // Hover-revealed per-row action.
-const rowActionBtn = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  width: 22, height: 22, padding: 0, border: '1px solid #e2e8f0', borderRadius: 5,
-  background: '#fff', cursor: 'pointer', color: '#475569',
-};
+const rowActionBtn = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, cursor: 'pointer' };
 
-const railBtn = {
-  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 8px', fontSize: 12.5, fontWeight: 600,
-  border: '1px solid #e2e8f0', background: '#fff', borderRadius: 8, cursor: 'pointer',
-  fontFamily: font, color: '#475569', textAlign: 'left', whiteSpace: 'nowrap',
-};
+const railBtn = { ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' };
 
 const addOptionStyle = {
   display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', fontSize: 13.5, fontWeight: 600,

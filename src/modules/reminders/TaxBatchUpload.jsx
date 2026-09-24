@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { parseCsv, guessColumns, parseAmount, matchEntityByUtrSurname, fmtMoney, utr10 } from './lib';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -32,11 +33,7 @@ const btnPrimary = (enabled) => ({
   background: enabled ? '#1E4560' : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
   border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
 });
-const btnGhost = {
-  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: '#334155', border: '1px solid #e5e7eb',
-  borderRadius: 8, cursor: 'pointer',
-};
+const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const th = {
   padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#64748b',
   textAlign: 'left', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap',
