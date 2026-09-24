@@ -596,7 +596,7 @@ export default function ClientDashboardPage() {
             value={realmId}
             onChange={(e) => onSelect(e.target.value)}
             disabled={clientsLoading}
-            style={{ ...inputStyle, width: '100%', appearance: 'auto' }}
+            style={{ ...inputStyle, width: '100%', maxWidth: 480, appearance: 'auto' }}
           >
             <option value="">{clientsLoading ? 'Loading clients…' : 'Select a client…'}</option>
             {clients.map((c) => (

@@ -270,7 +270,7 @@ export default function RevenueView() {
 
       {/* Controls */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 220, maxWidth: 480 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#cbd5e1' }} />
           <input placeholder="Search clients…" value={search} onChange={(e) => setSearch(e.target.value)}
             style={{ ...inputStyle, paddingLeft: 32 }} />

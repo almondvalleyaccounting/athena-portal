@@ -6,7 +6,10 @@ const font = "'Outfit', sans-serif";
 // field has a value. Use everywhere search/filter inputs live.
 export default function SearchInput({ value, onChange, placeholder, style, inputStyle }) {
   return (
-    <div style={{ position: 'relative', display: 'inline-flex', ...style }}>
+    // maxWidth: a search box is sized for a name or a reference, not for the
+    // monitor — pages are full width, so without it a flex:1 caller stretched
+    // it to 1,200px+. Callers can still override.
+    <div style={{ position: 'relative', display: 'inline-flex', maxWidth: 480, ...style }}>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}

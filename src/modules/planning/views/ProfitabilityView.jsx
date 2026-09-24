@@ -106,7 +106,7 @@ export default function ProfitabilityView() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, margin: '16px 0 10px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 220, maxWidth: 480 }}>
           <input placeholder="Search clients…" value={search} onChange={(e) => setSearch(e.target.value)} style={inputStyle} />
         </div>
         <div style={{ display: 'flex', gap: 2, borderBottom: '1px solid #e5e7eb' }}>
