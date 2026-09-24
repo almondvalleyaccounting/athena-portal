@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Clock, AlertTriangle, Hourglass, MessageSquare } from 'lucide-react';
+import { UserPlus, Clock, AlertTriangle, Hourglass, MessageSquare, CheckCircle2, RotateCcw, Archive } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import DataTable from '../../../components/DataTable';
+import RowMenu from '../../../components/RowMenu';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
@@ -268,10 +269,25 @@ ${latest.body}`}
       },
     },
     {
-      key: 'actions', label: '', width: 250, align: 'right', sortable: false,
+      key: 'actions', label: '', width: 190, align: 'right', sortable: false,
+      // One main action per row (UI audit, Sprint 4). The row itself opens the
+      // onboarding — the usual next step — so a button only appears when there
+      // is a real decision on the row: Complete once every step is done,
+      // Restore when archived. The rest is in the ⋮ menu, Archive last in red.
+      // Same runAction calls and confirms as before.
       render: (r) => {
         const notes = r.notes || [];
         const notesOpen = openNotes === r.id;
+        const busy = busyId === r.id;
+        const openCount = outstandingSteps(r.steps).length;
+        const noEvent = { stopPropagation() {} };
+        const act = (action) => () => { if (!busy) runAction(r, action, noEvent); };
+        const menu = r.archived_at ? [] : [
+          r.status === 'complete'
+            ? { label: 'Reopen…', icon: RotateCcw, onClick: act('reopen') }
+            : openCount > 0 && { label: `Mark complete… (${openCount} step${openCount === 1 ? '' : 's'} open)`, icon: CheckCircle2, onClick: act('complete') },
+          { label: 'Archive', icon: Archive, onClick: act('archive'), danger: true },
+        ].filter(Boolean);
         return (
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
             <button
@@ -281,26 +297,17 @@ ${latest.body}`}
             >
               <MessageSquare size={12} /> {notes.length || ''}
             </button>
-            {r.archived_at ? (
-              <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
+            {r.archived_at && (
+              <button disabled={busy} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
                 Restore
               </button>
-            ) : (
-              <>
-                {r.status === 'complete' ? (
-                  <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'reopen', e)} style={actionBtnStyle('neutral')}>
-                    Reopen
-                  </button>
-                ) : (
-                  <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'complete', e)} style={actionBtnStyle('success')}>
-                    Complete
-                  </button>
-                )}
-                <button disabled={busyId === r.id} onClick={(e) => runAction(r, 'archive', e)} style={actionBtnStyle('neutral')}>
-                  Archive
-                </button>
-              </>
             )}
+            {!r.archived_at && r.status !== 'complete' && openCount === 0 && (
+              <button disabled={busy} onClick={(e) => runAction(r, 'complete', e)} style={actionBtnStyle('success')}>
+                Complete
+              </button>
+            )}
+            <RowMenu items={menu} />
           </div>
         );
       },
