@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AppShell';
 import { ColourPicker, WorkingDaysEditor } from './AdminPage';
@@ -31,6 +33,17 @@ export default function UserSettingsPage() {
     setColour(profile.colour || null);
     setWorkingDays(profile.working_days || 'mon,tue,wed,thu,fri');
   }, [profile?.id]);
+
+  const navigate = useNavigate();
+  // Two-factor status for the Security card (the full page is /security).
+  const [mfaOn, setMfaOn] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.mfa.listFactors()
+      .then(({ data }) => { if (!cancelled) setMfaOn((data?.totp || []).some((f) => f.status === 'verified')); })
+      .catch(() => { if (!cancelled) setMfaOn(null); });
+    return () => { cancelled = true; };
+  }, []);
 
   const markDirty = () => { setDirty(true); setMsg(null); };
 
@@ -75,9 +88,21 @@ export default function UserSettingsPage() {
     fontFamily: font, fontSize: 13, fontWeight: 600, color: '#64748b',
     display: 'block', marginBottom: 6,
   };
+  const inputStyle = {
+    width: '100%', border: '1px solid #e5e7eb', borderRadius: 10,
+    padding: '10px 14px', fontSize: 14, fontFamily: font, outline: 'none',
+    boxSizing: 'border-box', transition: 'border-color 0.2s ease',
+  };
+  const card = {
+    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 22,
+  };
+  const cardTitle = { fontFamily: font, fontSize: 16, fontWeight: 600, color: '#0f172a', margin: '0 0 16px' };
+  const hint = { fontFamily: font, fontSize: 13, color: '#94a3b8', marginTop: 6 };
 
+  // Full-width page, fields grouped into cards side by side (UI audit,
+  // Sprint 3: forms go into columns rather than stretching one field across).
   return (
-    <div style={{ margin: '0 auto', padding: '40px 24px' }}>
+    <div style={{ padding: '40px 32px' }}>
       <h1
         style={{
           fontFamily: "'Playfair Display', serif",
@@ -90,57 +115,36 @@ export default function UserSettingsPage() {
         My Settings
       </h1>
       <p style={{ fontFamily: font, fontSize: 14.5, color: '#64748b', marginBottom: 24 }}>
-        Your own profile — how your name and colour appear across Athena.
+        How your name and colour appear across Athena, and the days you work.
       </p>
 
-      <div
-        style={{
-          background: '#fff',
-          border: '1px solid #e5e7eb',
-          borderRadius: 12,
-          padding: 24,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 20,
-        }}
-      >
-        {/* Name */}
-        <div>
-          <label style={labelStyle}>Name</label>
-          <input
-            value={name}
-            onChange={(e) => { setName(e.target.value); markDirty(); }}
-            placeholder="Your name"
-            style={{
-              width: '100%', maxWidth: 360, border: '1px solid #e5e7eb', borderRadius: 10,
-              padding: '10px 14px', fontSize: 14, fontFamily: font, outline: 'none',
-              boxSizing: 'border-box', transition: 'border-color 0.2s ease',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = '#0e7fe0')}
-            onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-          />
-        </div>
-
-        {/* Email — read-only */}
-        <div>
-          <label style={labelStyle}>Email</label>
-          <input
-            value={profile?.email || ''}
-            readOnly
-            disabled
-            style={{
-              width: '100%', maxWidth: 360, border: '1px solid #e5e7eb', borderRadius: 10,
-              padding: '10px 14px', fontSize: 14, fontFamily: font, outline: 'none',
-              boxSizing: 'border-box', background: '#f8fafc', color: '#94a3b8',
-            }}
-          />
-          <p style={{ fontFamily: font, fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
-            Ask an admin on Staff &amp; Permissions to change your sign-in email.
-          </p>
-        </div>
-
-        {/* Colour */}
-        <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
+        {/* Profile — the wide card */}
+        <section style={{ ...card, gridColumn: 'span 2' }}>
+          <h2 style={cardTitle}>Profile</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 18 }}>
+            <div>
+              <label style={labelStyle}>Name</label>
+              <input
+                value={name}
+                onChange={(e) => { setName(e.target.value); markDirty(); }}
+                placeholder="Your name"
+                style={inputStyle}
+                onFocus={(e) => (e.target.style.borderColor = '#1E4560')}
+                onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Sign-in email</label>
+              <input
+                value={profile?.email || ''}
+                readOnly
+                disabled
+                style={{ ...inputStyle, background: '#f8fafc', color: '#94a3b8' }}
+              />
+              <p style={hint}>An admin changes this on Staff &amp; Permissions.</p>
+            </div>
+          </div>
           <label style={labelStyle}>Colour</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <ColourPicker
@@ -148,52 +152,67 @@ export default function UserSettingsPage() {
               onChange={(c) => { setColour(c); markDirty(); }}
             />
             <span style={{ fontFamily: font, fontSize: 13, color: '#94a3b8' }}>
-              Used for your avatar and planner entries.
+              Your avatar and planner entries.
             </span>
           </div>
-        </div>
+        </section>
 
-        {/* Working days */}
-        <div>
-          <label style={labelStyle}>Working days</label>
+        {/* Working week */}
+        <section style={card}>
+          <h2 style={cardTitle}>Working week</h2>
+          <label style={labelStyle}>Days you work</label>
           <div style={{ display: 'inline-block' }}>
             <WorkingDaysEditor
               value={workingDays}
               onChange={(days) => { setWorkingDays(days); markDirty(); }}
             />
           </div>
-        </div>
+          <p style={hint}>Used when your planner work is scheduled.</p>
+        </section>
 
-        {/* Save */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
-          <button
-            onClick={save}
-            disabled={saving || !dirty}
-            style={{
-              fontFamily: font, fontSize: 14, fontWeight: 600, color: '#fff',
-              backgroundColor: saving || !dirty ? '#94a3b8' : '#1E4560',
-              border: 'none', borderRadius: 10, padding: '10px 24px',
-              cursor: saving ? 'wait' : dirty ? 'pointer' : 'default',
-              transition: 'all 0.2s ease',
-            }}
+        {/* Security — status plus the way in (was only in the avatar menu) */}
+        <section style={card}>
+          <h2 style={cardTitle}>Security</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: font, fontSize: 14, color: '#334155' }}>
+            {mfaOn === false
+              ? <><ShieldAlert size={16} color="#b45309" /> Two-factor sign-in is off</>
+              : <><ShieldCheck size={16} color="#16a34a" /> Two-factor sign-in {mfaOn ? 'is on' : ''}</>}
+          </div>
+          <p style={hint}>Your password, authenticator app and trusted devices.</p>
+          <a
+            href="/security"
+            onClick={(e) => { e.preventDefault(); navigate('/security'); }}
+            style={{ display: 'inline-block', marginTop: 12, fontFamily: font, fontSize: 14, fontWeight: 600, color: '#1E4560', textDecoration: 'none' }}
           >
-            {saving ? 'Saving...' : 'Save changes'}
-          </button>
-          {msg && (
-            <p style={{
-              fontFamily: font, fontSize: 14,
-              color: msg.tone === 'success' ? '#16a34a' : '#ef4444',
-            }}>
-              {msg.text}
-            </p>
-          )}
-        </div>
+            Manage security →
+          </a>
+        </section>
       </div>
 
-      <p style={{ fontFamily: font, fontSize: 13, color: '#94a3b8', marginTop: 16 }}>
-        Password and two-factor settings live under Security &amp; 2FA in the avatar menu.
-        Module permissions are managed by admins on Staff &amp; Permissions.
-      </p>
+      {/* Save */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, marginTop: 18 }}>
+        {msg && (
+          <p style={{
+            fontFamily: font, fontSize: 14, margin: 0,
+            color: msg.tone === 'success' ? '#16a34a' : '#ef4444',
+          }}>
+            {msg.text}
+          </p>
+        )}
+        <button
+          onClick={save}
+          disabled={saving || !dirty}
+          style={{
+            fontFamily: font, fontSize: 14, fontWeight: 600, color: '#fff',
+            backgroundColor: saving || !dirty ? '#94a3b8' : '#1E4560',
+            border: 'none', borderRadius: 10, padding: '10px 24px',
+            cursor: saving ? 'wait' : dirty ? 'pointer' : 'default',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          {saving ? 'Saving...' : 'Save changes'}
+        </button>
+      </div>
     </div>
   );
 }
