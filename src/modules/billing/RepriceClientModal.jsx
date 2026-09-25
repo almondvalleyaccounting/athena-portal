@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowRight, ArrowLeft, Download, FileText, Mail, Plus, RotateCcw, Trash2, ExternalLink, Sparkles, Scissors } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fmtGbpDetailed } from '../../lib/money';
@@ -48,6 +48,8 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   const [resolveService, setResolveService] = useState(() => () => null);
   const [drivers, setDrivers] = useState(EMPTY_DRIVERS);
   const [driverSources, setDriverSources] = useState({});
+  const [driversSaved, setDriversSaved] = useState(null); // JSON of what's stored, to know if they changed
+  const driversInitial = useRef(null); // the prefill, when nothing was stored yet
   const [seedNote, setSeedNote] = useState(null);
   const [feServices, setFeServices] = useState([]);
 
@@ -75,13 +77,14 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   useEffect(() => {
     let live = true;
     (async () => {
-      const [D, { data: maps }, { data: people }, { data: quotes }, { data: ent }] = await Promise.all([
+      const [D, { data: maps }, { data: people }, { data: quotes }, { data: ent }, { data: kept }] = await Promise.all([
         fetchFeeDefaults(),
         supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', false),
         supabase.from('entity_people').select('role').eq('entity_id', entity.id).eq('role', 'director').is('ended_on', null),
         supabase.from('quotes').select('estimated_turnover, accounts_detail, payroll_detail, directors, created_at')
           .eq('entity_id', entity.id).order('created_at', { ascending: false }).limit(1),
         supabase.from('entities').select('type, company_status_detail').eq('id', entity.id).maybeSingle(),
+        supabase.from('client_pricing_drivers').select('*').eq('entity_id', entity.id).maybeSingle(),
       ]);
       if (!live) return;
       setFeeDefaults(D);
@@ -105,8 +108,21 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
         next.weeklyEmployees = String(q.payroll_detail.weekly_ee ?? '');
         src.employees = 'last quote';
       }
+      // What staff saved last time wins over anything inferred (sql/301).
+      if (kept) {
+        const when = `saved ${new Date(kept.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+        const put = (k, v, srcKey = k) => { if (v != null) { next[k] = String(v); src[srcKey] = when; } };
+        put('turnover', kept.turnover);
+        if (kept.accounts_type) { next.accountsType = kept.accounts_type; src.accountsType = when; }
+        put('properties', kept.properties);
+        put('directors', kept.directors);
+        put('monthlyEmployees', kept.monthly_employees, 'employees');
+        put('weeklyEmployees', kept.weekly_employees, 'employees');
+      }
       setDrivers(next);
       setDriverSources(src);
+      setDriversSaved(kept ? JSON.stringify(driverRecord(next)) : null);
+      driversInitial.current = next;
     })();
     return () => { live = false; };
   }, [entity.id]);
@@ -166,7 +182,10 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   // Notice or proposal follows from the changes (repriceReasons: only a
   // new service needs the client's agreement).
   const kind = kindOf(summary);
-  const dirty = useMemo(() => lines.some((l) => lineDirty(l)) || effectiveAt !== initialEffective(clientRows), [lines, effectiveAt, clientRows]);
+  // Drivers count as unsaved once staff have entered or changed any.
+  const driversDirty = feeDefaults != null && JSON.stringify(driverRecord(drivers)) !== (driversSaved ?? JSON.stringify(driverRecord(driversInitial.current || drivers)));
+  const dirty = useMemo(() => lines.some((l) => lineDirty(l)) || effectiveAt !== initialEffective(clientRows) || driversDirty,
+    [lines, effectiveAt, clientRows, driversDirty]);
   const missingReason = lines.some((l) => isChanged(l) && ((l.reasonKey === 'other' && !l.otherText.trim()) || (l.extra || []).some((e) => e.reasonKey === 'other' && !(e.otherText || '').trim())));
 
   const setLine = (key, patch) => setLines((prev) => prev.map((l) => {
@@ -242,6 +261,15 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
     setSaving(true);
     setError(null);
     try {
+      if (driversDirty) {
+        const { data, error: fnErr } = await supabase.functions.invoke('fee-proposal', {
+          body: { action: 'save_drivers', entity_id: entity.id, drivers: driverRecord(drivers) },
+        });
+        if (fnErr || !data?.success) throw new Error(`Couldn't save the pricing drivers: ${data?.error || fnErr?.message || 'unknown error'}`);
+        setDriversSaved(JSON.stringify(driverRecord(drivers)));
+        const when = `saved ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+        setDriverSources((prev) => ({ ...prev, turnover: when, accountsType: when, directors: when, employees: when }));
+      }
       const byRow = new Map();
       for (const l of lines) {
         if (!byRow.has(l.rowId)) byRow.set(l.rowId, []);
@@ -1294,6 +1322,19 @@ function pendingFields(l, amount, effectiveAt, stagedAt, strategy) {
 }
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+// The drivers as stored in client_pricing_drivers (sql/301).
+function driverRecord(d) {
+  const v = (x) => (x === '' || x == null ? null : Number(x));
+  return {
+    turnover: v(d.turnover),
+    accounts_type: d.accountsType || null,
+    properties: d.accountsType === 'property' ? v(d.properties) : null,
+    directors: v(d.directors),
+    monthly_employees: v(d.monthlyEmployees),
+    weekly_employees: v(d.weeklyEmployees),
+  };
+}
 const asNumbers = (l) => ({ ...l, next: round2(l.next) });
 const isChanged = (l) => round2(l.next) !== l.current;
 // Unsaved: a new line, an amount moved from what was loaded, or a

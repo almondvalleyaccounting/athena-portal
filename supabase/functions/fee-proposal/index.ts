@@ -23,6 +23,11 @@
 //       Closes it. clear_pending removes the staged amounts it tagged, so the
 //       client's current fees stand.
 //
+//   { action: "save_drivers", entity_id, drivers: { turnover, accounts_type,
+//     properties, directors, monthly_employees, weekly_employees } }
+//       Keeps the client's pricing drivers (sql/301) so the next fee review
+//       starts from them. Blank means unknown and is stored as null.
+//
 // Callers: staff who can see client fees (can_view_client_fees), as for
 // live_billing itself.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -70,6 +75,7 @@ Deno.serve(async (req) => {
     case "record_acceptance": return await recordAcceptance(sb, body, userId, audit);
     case "decline":
     case "withdraw": return await close(sb, body, userId, audit, body.action === "decline" ? "declined" : "withdrawn");
+    case "save_drivers": return await saveDrivers(sb, body, userId);
     default: return json({ success: false, error: "Unknown action" }, 400);
   }
 });
@@ -213,4 +219,38 @@ async function close(sb: Sb, b: Record<string, unknown>, userId: string | null, 
 
   await audit(`fee_proposal_${status}`, id, { note: b.note || null, cleared_pending_lines: cleared });
   return json({ success: true, cleared });
+}
+
+async function saveDrivers(sb: Sb, b: Record<string, unknown>, userId: string | null) {
+  const entityId = String(b.entity_id || "");
+  const d = (b.drivers && typeof b.drivers === "object") ? b.drivers as Record<string, unknown> : {};
+  if (!entityId) return json({ success: false, error: "entity_id required" }, 400);
+  // Blank → null; anything else must be a non-negative number.
+  const num = (v: unknown, whole = false) => {
+    if (v === "" || v == null) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid number: ${v}`);
+    return whole ? Math.round(n) : n;
+  };
+  let row;
+  try {
+    const type = d.accounts_type == null || d.accounts_type === "" ? null : String(d.accounts_type);
+    if (type && !["trading", "dormant", "property"].includes(type)) throw new Error("accounts_type must be trading, dormant or property");
+    row = {
+      entity_id: entityId,
+      turnover: num(d.turnover),
+      accounts_type: type,
+      properties: num(d.properties, true),
+      directors: num(d.directors, true),
+      monthly_employees: num(d.monthly_employees, true),
+      weekly_employees: num(d.weekly_employees, true),
+      updated_at: new Date().toISOString(),
+      updated_by: userId,
+    };
+  } catch (e) {
+    return json({ success: false, error: (e as Error).message }, 400);
+  }
+  const { error } = await sb.from("client_pricing_drivers").upsert(row, { onConflict: "entity_id" });
+  if (error) return json({ success: false, error: error.message }, 500);
+  return json({ success: true });
 }
