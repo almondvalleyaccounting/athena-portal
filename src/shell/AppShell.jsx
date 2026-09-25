@@ -1,3 +1,4 @@
+import UpdateBanner from './UpdateBanner';
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import AccessGuard from './AccessGuard';
@@ -355,6 +356,8 @@ export default function AppShell() {
             child; without those, a wide table would scroll the entire
             row flex and drag the sidebar offscreen. */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0">
+          {/* A deploy since this tab opened: ask for a reload */}
+          <UpdateBanner />
           {/* TopBar */}
           <TopBar />
 

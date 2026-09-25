@@ -6,6 +6,7 @@ import { downloadCSV } from '../lib/exportUtils';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import DataTable from '../components/DataTable';
 import { fetchAllRows } from '../lib/fetchAllRows';
+import FeeReviewsPanel from '../modules/billing/FeeReviewsPanel';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
@@ -464,6 +465,9 @@ export default function QuotesPage() {
           )}
         </div>
       </div>
+
+      {/* Fee reviews for existing clients, beside the quotes for new work */}
+      <FeeReviewsPanel search={search} />
 
       {/* Status Cards */}
       <p className="text-[12px] text-gray-400 mb-1.5">

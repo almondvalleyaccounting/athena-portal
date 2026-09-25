@@ -217,6 +217,11 @@ export default function BillingUpliftReviewPage() {
       _reason: reason,
       _proposal: proposal,
       _hold: hold,
+      // Approved means its go-live date was approved (sql/303). A row marked
+      // approved without one — the old Approve button — is still pending.
+      _status: r.uplift_review_status === 'approved'
+        ? (r.uplift_go_live_approved_at ? 'approved' : 'staged')
+        : (r.uplift_review_status || 'staged'),
       _held: heldLines.length,
       _unissued: unissued.length,
       _awaiting: awaiting.length,
@@ -227,7 +232,7 @@ export default function BillingUpliftReviewPage() {
   const counts = useMemo(() => {
     const c = { staged: 0, approved: 0, rejected: 0, no_email: 0, all: summarised.length };
     for (const r of summarised) {
-      const k = r.uplift_review_status || 'staged';
+      const k = r._status;
       c[k] = (c[k] || 0) + 1;
       if (r.uplift_email_skipped) c.no_email += 1;
     }
@@ -239,11 +244,11 @@ export default function BillingUpliftReviewPage() {
     if (filter === 'all') {
       // no status narrowing
     } else if (filter === 'staged') {
-      out = out.filter((r) => !r.uplift_review_status || r.uplift_review_status === 'staged');
+      out = out.filter((r) => r._status === 'staged');
     } else if (filter === 'no_email') {
       out = out.filter((r) => r.uplift_email_skipped);
     } else {
-      out = out.filter((r) => r.uplift_review_status === filter);
+      out = out.filter((r) => r._status === filter);
     }
     const q = search.trim().toLowerCase();
     if (q) out = out.filter((r) => (r.entity?.name || '').toLowerCase().includes(q));
@@ -517,8 +522,8 @@ export default function BillingUpliftReviewPage() {
       key: 'status', label: 'Status', width: 100, sortValue: (r) => r.uplift_review_status || 'staged',
       render: (r) => (
         <div>
-          <StatusChip status={r.uplift_review_status || 'staged'} />
-          {r.uplift_review_status === 'approved' && r.uplift_go_live_date && (
+          <StatusChip status={r._status} />
+          {r._status === 'approved' && r.uplift_go_live_date && (
             <div style={{ fontSize: 10.5, color: '#475569', marginTop: 2 }} title="Approved go-live date">from {r.uplift_go_live_date}</div>
           )}
           {r.uplift_catchup_billing_item_id && (
@@ -533,7 +538,7 @@ export default function BillingUpliftReviewPage() {
       // the button, the rest are in the ⋮ menu with Discard last and in red.
       // Same handlers as before — only where they sit has changed.
       render: (r) => {
-        const status = r.uplift_review_status || 'staged';
+        const status = r._status;
         const skipped = !!r.uplift_email_skipped;
         const guard = (fn) => () => { if (!saving) fn(); };
         const approve = r._held
@@ -591,12 +596,10 @@ export default function BillingUpliftReviewPage() {
             </div>
           );
         }
-        if (status === 'approved' && !skipped) {
-          main = <button onClick={() => setEmailFor(r)} disabled={saving} style={quiet} title="Preview the fee-raise email for this client"><Mail size={13} />Preview email</button>;
-          items = [emailToggle, restage, reject, ...signOffItems, discard];
-        } else if (status === 'approved') {
-          main = <span style={{ fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }}>Ready to push</span>;
-          items = [emailToggle, restage, reject, ...signOffItems, discard];
+        if (status === 'approved') {
+          // Ready to push — and one click from undone.
+          main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Undo the go-live approval — back to pending"><RotateCcw size={13} />Undo approval</button>;
+          items = [!skipped && { label: 'Preview email', icon: Mail, onClick: guard(() => setEmailFor(r)) }, emailToggle, reject, ...signOffItems, discard];
         } else if (status === 'rejected') {
           main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset"><RotateCcw size={13} />Back to pending</button>;
           items = [approve, preview, emailToggle, discard];
@@ -747,7 +750,7 @@ export default function BillingUpliftReviewPage() {
           </span>
           <div style={{ flex: 1 }} />
           <button
-            onClick={() => setEmailsBatch(summarised.filter((r) => r.uplift_review_status === 'approved' && !r.uplift_email_skipped))}
+            onClick={() => setEmailsBatch(summarised.filter((r) => r._status === 'approved' && !r.uplift_email_skipped))}
             disabled={pushing}
             style={btnPushDry}
             title="Preview each approved client's fee-raise email and push them all to Gmail as drafts for final review"
