@@ -176,7 +176,10 @@ export function GoLiveDialog({ row, clientName, onClose, onDone }) {
   const owed = preview && preview.net > 0;
   const credit = preview && preview.net < 0;
   const wantsCatchup = owed && raise;
-  const ok = preview && !loading && (!wantsCatchup || (reason && (reason !== 'other' || note.trim().length > 2)));
+  // A past date with no readable template can't be checked for missed
+  // invoices, so it can't be approved until the template is refreshed.
+  const unknownPast = preview && !preview.next_run && date < todayUk();
+  const ok = preview && !loading && !unknownPast && (!wantsCatchup || (reason && (reason !== 'other' || note.trim().length > 2)));
 
   const submit = async () => {
     setBusy(true);
@@ -206,7 +209,9 @@ export function GoLiveDialog({ row, clientName, onClose, onDone }) {
       <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>
         {loading ? 'Checking the invoice template…'
           : !preview ? ''
-          : !preview.next_run ? "The template's next invoice date isn't known — refresh from QBO on Push uplifts first if the date is in the past."
+          : !preview.next_run ? (unknownPast
+            ? "This date is in the past and the template's next invoice date isn't known, so missed invoices can't be checked. Refresh from QBO first."
+            : "The template's next invoice date isn't known yet.")
           : missed === 0
             ? (date <= preview.next_run
               ? `The ${longDate(preview.next_run)} invoice will be the first at the new fee.`
