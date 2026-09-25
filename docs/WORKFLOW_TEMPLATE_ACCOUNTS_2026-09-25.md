@@ -33,6 +33,7 @@ which knows the day accounts are actually filed.
 | Pinning | Anyone can pin a stage. |
 | Turnaround | **At least one month** between records received and the client meeting. |
 | Unplanned jobs | Accounts jobs due within the next seven months with no workflow yet are flagged (section 5). |
+| Who plans | The **preparer**. Nudged by email from the practice director's mailbox if not planned within a month of the year end. |
 
 ---
 
@@ -146,13 +147,19 @@ limit and the one-month rule), change the owner, pin it, or remove it
 writes the milestones; the nightly engine maintains them from then on and
 never moves a pinned stage.
 
-**Who plans.** Open question, see section 8.
+**Who plans.** The **preparer** (the BM assignee of Accounts Preparation).
 
 **When.** As soon as the job appears, and in any case before the records
-request is due. Jobs with a statutory date inside the next seven months and
-no committed plan are flagged as **unplanned** on the Team page and on Home,
-with an action on the planner's Today list. Seven months is YE + 2, so a
-job flagged unplanned has already missed the records request date.
+request is due. Two backstops:
+
+- **YE + 1 month, not planned:** a nudge email to the preparer, sent from
+  the practice director's mailbox through the Gmail connection (so it reads
+  as a note from the director and sits in the Sent folder, unlike Resend
+  mail). One per job, repeated weekly until the plan is committed.
+- **Statutory date inside seven months, not planned:** the job is flagged
+  **unplanned** on the Team page and on Home, with an action on the
+  preparer's Today list. Seven months is YE + 2, so by then the records
+  request is already late.
 
 **Batch.** Most jobs will take the default unchanged, so Plan the Job also
 works as a list: tick the jobs that take the default, commit them together,
@@ -226,9 +233,11 @@ is **urgent**.
 A client override is a row that replaces one stage's offset for one client,
 the same idea as `client_task_overrides` today.
 
-## 9. Open
+## 9. Setup needed before the default works
 
-- **Who plans the job**: the client manager, the preparer, or whoever the
-  unplanned flag lands on?
 - The meeting service line needs adding to the catalogue and to each
-  client who has one before the default can pick it up.
+  client who has one.
+- Every active staff member needs `weekly_capacity_hours` set, or placement
+  falls back to working days × 7.5h.
+- The Accounts Reviewer per client should be checked in Allocations; where
+  it is blank the client manager reviews.
