@@ -344,10 +344,17 @@ export async function discardCapacityShift(id) {
   if (error) throw error;
 }
 
+// staff_profiles is updatable only by portal admins (sql/010b). For anyone
+// else the update matches zero rows and PostgREST reports no error, so the
+// row count is checked here rather than letting the screen pretend it saved.
 export async function updateStaffCapacityHours(staffId, hours) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('staff_profiles')
     .update({ weekly_capacity_hours: hours })
-    .eq('id', staffId);
+    .eq('id', staffId)
+    .select('id');
   if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Capacity was not saved — only a portal admin can change staff hours.');
+  }
 }

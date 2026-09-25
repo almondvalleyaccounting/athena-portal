@@ -365,6 +365,11 @@ export default function WorkPlannerModule() {
     setNewClientModal({ open: false, initialName: '', resolve: null });
   }, [newClientModal.resolve]);
 
+  // Capacity edits land in the shared staff list, not by mutating it in place.
+  const updateStaffCapacity = useCallback((staffId, hours) => {
+    setAllStaff((prev) => prev.map((s) => (s.id === staffId ? { ...s, weekly_capacity_hours: hours } : s)));
+  }, []);
+
   const addQuickTask = useCallback(async (task) => {
     const data = await insertQuickTask(task);
     // Real-time will handle state update, but set optimistically too
@@ -744,7 +749,7 @@ export default function WorkPlannerModule() {
     addQuickTask, updateQuickTask, reorderQuickTasks,
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
-    completeTask, markNotRequired, addEntity,
+    completeTask, markNotRequired, addEntity, updateStaffCapacity,
     colourMode, staffColours, statusColours,
   }), [
     quickTasks, scheduledTasks, overrides, completedTasks,
@@ -757,7 +762,7 @@ export default function WorkPlannerModule() {
     addQuickTask, updateQuickTask, reorderQuickTasks,
     addScheduledTask, updateScheduledTask, deleteScheduledTask,
     saveOverride, deleteOverride,
-    completeTask, markNotRequired, addEntity,
+    completeTask, markNotRequired, addEntity, updateStaffCapacity,
     colourMode, staffColours, statusColours,
   ]);
 
@@ -842,7 +847,10 @@ export default function WorkPlannerModule() {
           )}
         </div>
 
-        {/* Filter bar */}
+        {/* Filter bar — only where a view reads it. Waiting, Bookkeeping
+            Health and the three Capacity tabs have their own controls and
+            ignored this bar entirely, so it was a row of dead buttons there. */}
+        {(activeSubModule === 'task' || activeSubModule === 'ready') && (
         <FilterBar
           staffList={staffList}
           entityList={entityList}
@@ -862,6 +870,7 @@ export default function WorkPlannerModule() {
           colourMode={colourMode} setColourMode={setColourMode}
           staffColours={staffColours}
         />
+        )}
 
         {/* Active view — min-w-0 keeps wide matrices (Allocations)
             contained so their own internal scroll handles horizontal

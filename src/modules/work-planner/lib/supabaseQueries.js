@@ -189,7 +189,9 @@ export async function insertProgressNote(note) {
 export async function fetchStaffProfiles() {
   const { data, error } = await supabase
     .from('staff_profiles')
-    .select('id, name, email, work_planner, colour, is_active')
+    // weekly_capacity_hours and working_days feed the Capacity heatmap and the
+    // overdue sweep; without them every person read as the 35h default.
+    .select('id, name, email, work_planner, colour, is_active, weekly_capacity_hours, working_days')
     .order('name', { ascending: true });
   if (error) throw error;
   return data || [];

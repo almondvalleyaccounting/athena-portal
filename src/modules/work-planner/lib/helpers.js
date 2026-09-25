@@ -79,10 +79,19 @@ export function formatDateFull(d) {
   return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+// Local calendar date as YYYY-MM-DD. This used to slice toISOString(), which
+// is UTC: from late March to late October a local-midnight date came out a
+// day early, so occurrence keys, completions, notes and "Tomorrow" all landed
+// on the day before the one on screen (confirmed live on 25 Sept 2026, which
+// the database recorded as the 24th).
 export function formatISO(d) {
   if (!d) return '';
   const date = d instanceof Date ? d : new Date(d);
-  return date.toISOString().slice(0, 10);
+  if (Number.isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function formatTime(h, m) {

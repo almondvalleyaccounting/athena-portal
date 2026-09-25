@@ -12,10 +12,11 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 
 /* ─── Small sub-components for dnd-kit hooks ──────────────── */
 
-function DraggableTile({ id, taskType, children, style, onClick, anyDragActive }) {
+function DraggableTile({ id, taskType, children, style, onClick, anyDragActive, disabled = false }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id,
     data: { taskType },
+    disabled,
   });
   // During any active drag, non-active tiles get pointerEvents:none so the
   // pointer passes through to the DroppableCell underneath. @dnd-kit's
@@ -29,7 +30,8 @@ function DraggableTile({ id, taskType, children, style, onClick, anyDragActive }
       {...listeners}
       {...attributes}
       onClick={onClick}
-      style={{ ...style, opacity: isDragging ? 0.2 : 1, cursor: 'grab', pointerEvents: pe }}
+      style={{ ...style, opacity: isDragging ? 0.2 : 1, cursor: disabled ? 'pointer' : 'grab', pointerEvents: pe }}
+      title={disabled ? 'One date of a recurring task cannot be moved on its own yet — edit the series from Scheduled' : undefined}
     >
       {children}
     </div>
@@ -157,6 +159,19 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
     const taskType = active.data.current?.taskType;
     const dropId = String(over.id);
 
+    // A dropped occurrence rewrites its master's planned_date, which for a
+    // recurring task moves every future occurrence (and orphans completed
+    // ones). Until an occurrence can be rescheduled on its own, refuse.
+    if (taskType === 'instance') {
+      const idParts = String(taskId).split('_');
+      idParts.pop();
+      const master = scheduledTasks.find((m) => m.id === idParts.join('_'));
+      if (master?.recurring) {
+        window.alert('One date of a recurring task cannot be moved on its own yet. Edit the series from the Scheduled tab.');
+        return;
+      }
+    }
+
     if (dropId === 'unplanned') {
       // ── Drop on sidebar → unplan ──
       if (taskType === 'quick') {
@@ -211,7 +226,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
         });
       }
     }
-  }, [days, updateQuickTask, updateScheduledTask, deleteOverride]);
+  }, [days, scheduledTasks, updateQuickTask, updateScheduledTask, deleteOverride]);
 
   // Resize handler (mousedown/mousemove — not part of dnd-kit)
   function handleResize(e, inst) {
@@ -560,6 +575,7 @@ export default function CalendarView({ calendarView, anchor, onAction }) {
                               key={t.id}
                               id={tileId}
                               taskType={t._instance ? 'instance' : 'sched'}
+                              disabled={!!(t._instance && t.recurring)}
                               anyDragActive={!!activeTask}
                               onClick={(e) => { e.stopPropagation(); onAction(e, t); }}
                               style={{

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/fetchAllRows';
 import ClientTypeAhead from '../components/ClientTypeAhead';
 import {
   fetchPendingChangeRequests, upsertChangeRequest,
@@ -125,15 +126,19 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
     let cancelled = false;
     async function load() {
       try {
-        const { data, error } = await supabase
+        // Paged: bm_task_schedule is over 2,000 rows and the API stops at
+        // 1,000 without saying so. Former clients are dropped here the same
+        // way the ready_now_jobs view drops them (sql/129) — bm_task_schedule
+        // itself has no former-client filter.
+        const data = await fetchAllRows(() => supabase
           .from('bm_task_schedule')
-          .select('id, service, bm_task_name, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite, deprioritise_reason), staff_profiles:assignee_id(id, name)')
+          .select('id, service, bm_task_name, bm_status, bm_deadline, bm_target_date, entity_id, assignee_id, entities(name, grade, expedite, deprioritise_reason, entity_status), staff_profiles:assignee_id(id, name)')
           .in('service', ['Self Assessment', 'Annual Accounts'])
           .eq('state', 'planned')
-          .is('excluded_at', null);
-        if (error) throw error;
+          .is('excluded_at', null)
+          .order('id'));
         if (cancelled) return;
-        setRows(data || []);
+        setRows((data || []).filter((r) => !['nlac', 'archived'].includes(r.entities?.entity_status)));
       } catch (err) {
         if (!cancelled) setError(err.message || 'Failed to load');
       } finally {
@@ -165,12 +170,14 @@ export default function ReadyNowView({ teamFilter = '', setTeamFilter = () => {}
     let cancelled = false;
     (async () => {
       try {
-        const { data, error } = await supabase
+        // Paged: every cycle adds a cohort, and an unpaged oldest-first read
+        // would truncate the newest answers first once past 1,000 rows.
+        const data = await fetchAllRows(() => supabase
           .from('job_review_item')
-          .select('entity_id, service, period_end, done_by, confidence, needs_help, note, next_action_note, bm_status_snapshot, movement, responded_at, assignee:assignee_id(name), cycle:cycle_id(period_month), reason:job_review_reason(label), action:job_review_next_action(label)')
+          .select('id, entity_id, service, period_end, done_by, confidence, needs_help, note, next_action_note, bm_status_snapshot, movement, responded_at, assignee:assignee_id(name), cycle:cycle_id(period_month), reason:job_review_reason(label), action:job_review_next_action(label)')
           .not('responded_at', 'is', null)
-          .order('responded_at', { ascending: true });
-        if (error) throw error;
+          .order('responded_at', { ascending: true })
+          .order('id', { ascending: true }));
         if (cancelled) return;
         const m = new Map();
         for (const it of data || []) {

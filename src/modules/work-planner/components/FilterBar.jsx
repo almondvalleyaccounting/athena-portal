@@ -90,9 +90,14 @@ export default function FilterBar({
           <span style={labelStyle}>Service</span>
           <TypeAhead items={serviceItems} value={serviceFilter} onChange={setServiceFilter} placeholder="Service..." />
 
-          <div style={sepStyle} />
-          <span style={labelStyle}>Status</span>
-          <TypeAhead items={statusItems} value={statusFilter} onChange={setStatusFilter} placeholder="Status..." />
+          {/* Quick tasks carry no status, so the filter is meaningless there. */}
+          {view !== 'quick' && (
+            <>
+              <div style={sepStyle} />
+              <span style={labelStyle}>Status</span>
+              <TypeAhead items={statusItems} value={statusFilter} onChange={setStatusFilter} placeholder="Status..." />
+            </>
+          )}
         </>
       )}
 
@@ -211,10 +216,9 @@ export default function FilterBar({
 
       {/* A–Z quick jumper for the client axis. Disabled letters are
           those with no entries in entityList. Null = All; a chosen
-          letter filters lists by entity first-letter. Sits inline with
-          the filter bar — a full-width strip on its own row felt noisy
-          in tests, so it lives at the right side and wraps if needed. */}
-      {view !== 'ready' && (
+          letter filters lists by entity first-letter. Only Quick Tasks
+          applies clientLetter, so it only shows there. */}
+      {view === 'quick' && (
         <div style={{ flexBasis: '100%', marginTop: 4 }}>
           <AlphabetFilter
             items={entityList}

@@ -13,8 +13,20 @@ const STAFF_COL_W = 220;
 const MONTH_COL_W = 88;
 const ROW_H = 44;
 const MONTHS_AHEAD = 12;
-const DEFAULT_WEEKLY_CAPACITY = 35;
 const WORKING_WEEKS_PER_MONTH = 4.33;
+
+// Fallback when a person has no weekly_capacity_hours set: their working days
+// × 7.5h, the same rule the Waiting grid uses. The two screens used to
+// disagree (35h flat here, 7.5h per working day there), so a three-day-week
+// colleague read as 152h a month on this heatmap.
+const HOURS_PER_WORKING_DAY = 7.5;
+function workingDayCount(workingDays) {
+  const n = (workingDays || 'mon,tue,wed,thu,fri').split(',').map((x) => x.trim()).filter(Boolean).length;
+  return n || 5;
+}
+function defaultWeeklyCapacity(s) {
+  return workingDayCount(s.working_days) * HOURS_PER_WORKING_DAY;
+}
 
 function monthStart(d) {
   const x = new Date(d);
@@ -34,8 +46,9 @@ function fmtMonth(d) {
 }
 
 export default function CapacityView() {
-  const { staffList, staffMap } = useWorkPlanner();
+  const { staffList, staffMap, updateStaffCapacity } = useWorkPlanner();
   const { profile } = useAuth();
+  const canEditCapacity = profile?.is_portal_admin === true;
 
   const [rows, setRows] = useState([]);            // v_bm_load_classified
   const [drafts, setDrafts] = useState([]);        // allocation_changes (proposals)
@@ -128,9 +141,9 @@ export default function CapacityView() {
 
   const draftCount = drafts.length;
 
-  // Monthly capacity per staff: weekly_capacity_hours (or default) × 4.33
+  // Monthly capacity per staff: weekly_capacity_hours (or working days × 7.5) × 4.33
   const monthlyCapacity = useCallback((s) => {
-    const weekly = Number(s.weekly_capacity_hours) || DEFAULT_WEEKLY_CAPACITY;
+    const weekly = Number(s.weekly_capacity_hours) || defaultWeeklyCapacity(s);
     return weekly * WORKING_WEEKS_PER_MONTH;
   }, []);
 
@@ -149,13 +162,16 @@ export default function CapacityView() {
       alert('Enter a positive number of hours per week.');
       return;
     }
-    await updateStaffCapacityHours(staffId, n);
-    // Mutate the staff list locally so the view reflects the change.
-    const s = staffList.find((x) => x.id === staffId);
-    if (s) s.weekly_capacity_hours = n;
+    try {
+      await updateStaffCapacityHours(staffId, n);
+    } catch (e) {
+      alert(e.message || 'Capacity was not saved.');
+      return;
+    }
+    updateStaffCapacity(staffId, n);
     setEditingCapacity(null);
     setCapacityDraft('');
-  }, [capacityDraft, staffList]);
+  }, [capacityDraft, updateStaffCapacity]);
 
   const handleCommitShifts = useCallback(async () => {
     const ids = shifts.filter((s) => s.status === 'draft').map((s) => s.id);
@@ -289,14 +305,14 @@ export default function CapacityView() {
                         </span>
                       ) : (
                         <span
-                          onClick={() => {
+                          onClick={canEditCapacity ? () => {
                             setEditingCapacity(s.id);
                             setCapacityDraft(String(s.weekly_capacity_hours || ''));
-                          }}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to edit weekly capacity"
+                          } : undefined}
+                          style={{ cursor: canEditCapacity ? 'pointer' : 'default' }}
+                          title={canEditCapacity ? 'Click to edit weekly capacity' : 'Weekly capacity is set by a portal admin'}
                         >
-                          {(s.weekly_capacity_hours ?? `${DEFAULT_WEEKLY_CAPACITY}*`)}h/wk → {Math.round(cap)}h/mo
+                          {(s.weekly_capacity_hours ?? `${defaultWeeklyCapacity(s)}*`)}h/wk → {Math.round(cap)}h/mo
                         </span>
                       )}
                     </div>
