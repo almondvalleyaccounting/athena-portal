@@ -491,7 +491,7 @@ export default function SchedulesPage() {
           Scheduled jobs
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Admin permission to view the schedule.
+          You need the System admin permission to view the schedule.
         </p>
       </div>
     );

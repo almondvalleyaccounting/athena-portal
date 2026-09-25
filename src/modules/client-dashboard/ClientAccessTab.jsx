@@ -181,7 +181,7 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
     return (
       <div style={cardStyle}>
         <p style={{ fontFamily: OUTFIT, fontSize: 14.5, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
-          Needs the Admin permission. Ask an admin, or see
+          Needs the System admin permission. Ask a system admin, or see
           {' '}<strong>Settings → Client dashboard access</strong>.
         </p>
       </div>

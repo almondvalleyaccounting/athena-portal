@@ -71,7 +71,7 @@ export default function UserSettingsPage() {
             })
             .eq('id', profile.id);
           if (updErr) throw new Error(
-            'Could not save. Contact an admin.'
+            'Could not save. Contact a system admin.'
           );
         } else {
           throw error;

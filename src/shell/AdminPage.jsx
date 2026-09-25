@@ -27,7 +27,7 @@ const PERMISSION_COLS = [
   { key: 'can_import_data', label: 'Data import' },
   { key: 'can_view_pushed_invoices', label: 'Pushed invoices' },
   { key: 'can_view_admin_report', label: 'Admin report' },
-  { key: 'can_manage_portal', label: 'Admin' },
+  { key: 'can_manage_portal', label: 'System admin' },
   // AVA's own QBO books — deliberately separate from Portal admin so practice
   // financials stay director-only even among admins.
   { key: 'can_view_practice_financials', label: 'Practice financials' },

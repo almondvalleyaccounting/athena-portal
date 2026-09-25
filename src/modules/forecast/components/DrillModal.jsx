@@ -20,6 +20,38 @@ import { loadDriversForContext } from '../lib/queries';
 import { trace as traceLine } from '../lib/explainers';
 import { buildOccupancyIndex } from '../lib/occupancy';
 
+// Internal codes → words (UI audit wording pass). The drill-down showed
+// nominal types, module keys and assumption kinds raw ("pnl.cost_premises_rent",
+// "services_childcare", "scalar"); these read them in plain English. The raw
+// code stays available as a hover title for anyone tracing the engine.
+const MODULE_NAMES = {
+  services_childcare: 'Childcare fees', staff: 'Staff', premises: 'Premises', overheads: 'Overheads',
+  pre_opening: 'Pre-opening', tax_simple: 'Tax', locations: 'Locations', loans: 'Loans',
+  fixed_assets: 'Fixed assets', working_capital: 'Working capital', financial_core: 'Financial statements',
+  general_core: 'Business lines', pl_lines: 'P&L lines', exit_valuation: 'Exit valuation', simple_smoke: 'Test module',
+};
+const moduleName = (k) => MODULE_NAMES[k] || humanWords(k || '');
+const SECTION = { pnl: 'Profit and loss', bs: 'Balance sheet', cf: 'Cashflow', metric: 'Measure', deal: 'Deal', wc_balance: 'Working capital' };
+const WORDS = { la: 'council', ebitda: 'EBITDA', ebit: 'EBIT', pbt: 'PBT', npat: 'NPAT', vat: 'VAT', frs: 'FRS', paye: 'PAYE', ct: 'CT',
+  wc: 'working capital', capex: 'capital spend', dscr: 'DSCR', pct: '%', irr: 'IRR', bps: '(bps)', sqft: 'sq ft', fin: 'financing', corp: 'corporation', as: 'after-school' };
+function humanWords(code) {
+  const txt = String(code).split('_').filter(Boolean).map((w) => WORDS[w] ?? w).join(' ');
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+function sectionOf(nominal) {
+  const head = String(nominal || '').split('.')[0];
+  return SECTION[head] || 'Profit and loss';
+}
+function nominalName(nominal) {
+  const parts = String(nominal || '').split('.');
+  let dir = '';
+  if (parts[0] === 'cf' && (parts[1] === 'in' || parts[1] === 'out')) { dir = parts[1] === 'in' ? ' (received)' : ' (paid)'; parts.splice(1, 1); }
+  let last = SECTION[parts[0]] && parts.length > 1 ? parts.slice(1).join('_') : parts.join('_');
+  last = last.replace(/^cost_/, '');
+  return humanWords(last) + dir;
+}
+const KIND_NAMES = { scalar: 'Single value', timeseries: 'Month by month', linked: 'Linked' };
+
 export const DRILL_MAP = {
   // ─── P&L lines ─────────────────────────────────────────────
   'pnl.revenue_total':           { kind: 'upstream', upstream_nts: ['revenue'] },
@@ -168,7 +200,7 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
           <div>
             <div style={{ fontSize: 12, color: colors.muted, fontWeight: 600 }}>
-              {line.nominal_type} · {periodsLabel}
+              <span title={line.nominal_type}>{sectionOf(line.nominal_type)}</span> · {periodsLabel}
             </div>
             <h2 style={{ fontFamily: serifStack, fontSize: 24, fontWeight: 500, color: colors.ink, margin: '4px 0 0' }}>
               {line.label}
@@ -214,7 +246,7 @@ function FormulaSection({ drill, periods, scopedMap }) {
               }
               return (
                 <tr key={c} style={{ borderBottom: `1px solid ${colors.borderSoft}` }}>
-                  <td style={td}><code style={{ fontSize: 12 }}>{c}</code></td>
+                  <td style={td} title={c}>{nominalName(c)}</td>
                   <td style={{ ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{fmtP(total, { compact: true })}</td>
                 </tr>
               );
@@ -271,7 +303,7 @@ function ContributorsSection({ contributors, scenarioId, periods, entitiesById, 
                           <span style={{ marginRight: 4, color: colors.accent, fontFamily: 'ui-monospace, monospace' }}>
                             {isExpanded ? '▾' : '▸'}
                           </span>
-                          {mod}
+                          <span title={mod}>{moduleName(mod)}</span>
                         </td>
                         <td style={td}>{lbl}</td>
                         <td style={{ ...td, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
@@ -421,7 +453,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
         </div>
       )}
       <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700, marginBottom: 6 }}>
-        Assumptions — {moduleKey} {entityId ? '· this location' : '· whole group'}
+        Assumptions — {moduleName(moduleKey)} {entityId ? '· this location' : '· whole group'}
         <span style={{ marginLeft: 8, color: colors.muted, fontWeight: 400 }}>({state.drivers.length})</span>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
@@ -436,15 +468,14 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
         <tbody>
           {state.drivers.map(d => (
             <tr key={d.id} style={{ borderTop: `1px solid ${colors.borderSoft}` }}>
-              <td style={driverTd}>
+              <td style={driverTd} title={d.driver_key}>
                 <strong>{d.label}</strong>
-                <div style={{ fontSize: 10, color: colors.muted, fontFamily: 'ui-monospace, monospace' }}>{d.driver_key}</div>
               </td>
               <td style={driverTd}>
                 <span style={{ fontSize: 11, color: colors.muted }}>{d.entity_id ? 'location' : 'group'}</span>
               </td>
               <td style={driverTd}>
-                <span style={{ fontSize: 11, color: colors.muted }}>{d.kind}</span>
+                <span style={{ fontSize: 11, color: colors.muted }}>{KIND_NAMES[d.kind] || d.kind}</span>
               </td>
               <td style={{ ...driverTd, textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
                 {fmtVal(d)}

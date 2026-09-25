@@ -62,7 +62,7 @@ export default function RolesView() {
   }, [selectedId, roles]);
 
   if (!isAdmin) {
-    return <Msg>Role profiles are managed by admins.</Msg>;
+    return <Msg>Role profiles are managed by system admins.</Msg>;
   }
   if (loading) return <Msg>Loading roles…</Msg>;
 

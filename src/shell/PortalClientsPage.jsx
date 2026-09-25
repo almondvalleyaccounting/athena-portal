@@ -170,7 +170,7 @@ export default function PortalClientsPage() {
           Portal clients
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Admin permission to manage client portal access.
+          You need the System admin permission to manage client portal access.
         </p>
       </div>
     );

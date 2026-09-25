@@ -29,7 +29,7 @@ export default function SetupModule() {
           Access required
         </h2>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          Setup is for admins only.
+          Setup is for system admins only.
         </p>
       </div>
     );

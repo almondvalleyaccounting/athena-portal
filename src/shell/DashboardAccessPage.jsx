@@ -156,7 +156,7 @@ export default function DashboardAccessPage() {
           Client dashboard access
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Admin permission to give clients access to their dashboards.
+          You need the System admin permission to give clients access to their dashboards.
         </p>
       </div>
     );

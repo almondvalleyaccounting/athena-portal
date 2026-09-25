@@ -23,7 +23,7 @@ export default function ConnectionsPage() {
           Connections
         </h1>
         <p style={{ fontSize: 14.5, color: '#64748b' }}>
-          You need the Admin permission to manage connections.
+          You need the System admin permission to manage connections.
         </p>
       </div>
     );

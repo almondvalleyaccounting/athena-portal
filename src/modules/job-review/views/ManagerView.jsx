@@ -192,7 +192,7 @@ export default function ManagerView() {
       </div>
 
       {!cycle ? (
-        <Msg>No open cycle. {canOpen ? 'Open one to snapshot this month’s stalled jobs.' : 'Ask an admin to open the monthly cycle.'}</Msg>
+        <Msg>No open cycle. {canOpen ? 'Open one to snapshot this month’s stalled jobs.' : 'Ask a system admin to open the monthly cycle.'}</Msg>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>

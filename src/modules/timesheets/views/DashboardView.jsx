@@ -201,7 +201,7 @@ export default function DashboardView() {
     if (!window.confirm(`Unlock ${lock.period_start} — ${lock.period_end}? Entries in this range will become editable again.`)) return;
     try {
       const removed = await removeTimesheetLock(lock.id);
-      if (removed === 0) window.alert('Nothing was unlocked — only admins can remove locks.');
+      if (removed === 0) window.alert('Nothing was unlocked — only system admins can remove locks.');
       setLocks(await fetchTimesheetLocks());
     } catch (e) {
       console.error('[Timesheets] unlock error:', e);
@@ -383,7 +383,7 @@ export default function DashboardView() {
             </div>
             <div style={{ fontSize: 12.5, color: '#94a3b8', marginBottom: 14 }}>
               Locked periods can't be edited.
-              {isAdmin ? ' Only admins can lock or unlock.' : ' Contact an admin to lock or unlock a period.'}
+              {isAdmin ? ' Only system admins can lock or unlock.' : ' Ask a system admin to lock or unlock a period.'}
             </div>
 
             {locks.length === 0 ? (

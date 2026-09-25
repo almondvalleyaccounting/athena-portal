@@ -19,7 +19,7 @@ export default function AccessGuard({ profile, children }) {
         </div>
         <h1 style={{ margin: '0 0 6px', fontSize: 19, fontWeight: 700, color: '#0f172a' }}>You don&rsquo;t have access to this page</h1>
         <p style={{ margin: '0 0 18px', fontSize: 14.5, color: '#64748b', lineHeight: 1.5 }}>
-          It isn&rsquo;t switched on for your login. If you need it, ask an admin to turn it on in Settings › Staff &amp; Permissions.
+          It isn&rsquo;t switched on for your login. If you need it, ask a system admin to turn it on in Settings › Staff &amp; permissions.
         </p>
         <button
           onClick={() => navigate('/home')}

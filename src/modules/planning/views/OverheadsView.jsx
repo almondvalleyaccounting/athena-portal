@@ -62,7 +62,7 @@ export default function OverheadsView() {
         </div>
         {syncRuns.length === 0 ? (
           <span style={{ fontSize: 13, color: '#94a3b8' }}>
-            Runs nightly. Not run yet; ask an admin to finish setup.
+            Runs nightly. Not run yet; ask a system admin to finish setup.
           </span>
         ) : (
           <>

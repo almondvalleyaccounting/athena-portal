@@ -96,7 +96,7 @@ export default function MyRoleView() {
   return (
     <div style={{ padding: '32px 32px 80px', margin: '0 auto', fontFamily: FONT }}>
       {!roleId || !role ? (
-        <Msg>No role assigned yet — ask an admin to set your role profile. The team behaviours below still apply to everyone.</Msg>
+        <Msg>No role assigned yet — ask a system admin to set your role profile. The team behaviours below still apply to everyone.</Msg>
       ) : (
       <>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>

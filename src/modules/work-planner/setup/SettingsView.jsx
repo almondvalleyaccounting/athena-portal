@@ -125,7 +125,7 @@ export default function SettingsView() {
 
           {!canEdit && (
             <p style={{ marginTop: 14, fontSize: 13, color: '#92400e' }}>
-              Only admins can change this flag.
+              Only system admins can change this.
             </p>
           )}
         </div>
