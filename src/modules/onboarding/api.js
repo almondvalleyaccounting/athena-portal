@@ -371,7 +371,10 @@ export async function activeOnboardingsForEntity(entityId) {
     .from('onboardings')
     .select('id, status')
     .eq('entity_id', entityId)
-    .in('status', ['active', 'on_hold', 'issues']);
+    .in('status', ['active', 'on_hold', 'issues'])
+    // Archiving leaves status alone — an archived run is not in progress.
+    // Same test as the one-live-per-client trigger (sql/302).
+    .is('archived_at', null);
   if (error) throw error;
   return data || [];
 }

@@ -12,6 +12,7 @@
 //   reorder       { entity_id, bucket, ordered_ids } the full live order of one bucket
 //   archive       { item_id }                        discussed — off the list, kept
 //   restore       { item_id }
+//   delete_item   { item_id }                        gone for good, private notes with it
 //   add_note      { item_id, body }                  private, staff-only
 //   delete_note   { note_id }                        author only
 //   raise_action  { item_id, title?, assignee_id? }  a Work Planner task, due in 5 days
@@ -161,6 +162,16 @@ Deno.serve(async (req) => {
           archived_at: null, archived_by: null,
           sort_order: await nextSort(item.entity_id, item.bucket),
         });
+        return json({ success: true });
+      }
+
+      // Archive is "we discussed it"; delete is "this should never have been
+      // here" — a test, a duplicate, the wrong client. Any staff member, as
+      // with every other write here; the notes cascade (sql/301).
+      case "delete_item": {
+        const item = await loadItem(uuid(p.item_id, "item_id"));
+        const { error } = await db.from("client_agenda_items").delete().eq("id", item.id);
+        if (error) throw new Error(error.message);
         return json({ success: true });
       }
 

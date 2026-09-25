@@ -213,6 +213,9 @@ ${info}
               <SmallBtn onClick={() => call({ action: 'restore', item_id: it.id })} disabled={busy} title="Put it back on the list">
                 <RotateCcw size={13} /> Restore
               </SmallBtn>
+              <SmallBtn onClick={() => { if (window.confirm('Delete this item permanently, with its private notes?')) call({ action: 'delete_item', item_id: it.id }); }} disabled={busy} title="Delete permanently">
+                <Trash2 size={13} />
+              </SmallBtn>
             </div>
           ))}
         </div>
@@ -243,6 +246,14 @@ function AgendaItem({ item, index, first, last, busy, call, onMove, staffList, s
   const raise = async () => {
     const res = await call({ action: 'raise_action', item_id: item.id, assignee_id: assignee || null });
     if (res) { setRaising(false); onActionRaised?.(); }
+  };
+  const remove = () => {
+    const notes = item.notes.length ? ` Its ${item.notes.length} private note${item.notes.length === 1 ? '' : 's'} will go too.` : '';
+    if (window.confirm(`Delete this item permanently?${notes}
+
+If it was discussed, use Discussed instead to keep a record.`)) {
+      call({ action: 'delete_item', item_id: item.id });
+    }
   };
   const other = item.bucket === 'agenda' ? 'info' : 'agenda';
 
@@ -289,6 +300,9 @@ function AgendaItem({ item, index, first, last, busy, call, onMove, staffList, s
         <SmallBtn onClick={() => setRaising((v) => !v)} disabled={busy}>Create action</SmallBtn>
         <SmallBtn onClick={() => call({ action: 'archive', item_id: item.id })} disabled={busy} title="Discussed — take it off the list (kept under Discussed)">
           <Check size={13} /> Discussed
+        </SmallBtn>
+        <SmallBtn onClick={remove} disabled={busy} title="Delete — for a mistake or a test. Use Discussed to keep a record.">
+          <Trash2 size={13} /> Delete
         </SmallBtn>
       </div>
 

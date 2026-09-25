@@ -186,7 +186,10 @@ export default function NewOnboardingView() {
             )}
             {existing.length > 0 && (
               <div style={{ marginTop: 10, fontSize: 13.5, color: tones.warning.fg, background: tones.warning.bg, borderRadius: 8, padding: '8px 10px' }}>
-                This client already has {existing.length} open onboarding{existing.length > 1 ? 's' : ''} — check the pipeline before starting another.
+                This client already has an onboarding in progress. A client has one at a time — finish or archive it before starting another.{' '}
+                <a href={`/onboarding/${existing[0].id}`} onClick={(e) => { e.preventDefault(); navigate(`/onboarding/${existing[0].id}`); }} style={{ color: 'inherit', fontWeight: 600 }}>
+                  Open it →
+                </a>
               </div>
             )}
           </div>
@@ -265,7 +268,7 @@ export default function NewOnboardingView() {
           </div>
 
           {error && <div style={{ color: tones.danger.fg, fontSize: 14 }}>{error}</div>}
-          <Btn onClick={handleCreate} disabled={!entity || !template || saving}>
+          <Btn onClick={handleCreate} disabled={!entity || !template || saving || existing.length > 0}>
             {saving ? 'Starting…' : 'Start onboarding'}
           </Btn>
         </div>
