@@ -135,7 +135,9 @@ export default function BillingUpliftReviewPage() {
   };
 
   // Auto-refresh next-run dates from QBO once the rows are loaded, but
-  // only for rows missing the date, and only once per row per visit.
+  // only for rows missing the date or holding one already in the past (a
+  // next run that has happened is stale by definition, and the push hold
+  // reads it), and only once per row per visit.
   //
   // The fetch is what fills qbo_next_run_date, so a row it SUCCEEDS on
   // drops out of `stale` next pass — but a row it fails on does not.
@@ -147,8 +149,10 @@ export default function BillingUpliftReviewPage() {
   // than one per second; "Refresh from QBO" is the way to ask again.
   useEffect(() => {
     if (loading || rows.length === 0) return;
+    const todayIso = new Date().toISOString().slice(0, 10);
     const stale = rows
-      .filter((r) => r.qbo_recurring_txn_id && !r.qbo_next_run_date && !metaAsked.current.has(r.id))
+      .filter((r) => r.qbo_recurring_txn_id && (!r.qbo_next_run_date || r.qbo_next_run_date < todayIso)
+        && !metaAsked.current.has(r.id))
       .map((r) => r.id);
     if (stale.length === 0) return;
     stale.forEach((id) => metaAsked.current.add(id));
@@ -193,7 +197,8 @@ export default function BillingUpliftReviewPage() {
       && !(proposals[s.pending_proposal_id]?.status === 'accepted'));
     const notIssued = heldLines.some((s) => !s.pending_proposal_id);
     const allHeld = heldLines.length > 0 && heldLines.length === pending.length;
-    const notDue = !!(goLive && r.qbo_next_run_date && r.qbo_next_run_date < goLive);
+    const nextRunKnown = r.qbo_next_run_date && r.qbo_next_run_date >= new Date().toISOString().slice(0, 10);
+    const notDue = !!(goLive && nextRunKnown && r.qbo_next_run_date < goLive);
     const hold = allHeld ? 'acceptance' : notDue ? 'timing' : null;
     return {
       ...r,
