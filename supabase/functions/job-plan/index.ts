@@ -18,6 +18,11 @@
 //   batch_commit  { items: [{ entity_id, period_end }] }
 //                 propose with defaults then commit, for the jobs that take
 //                 the template unchanged.
+//   mark_done     { milestone_id, minutes?, note? }
+//                 the Done button on Today. Minutes > 0 also write a
+//                 timesheet_entries row against the job (source 'completed').
+//   skip          { milestone_id }   not needed on this job
+//   reopen        { milestone_id }   back to pending
 //
 // Returns { success, plan, milestones } for single-plan actions.
 
@@ -324,6 +329,45 @@ Deno.serve(async (req) => {
           }
         }
         return json({ success: true, committed: results.filter((r) => r.ok).length, results });
+      }
+
+      case "mark_done":
+      case "skip":
+      case "reopen": {
+        const id = uuid(p.milestone_id, "milestone_id");
+        const { data: m, error } = await db.from("job_milestones").select("*, job_plans(id, entity_id, period_end, prep_job_id, ch_job_id)").eq("id", id).maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!m) throw new BadRequest("Stage not found", 404);
+        const plan = m.job_plans as Record<string, unknown>;
+        if (p.action === "reopen") {
+          const { error: uErr } = await db.from("job_milestones").update({ status: "pending", done_at: null, done_signal: null, updated_at: now }).eq("id", id);
+          if (uErr) throw new Error(uErr.message);
+          return json({ success: true, plan: await loadPlan(plan.id as string), milestones: await milestonesOf(plan.id as string) });
+        }
+        if (m.status !== "pending") throw new BadRequest("That stage is already closed");
+        const status = p.action === "skip" ? "skipped" : "done";
+        const patch: Record<string, unknown> = { status, updated_at: now };
+        if (status === "done") { patch.done_at = now; patch.done_signal = "manual"; }
+        if (p.note !== undefined) patch.note = p.note ? String(p.note).slice(0, 2000) : null;
+        const { error: uErr } = await db.from("job_milestones").update(patch).eq("id", id);
+        if (uErr) throw new Error(uErr.message);
+
+        // Time logged on completion lands on the timesheet against the BM
+        // job, which is what makes remaining hours and cost-to-serve true.
+        const minutes = Number(p.minutes ?? 0);
+        let timesheetId: string | null = null;
+        if (status === "done" && Number.isFinite(minutes) && minutes > 0) {
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: ts, error: tErr } = await db.from("timesheet_entries").insert({
+            staff_id: me, entity_id: plan.entity_id, service: "Annual Accounts",
+            work_date: today, minutes: Math.round(minutes),
+            notes: `${m.label} — year end ${plan.period_end}`,
+            source: "completed", source_task_id: (plan.prep_job_id ?? plan.ch_job_id) ?? null,
+          }).select("id").single();
+          if (tErr) throw new Error(tErr.message);
+          timesheetId = ts.id;
+        }
+        return json({ success: true, timesheet_id: timesheetId, plan: await loadPlan(plan.id as string), milestones: await milestonesOf(plan.id as string) });
       }
 
       default:

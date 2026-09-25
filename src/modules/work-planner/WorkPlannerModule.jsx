@@ -29,7 +29,6 @@ import NewClientModal from '../../components/NewClientModal';
 import QuickTasksView from './views/QuickTasksView';
 import ScheduledView from './views/ScheduledView';
 import CalendarView from './views/CalendarView';
-import KanbanView from './views/KanbanView';
 import CompletedView from './views/CompletedView';
 import MyTasksView from './views/MyTasksView';
 import WaitingView from './views/WaitingView';
@@ -38,6 +37,9 @@ import EstimatesView from './views/EstimatesView';
 import CapacityView from './views/CapacityView';
 import ReadyNowView from './views/ReadyNowView';
 import DriftView from './views/DriftView';
+import TodayView from './views/TodayView';
+import TeamView from './views/TeamView';
+import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
 
 // ── Context ──
@@ -53,14 +55,20 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 // Ready Now and Bookkeeping Health were tabs inside Planner. They are each a
 // destination in their own right — a queue you work for an hour, not a view you
 // glance at — so they are now sub-modules of Work with their own sidebar entry.
+// Today (my committed-plan stages plus my quick tasks) replaced My Tasks, and
+// the Stage board (every accounts job at its current stage) replaced the
+// Kanban, at the same paths so bookmarks keep working (sql/304, sql/305).
 const TASK_PLANNER_TABS = [
+  { id: 'mytasks',  label: 'Today',       path: '/planner' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
-  { id: 'mytasks',  label: 'My Tasks',    path: '/planner' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched',    label: 'Scheduled',   path: '/planner/scheduled' },
   { id: 'calendar', label: 'Calendar',    path: '/planner/calendar' },
-  { id: 'kanban',   label: 'Kanban',      path: '/planner/kanban' },
+  { id: 'kanban',   label: 'Stage board', path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
+];
+const TEAM_TABS = [
+  { id: 'team', label: 'Team', path: '/planner/team' },
 ];
 const CAPACITY_PLANNER_TABS = [
   { id: 'allocations', label: 'Allocations', path: '/planner/allocations' },
@@ -77,7 +85,7 @@ const BOOKKEEPING_HEALTH_TABS = [
 ];
 const TABS = [
   ...TASK_PLANNER_TABS, ...CAPACITY_PLANNER_TABS,
-  ...READY_TABS, ...BOOKKEEPING_HEALTH_TABS,
+  ...READY_TABS, ...BOOKKEEPING_HEALTH_TABS, ...TEAM_TABS,
   // The old drift path stays matchable so a bookmark still lands on the board.
   { id: 'drift', label: 'Bookkeeping Health', path: '/planner/drift' },
 ];
@@ -138,12 +146,14 @@ export default function WorkPlannerModule() {
     if (CAPACITY_PLANNER_TABS.some((t) => t.id === activeTab)) return 'capacity';
     if (activeTab === 'ready') return 'ready';
     if (activeTab === 'drift') return 'bookkeeping-health';
+    if (activeTab === 'team') return 'team';
     return 'task';
   }, [activeTab]);
   const visibleTabs =
     activeSubModule === 'capacity' ? CAPACITY_PLANNER_TABS
     : activeSubModule === 'ready' ? READY_TABS
     : activeSubModule === 'bookkeeping-health' ? BOOKKEEPING_HEALTH_TABS
+    : activeSubModule === 'team' ? TEAM_TABS
     : TASK_PLANNER_TABS;
   // A one-tab sub-module gets a title, not a tab strip — a lone tab looks
   // clickable and goes nowhere.
@@ -877,7 +887,13 @@ export default function WorkPlannerModule() {
             overflow instead of pushing the page sideways. */}
         <div style={{ flex: 1, overflow: 'auto', minWidth: 0, minHeight: 0 }}>
           {activeTab === 'mytasks' && (
-            <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
+            <>
+              <TodayView />
+              <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
+            </>
+          )}
+          {activeTab === 'team' && (
+            <TeamView />
           )}
           {activeTab === 'quick' && (
             <QuickTasksView compact={compact} onAction={handleAction} />
@@ -889,7 +905,7 @@ export default function WorkPlannerModule() {
             <CalendarView calendarView={calendarView} anchor={anchor} onAction={handleAction} />
           )}
           {activeTab === 'kanban' && (
-            <KanbanView dueFilter={dueFilter} onAction={handleAction} />
+            <StageBoardView />
           )}
           {activeTab === 'completed' && (
             <CompletedView />

@@ -110,6 +110,13 @@ export const MODULES = [
         matchPaths: ['/planner/plan'],
       },
       {
+        id: 'wp-team',
+        label: 'Team',
+        route: '/planner/team',
+        inDevelopment: true,
+        matchPaths: ['/planner/team'],
+      },
+      {
         id: 'wp-bk-health',
         label: 'Bookkeeping Health',
         route: '/planner/bookkeeping-health',

@@ -2,7 +2,7 @@ import React from 'react';
 import TypeAhead from './TypeAhead';
 import Avatar from './Avatar';
 import AlphabetFilter from '../../../components/AlphabetFilter';
-import { SERVICES, STATUSES, CALENDAR_VIEWS, KANBAN_DUE_FILTERS } from '../lib/constants';
+import { SERVICES, STATUSES, CALENDAR_VIEWS } from '../lib/constants';
 import { teamColour } from '../lib/helpers';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -135,19 +135,6 @@ export default function FilterBar({
           >
             By Status
           </button>
-        </>
-      )}
-
-      {/* Kanban due filter */}
-      {view === 'kanban' && (
-        <>
-          <div style={sepStyle} />
-          <span style={labelStyle}>Due</span>
-          <select style={selectStyle} value={dueFilter} onChange={(e) => setDueFilter(e.target.value)}>
-            {KANBAN_DUE_FILTERS.map((f) => (
-              <option key={f.id} value={f.id}>{f.label}</option>
-            ))}
-          </select>
         </>
       )}
 
