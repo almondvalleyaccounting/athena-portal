@@ -6,6 +6,7 @@ import { useAuth } from '../../shell/AppShell';
 import { Btn } from '../../components/ui';
 import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
+import ClientAgendaCard from './ClientAgendaCard';
 import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
 import { BTN } from '../../lib/buttonStyles';
 
@@ -80,7 +81,10 @@ export default function ClientDetailView() {
           supabase.from('v_email_reconciliation').select('*').eq('entity_id', id).maybeSingle(),
           supabase.from('onboardings')
             .select('id, status, template:onboarding_templates(name), steps:onboarding_steps(status)')
-            .eq('entity_id', id).in('status', ['active', 'on_hold', 'issues']),
+            .eq('entity_id', id).in('status', ['active', 'on_hold', 'issues'])
+            // Archiving leaves status alone (onboarding api.js), so an archived
+            // run still reads 'active' — without this it shows as a second banner.
+            .is('archived_at', null),
           supabase.from('admin_tasks')
             .select('field, value, bm_value')
             .eq('entity_id', id).eq('kind', 'bm_field').is('confirmed_at', null).is('dismissed_at', null),
@@ -127,6 +131,11 @@ export default function ClientDetailView() {
     const cutoff = monthsAgo(parseInt(timePeriod, 10));
     return completedTasks.filter((t) => t.completed_at >= cutoff);
   }, [completedTasks, timePeriod]);
+
+  const refreshTasks = async () => {
+    const { data } = await supabase.from('quick_tasks').select('*').eq('entity_id', id).order('created_at', { ascending: false });
+    if (data) setTasks(data);
+  };
 
   const handleRaiseAction = async () => {
     if (!changeTaskText.trim() || taskCreating) return;
@@ -562,6 +571,14 @@ export default function ClientDetailView() {
           </div>
           {taskCreated && <div style={{ marginTop: 8, fontSize: 13, color: '#059669', fontWeight: 500 }}>✓ Action created in the Work Planner</div>}
         </div>
+
+        <ClientAgendaCard
+          entity={entity}
+          staffList={staffList}
+          profile={profile}
+          defaultAssignee={actionAssignee}
+          onActionRaised={refreshTasks}
+        />
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
           <div style={cardStyle}>
