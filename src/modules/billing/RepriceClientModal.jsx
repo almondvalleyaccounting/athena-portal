@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, ArrowRight, ArrowLeft, Download, FileText, Mail, Plus, RotateCcw, Trash2, ExternalLink } from 'lucide-react';
+import { X, ArrowRight, ArrowLeft, Download, FileText, Mail, Plus, RotateCcw, Trash2, ExternalLink, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fmtGbpDetailed } from '../../lib/money';
 import { BTN } from '../../lib/buttonStyles';
@@ -10,6 +10,8 @@ import {
 import { buildRepricePdf, pdfBase64, pdfFilename, serviceName } from './repricePdf';
 import { composeRepriceEmail, defaultCoveringText } from './composeRepriceEmail';
 import { resolvePrimaryContact, firstNameOf, candidateAddresses } from './recipients';
+import { buildServiceResolver, standardFor, EMPTY_DRIVERS, DRIVER_LABEL } from './standardPricing';
+import { fetchFeeDefaults } from '../../contexts/FeeEngineContext';
 
 const font = "'Outfit', sans-serif";
 const serif = "'Playfair Display', serif";
@@ -36,6 +38,100 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [adding, setAdding] = useState(false);
+
+  // Standard pricing: the fee engine's defaults, the QBO item → service
+  // map, and this client's drivers (prefilled where Athena knows them).
+  const [feeDefaults, setFeeDefaults] = useState(null);
+  const [resolveService, setResolveService] = useState(() => () => null);
+  const [drivers, setDrivers] = useState(EMPTY_DRIVERS);
+  const [driverSources, setDriverSources] = useState({});
+  const [seedNote, setSeedNote] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const [D, { data: maps }, { data: people }, { data: quotes }, { data: ent }] = await Promise.all([
+        fetchFeeDefaults(),
+        supabase.from('qbo_service_items').select('service_id, qbo_item_name').eq('is_adhoc', false),
+        supabase.from('entity_people').select('role').eq('entity_id', entity.id).eq('role', 'director').is('ended_on', null),
+        supabase.from('quotes').select('estimated_turnover, accounts_detail, payroll_detail, directors, created_at')
+          .eq('entity_id', entity.id).order('created_at', { ascending: false }).limit(1),
+        supabase.from('entities').select('type, company_status_detail').eq('id', entity.id).maybeSingle(),
+      ]);
+      if (!live) return;
+      setFeeDefaults(D);
+      setResolveService(() => buildServiceResolver(maps));
+      const q = quotes?.[0];
+      const next = { ...EMPTY_DRIVERS };
+      const src = {};
+      if (q?.estimated_turnover) { next.turnover = String(q.estimated_turnover); src.turnover = 'last quote'; }
+      if (q?.accounts_detail?.type) {
+        next.accountsType = q.accounts_detail.type;
+        if (q.accounts_detail.properties) next.properties = q.accounts_detail.properties;
+        src.accountsType = 'last quote';
+      } else if (/dormant/i.test(ent?.company_status_detail || '')) {
+        next.accountsType = 'dormant'; src.accountsType = 'Companies House';
+      }
+      const dirCount = (people || []).length;
+      if (dirCount) { next.directors = String(dirCount); src.directors = 'Companies House officers'; }
+      else if (Array.isArray(q?.directors) && q.directors.length) { next.directors = String(q.directors.length); src.directors = 'last quote'; }
+      if (q?.payroll_detail) {
+        next.monthlyEmployees = String(q.payroll_detail.monthly_ee ?? '');
+        next.weeklyEmployees = String(q.payroll_detail.weekly_ee ?? '');
+        src.employees = 'last quote';
+      }
+      setDrivers(next);
+      setDriverSources(src);
+    })();
+    return () => { live = false; };
+  }, [entity.id]);
+
+  // Standard monthly price per line, keyed by line key.
+  const standards = useMemo(() => {
+    const out = {};
+    if (!feeDefaults) return out;
+    for (const l of lines) {
+      const sid = resolveService(l.serviceId, l.description);
+      out[l.key] = sid ? standardFor(sid, drivers, feeDefaults) : null;
+    }
+    return out;
+  }, [lines, drivers, feeDefaults, resolveService]);
+
+  // Which drivers matter for this client's services.
+  const relevant = useMemo(() => {
+    const need = new Set();
+    for (const l of lines) {
+      const sid = resolveService(l.serviceId, l.description);
+      if (sid === 'accounts_ct' || sid === 'ltd_accounts' || sid === 'property_accounts') need.add('accounts');
+      if (sid === 'directors_tax_return') need.add('directors');
+      if (sid === 'payroll') need.add('employees');
+    }
+    return need;
+  }, [lines, resolveService]);
+
+  // Seed New from standard wherever standard is higher than today's fee.
+  // A line already at or above standard keeps its fee: seeding brings
+  // fees up to the price book, it never cuts them. Clicking the standard
+  // figure on a line applies it regardless.
+  const seedFromStandard = () => {
+    let raised = 0, kept = 0;
+    const missing = new Set();
+    const next = lines.map((l) => {
+      const st = standards[l.key];
+      if (!st) return l;
+      if (st.missing) { missing.add(st.missing); return l; }
+      if (st.monthly <= l.current) { kept += 1; return l; }
+      raised += 1;
+      const out = { ...l, next: String(st.monthly) };
+      if (!out.reasonTouched) out.reasonKey = suggestReason({ serviceId: l.serviceId, current: l.current, next: st.monthly });
+      return out;
+    });
+    setLines(next);
+    const parts = [`${raised} fee${raised === 1 ? '' : 's'} raised to standard`];
+    if (kept) parts.push(`${kept} already at or above standard, kept`);
+    if (missing.size) parts.push(`set the ${[...missing].map((m) => DRIVER_LABEL[m]).join(' and ')} to price the rest`);
+    setSeedNote(parts.join(' · '));
+  };
 
   const summary = useMemo(() => summarise(lines.map(asNumbers)), [lines]);
   const dirty = useMemo(() => lines.some((l) => lineDirty(l)) || effectiveAt !== initialEffective(clientRows), [lines, effectiveAt, clientRows]);
@@ -152,6 +248,14 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
             effectiveAt={effectiveAt}
             setEffectiveAt={setEffectiveAt}
             setLine={setLine}
+            standards={standards}
+            drivers={drivers}
+            setDrivers={(patch) => { setDrivers((d) => ({ ...d, ...patch })); setSeedNote(null); }}
+            driverSources={driverSources}
+            relevant={relevant}
+            standardsReady={!!feeDefaults}
+            onSeedStandard={seedFromStandard}
+            seedNote={seedNote}
             onRemoveNew={(key) => setLines((prev) => prev.filter((l) => l.key !== key))}
             adding={adding}
             setAdding={setAdding}
@@ -208,7 +312,11 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
 
 // ─── Step 1 ──────────────────────────────────────────────────────────
 
-function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRemoveNew, adding, setAdding, qboItems, onAdd }) {
+function PriceStep({
+  lines, summary, effectiveAt, setEffectiveAt, setLine,
+  standards, drivers, setDrivers, driverSources, relevant, standardsReady, onSeedStandard, seedNote,
+  onRemoveNew, adding, setAdding, qboItems, onAdd,
+}) {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px' }}>
       {/* Old vs new */}
@@ -217,16 +325,22 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
         <PriceCard title="New" monthly={summary.next} delta={summary.delta} emphasis />
       </div>
 
+      <StandardPanel
+        drivers={drivers} setDrivers={setDrivers} sources={driverSources} relevant={relevant}
+        ready={standardsReady} onSeed={onSeedStandard} note={seedNote}
+      />
+
       {/* Table and rail sit side by side on a wide screen and stack on a
           narrow one; the table scrolls sideways rather than clip a column. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '999 1 560px', minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: 13 }}>
+          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ ...th, textAlign: 'left' }}>Service</th>
                 <th style={th}>Current / mo</th>
+                <th style={th} title="At our standard rates, from the fee engine">Standard / mo</th>
                 <th style={th}>New / mo</th>
                 <th style={th}>Change</th>
                 <th style={{ ...th, textAlign: 'left', width: 230 }}>Reason</th>
@@ -249,6 +363,9 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
                     </td>
                     <td style={{ ...td, fontFamily: 'monospace', color: changed ? '#94a3b8' : '#0f172a', textDecoration: changed ? 'line-through' : 'none' }}>
                       {fmtGbpDetailed(l.current)}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                      <StandardCell st={standards[l.key]} current={l.current} onUse={(v) => setLine(l.key, { next: String(v) })} />
                     </td>
                     <td style={{ ...td, padding: '4px 8px' }}>
                       <input
@@ -333,6 +450,93 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
         </div>
       </div>
     </div>
+  );
+}
+
+// Drivers the standard price depends on, and the seed button. Only the
+// drivers this client's services use are shown; each says where its
+// prefilled value came from, so nobody prices off a guess unknowingly.
+function StandardPanel({ drivers, setDrivers, sources, relevant, ready, onSeed, note }) {
+  const src = (k) => (sources[k] ? <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 4 }}>· {sources[k]}</span> : null);
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px', marginBottom: 16, background: '#fbfcfd' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: relevant.size ? 10 : 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a' }}>Standard pricing</div>
+        <div style={{ fontSize: 11.5, color: '#64748b', flex: '1 1 240px' }}>
+          The fee engine&apos;s current rates. Set the drivers, then seed the new fees.
+        </div>
+        <button onClick={onSeed} disabled={!ready} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', opacity: ready ? 1 : 0.5 }}>
+          <Sparkles size={13} /> Seed new fees from standard
+        </button>
+      </div>
+      {relevant.size > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', alignItems: 'flex-end' }}>
+          {relevant.has('accounts') && (
+            <>
+              <DriverField label={<>Accounts{src('accountsType')}</>}>
+                <select value={drivers.accountsType} onChange={(e) => setDrivers({ accountsType: e.target.value })} style={{ ...input, width: 120 }}>
+                  <option value="trading">Trading</option>
+                  <option value="dormant">Dormant</option>
+                  <option value="property">Property</option>
+                </select>
+              </DriverField>
+              {drivers.accountsType === 'trading' && (
+                <DriverField label={<>Turnover £ / yr{src('turnover')}</>}>
+                  <input type="number" min="0" step="1000" value={drivers.turnover} placeholder="e.g. 120000" onChange={(e) => setDrivers({ turnover: e.target.value })} style={{ ...input, width: 130, fontFamily: 'monospace', textAlign: 'right' }} />
+                </DriverField>
+              )}
+              {drivers.accountsType === 'property' && (
+                <DriverField label="Properties">
+                  <input type="number" min="1" value={drivers.properties} onChange={(e) => setDrivers({ properties: e.target.value })} style={{ ...input, width: 80, textAlign: 'right' }} />
+                </DriverField>
+              )}
+            </>
+          )}
+          {relevant.has('directors') && (
+            <DriverField label={<>Directors{src('directors')}</>}>
+              <input type="number" min="0" value={drivers.directors} onChange={(e) => setDrivers({ directors: e.target.value })} style={{ ...input, width: 80, textAlign: 'right' }} />
+            </DriverField>
+          )}
+          {relevant.has('employees') && (
+            <>
+              <DriverField label={<>Monthly-paid employees{src('employees')}</>}>
+                <input type="number" min="0" value={drivers.monthlyEmployees} placeholder="0" onChange={(e) => setDrivers({ monthlyEmployees: e.target.value })} style={{ ...input, width: 90, textAlign: 'right' }} />
+              </DriverField>
+              <DriverField label="Weekly-paid">
+                <input type="number" min="0" value={drivers.weeklyEmployees} placeholder="0" onChange={(e) => setDrivers({ weeklyEmployees: e.target.value })} style={{ ...input, width: 80, textAlign: 'right' }} />
+              </DriverField>
+            </>
+          )}
+        </div>
+      )}
+      {note && <div style={{ fontSize: 12, color: '#15803d', marginTop: 8 }}>{note}</div>}
+    </div>
+  );
+}
+
+function DriverField({ label, children }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+// The standard figure for a line — click to use it as the new fee.
+// Amber when today's fee is below standard.
+function StandardCell({ st, current, onUse }) {
+  if (!st) return <span style={{ fontSize: 11.5, color: '#cbd5e1' }} title="No standard rate for this service">—</span>;
+  if (st.missing) return <span style={{ fontSize: 11.5, color: '#b45309' }}>set {DRIVER_LABEL[st.missing]}</span>;
+  const below = current < st.monthly - 0.005;
+  return (
+    <button
+      onClick={() => onUse(st.monthly)}
+      title={`${st.basis} — click to use as the new fee`}
+      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'monospace', fontSize: 13, color: below ? '#b45309' : '#64748b', textDecoration: 'underline', textDecorationColor: '#e2e8f0', textUnderlineOffset: 3 }}
+    >
+      {fmtGbpDetailed(st.monthly)}
+    </button>
   );
 }
 
@@ -616,7 +820,7 @@ function initialLines(clientRows) {
       const otherText = saved?.otherText || '';
       out.push({
         key: `${r.id}:${idx}`, rowId: r.id, idx, isNew: false,
-        serviceId, cadence: s.cadence, current, next: String(next), original: next,
+        serviceId, description: s.description || '', cadence: s.cadence, current, next: String(next), original: next,
         reasonKey, otherText, reasonTouched: !!saved,
         // What is stored now: a staged line with no saved reason key (a
         // bulk pass) counts as unsaved until its reason is written.

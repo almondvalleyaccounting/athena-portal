@@ -15,6 +15,26 @@ import { useAuth } from '../shell/AppShell';
 
 const FeeEngineContext = createContext(null);
 
+// The current quote pricing defaults (quote_defaults.is_current), layered
+// over INITIAL_DEFAULTS. Exported for pages outside the Fee Engine layout
+// that still price at standard rates (the single-client fee review).
+export async function fetchFeeDefaults() {
+  try {
+    const { data, error } = await supabase
+      .from('quote_defaults')
+      .select('*')
+      .eq('is_current', true)
+      .single();
+    if (!error && data?.rates) {
+      const dbRates = typeof data.rates === 'string' ? JSON.parse(data.rates) : data.rates;
+      return { ...INITIAL_DEFAULTS, ...dbRates, version: data.version || dbRates.version };
+    }
+  } catch {
+    // Fall back to INITIAL_DEFAULTS silently
+  }
+  return INITIAL_DEFAULTS;
+}
+
 export function useFeeEngine() {
   return useContext(FeeEngineContext);
 }
@@ -24,20 +44,7 @@ function FeeEngineProvider({ children }) {
   const [defaults, setDefaults] = useState(INITIAL_DEFAULTS);
 
   const loadDefaults = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('quote_defaults')
-        .select('*')
-        .eq('is_current', true)
-        .single();
-
-      if (!error && data?.rates) {
-        const dbRates = typeof data.rates === 'string' ? JSON.parse(data.rates) : data.rates;
-        setDefaults({ ...INITIAL_DEFAULTS, ...dbRates, version: data.version || dbRates.version });
-      }
-    } catch {
-      // Fall back to INITIAL_DEFAULTS silently
-    }
+    setDefaults(await fetchFeeDefaults());
   }, []);
 
   useEffect(() => {
