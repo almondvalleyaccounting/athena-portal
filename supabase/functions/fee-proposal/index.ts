@@ -391,6 +391,11 @@ async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null,
 
   if (!commit) return json({ success: true, catchup });
 
+  // A past date on a template we can't read could hide missed invoices.
+  if (!nextRun && date < londonToday()) {
+    return json({ success: false, error: "The template's next invoice date isn't known, so missed invoices can't be checked — refresh from QBO first" }, 409);
+  }
+
   // Approve: the date goes on every staged line, and the row is approved.
   const now = new Date().toISOString();
   const nextServices = services.map((s) => (s.pending_monthly_amount != null ? { ...s, pending_effective_at: date } : s));
