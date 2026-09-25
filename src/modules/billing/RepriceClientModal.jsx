@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { fmtGbpDetailed } from '../../lib/money';
 import { BTN } from '../../lib/buttonStyles';
 import {
-  BUCKETS, REASONS, REASON_BY_KEY, OUR_FEES_FOOTNOTE, VAT_RATE,
+  BUCKETS, REASONS, REASON_BY_KEY, OUR_FEES_FOOTNOTE, VAT_RATE, visibleBuckets,
   bucketFor, suggestReason, reasonFromSaved, reasonText, summarise, firstOfNextMonth, longDate,
 } from './repriceReasons';
 import { buildRepricePdf, pdfBase64, pdfFilename, serviceName } from './repricePdf';
@@ -51,6 +51,25 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   const [feServices, setFeServices] = useState([]);
 
   useEffect(() => { fetchFeeEngineServices().then(setFeServices).catch(() => setFeServices([])); }, []);
+
+  // Who the letter and email are for — loaded once, used by the letter
+  // preview on either step and by the email step's To list.
+  const [recipient, setRecipient] = useState(null); // { contact, contactName, candidates }
+  const [letterPreview, setLetterPreview] = useState(false);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const { data } = await supabase
+        .from('entities')
+        .select('id, name, billing_email, entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)), qbo_customer_mappings(qbo_email, role)')
+        .eq('id', entity.id)
+        .maybeSingle();
+      if (!live) return;
+      const contact = resolvePrimaryContact(data);
+      setRecipient({ contact, contactName: firstNameOf(contact), candidates: candidateAddresses(data, contact) });
+    })();
+    return () => { live = false; };
+  }, [entity.id]);
 
   useEffect(() => {
     let live = true;
@@ -139,6 +158,9 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   };
 
   const summary = useMemo(() => summarise(lines.map(asNumbers)), [lines]);
+  // The lines the letter and email describe: a new service still at £0
+  // hasn't been priced, so it isn't on them.
+  const letterLines = useMemo(() => lines.map(asNumbers).filter((l) => !(l.isNew && !(l.next > 0))), [lines]);
   const dirty = useMemo(() => lines.some((l) => lineDirty(l)) || effectiveAt !== initialEffective(clientRows), [lines, effectiveAt, clientRows]);
   const missingReason = lines.some((l) => isChanged(l) && l.reasonKey === 'other' && !l.otherText.trim());
 
@@ -224,6 +246,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
 
   const saveAndWrite = async () => {
     if (dirty && !(await save())) return;
+    setLetterPreview(false);
     setStep('email');
   };
 
@@ -247,7 +270,16 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }} aria-label="Close"><X size={18} /></button>
         </div>
 
-        {step === 'price' ? (
+        {step === 'price' && letterPreview ? (
+          // The letter as the client would get it from the prices on
+          // screen — nothing needs saving first.
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#f3f5f8' }}>
+            <div style={{ padding: '8px 22px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
+              Letter preview — from the prices on screen, unsaved. {pdfFilename(entity.name)}
+            </div>
+            <PdfPreview build={() => buildRepricePdf({ clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary })} buildKey={JSON.stringify([recipient?.contactName, effectiveAt, summary, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
+          </div>
+        ) : step === 'price' ? (
           <PriceStep
             lines={lines}
             summary={summary}
@@ -275,7 +307,11 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
                 serviceId: svc.lineServiceId, qboItemId: svc.qboItemId, feeEngineServiceId: svc.id,
                 description: svc.defaultDescription || svc.label,
                 cadence: 'monthly', current: 0, next: String(amount), original: 0,
-                reasonKey: 'new_service', otherText: '', reasonTouched: false, originalReason: '',
+                // Mid-split, a service added is where the old fee went.
+                ...(prev.some((l) => l.reasonKey === 'split' && isChanged(l))
+                  ? { reasonKey: 'split', reasonTouched: true }
+                  : { reasonKey: 'new_service', reasonTouched: false }),
+                otherText: '', originalReason: '',
               }]);
               setAdding(false);
             }}
@@ -283,8 +319,9 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
         ) : (
           <EmailStep
             entity={entity}
+            info={recipient}
             clientRows={clientRows}
-            lines={lines.map(asNumbers).filter((l) => !(l.isNew && !(l.next > 0)))}
+            lines={letterLines}
             summary={summary}
             effectiveAt={effectiveAt}
             onBack={() => setStep('price')}
@@ -299,6 +336,14 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
                 : `${changedCount} change${changedCount === 1 ? '' : 's'} · saving stages them for Push uplifts; nothing reaches QBO until pushed.`}
             </span>
             <div style={{ flex: 1 }} />
+            <button
+              onClick={() => setLetterPreview((v) => !v)}
+              disabled={changedCount === 0 && !letterPreview}
+              title={changedCount === 0 ? 'Change a fee first' : 'See the letter the client would get'}
+              style={{ ...BTN.secondary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: changedCount === 0 && !letterPreview ? 0.5 : 1 }}
+            >
+              {letterPreview ? <><ArrowLeft size={14} /> Back to prices</> : <><FileText size={14} /> Preview letter</>}
+            </button>
             <button onClick={onClose} disabled={saving} style={BTN.secondary.md}>Cancel</button>
             <button onClick={save} disabled={saving || !dirty || missingReason} style={{ ...BTN.secondary.md, opacity: (!dirty || missingReason) ? 0.5 : 1 }}>
               {saving ? 'Saving…' : 'Save'}
@@ -578,7 +623,7 @@ function SummaryTable({ summary }) {
   return (
     <div style={{ fontFamily: font }}>
       <div style={{ ...rowS, fontWeight: 600 }}><span>Current fees</span><span style={{ fontFamily: 'monospace' }}>{fmtGbpDetailed(summary.current)}</span></div>
-      {BUCKETS.map((b) => (
+      {visibleBuckets(summary).map((b) => (
         <div key={b.key} style={{ ...rowS, paddingLeft: 10, color: '#475569' }}>
           <span>{b.label}{b.star ? ' *' : ''}</span><span style={{ fontFamily: 'monospace' }}>{step(summary.buckets[b.key])}</span>
         </div>
@@ -596,7 +641,7 @@ function SummaryTable({ summary }) {
 function MiniWaterfall({ summary }) {
   const steps = [
     { label: 'Now', total: true, v: summary.current },
-    ...BUCKETS.filter((b) => summary.buckets[b.key] !== 0).map((b) => ({ label: b.label.replace('Increases in our fees', 'Our fees*'), v: summary.buckets[b.key] })),
+    ...BUCKETS.filter((b) => summary.buckets[b.key] !== 0).map((b) => ({ label: b.label.replace('Increases in our fees', 'Our fees*').replace('Reductions in our fees', 'Reductions').replace('Fees split into separate services', 'Split out'), v: summary.buckets[b.key] })),
     { label: 'New', total: true, v: summary.next },
   ];
   let run = 0, peak = 0;
@@ -674,36 +719,23 @@ function AddLine({ services, priceFor, takenItems, onCancel, onAdd }) {
 
 // ─── Step 2 ──────────────────────────────────────────────────────────
 
-function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) {
-  const [info, setInfo] = useState(null); // { contact, contactName, candidates }
+function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBack }) {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [covering, setCovering] = useState('');
   const [busy, setBusy] = useState(null); // 'pdf' | 'view' | 'draft'
   const [drafted, setDrafted] = useState(null);
   const [error, setError] = useState(null);
+  const [previewTab, setPreviewTab] = useState('email'); // email | letter
 
+  // First drafts, once the contact is known.
   useEffect(() => {
-    let live = true;
-    (async () => {
-      const { data } = await supabase
-        .from('entities')
-        .select('id, name, billing_email, entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)), qbo_customer_mappings(qbo_email, role)')
-        .eq('id', entity.id)
-        .maybeSingle();
-      if (!live) return;
-      const contact = resolvePrimaryContact(data);
-      const contactName = firstNameOf(contact);
-      const candidates = candidateAddresses(data, contact);
-      setInfo({ contact, contactName, candidates });
-      setTo(candidates[0]?.addr || '');
-      const draft = composeRepriceEmail({ clientName: entity.name, coveringText: '', effectiveAt, summary });
-      setSubject(draft.subject);
-      setCovering(defaultCoveringText({ contactName, clientName: entity.name, effectiveAt, lines, summary }));
-    })();
-    return () => { live = false; };
+    if (!info) return;
+    setTo(info.candidates[0]?.addr || '');
+    setSubject(composeRepriceEmail({ clientName: entity.name, coveringText: '', effectiveAt, summary }).subject);
+    setCovering(defaultCoveringText({ contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entity.id]);
+  }, [info]);
 
   const email = useMemo(
     () => composeRepriceEmail({ clientName: entity.name, coveringText: covering, effectiveAt, summary }),
@@ -807,11 +839,20 @@ function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) 
 
         {/* Preview */}
         <div style={{ flex: '999 1 420px', minWidth: 0, minHeight: 520, height: '100%', display: 'flex', flexDirection: 'column', background: '#f3f5f8' }}>
-          <div style={{ padding: '8px 14px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
-            <strong style={{ color: '#0f172a' }}>{subject}</strong>
-            <span style={{ marginLeft: 8 }}>→ {to || 'no recipient'}</span>
+          <div style={{ padding: '6px 14px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <PreviewTabs value={previewTab} onChange={setPreviewTab} />
+            {previewTab === 'email' ? (
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <strong style={{ color: '#0f172a' }}>{subject}</strong>
+                <span style={{ marginLeft: 8 }}>→ {to || 'no recipient'}</span>
+              </span>
+            ) : (
+              <span>{pdfFilename(entity.name)} — as attached to the email</span>
+            )}
           </div>
-          <iframe title="Email preview" srcDoc={email.bodyHtml} sandbox="" style={{ flex: 1, width: '100%', border: 'none' }} />
+          {previewTab === 'email'
+            ? <iframe title="Email preview" srcDoc={email.bodyHtml} sandbox="" style={{ flex: 1, width: '100%', border: 'none' }} />
+            : <PdfPreview build={makePdf} buildKey={JSON.stringify([info?.contactName, effectiveAt, summary, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
         </div>
       </div>
 
@@ -833,6 +874,49 @@ function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) 
       </div>
     </>
   );
+}
+
+function PreviewTabs({ value, onChange }) {
+  const tab = (key, label) => (
+    <button
+      onClick={() => onChange(key)}
+      style={{
+        padding: '4px 10px', fontSize: 12, fontFamily: font, cursor: 'pointer', borderRadius: 6,
+        border: `1px solid ${value === key ? '#193a50' : '#e5e7eb'}`,
+        background: value === key ? '#193a50' : '#fff', color: value === key ? '#fff' : '#475569',
+        fontWeight: value === key ? 600 : 500,
+      }}
+    >{label}</button>
+  );
+  return <span style={{ display: 'inline-flex', gap: 4 }}>{tab('email', 'Email')}{tab('letter', 'Letter (PDF)')}</span>;
+}
+
+// The fee-review letter, rendered in place: the same buildRepricePdf the
+// attachment and the download use, shown through the browser's PDF
+// viewer. Rebuilt whenever buildKey changes (a price, reason or date).
+function PdfPreview({ build, buildKey }) {
+  const [url, setUrl] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let live = true;
+    let made = null;
+    setErr(null);
+    (async () => {
+      try {
+        const doc = await build();
+        if (!live) return;
+        made = URL.createObjectURL(doc.output('blob'));
+        setUrl(made);
+      } catch (e) {
+        if (live) setErr(e.message || String(e));
+      }
+    })();
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildKey]);
+  if (err) return <div style={{ padding: 20, fontSize: 13, color: '#b91c1c' }}>Couldn&apos;t build the letter: {err}</div>;
+  if (!url) return <div style={{ padding: 20, fontSize: 13, color: '#94a3b8' }}>Building the letter…</div>;
+  return <iframe title="Letter preview" src={`${url}#view=FitH`} style={{ flex: 1, width: '100%', minHeight: 480, border: 'none', background: '#525659' }} />;
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────

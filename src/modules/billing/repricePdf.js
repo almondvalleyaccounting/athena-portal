@@ -9,7 +9,7 @@
 // jsPDF's built-in Helvetica is WinAnsi-encoded: "£" and "—" render,
 // the Unicode minus sign does not, so negatives use a plain hyphen.
 
-import { BUCKETS, OUR_FEES_FOOTNOTE, VAT_RATE, longDate, reasonText } from './repriceReasons';
+import { BUCKETS, visibleBuckets, OUR_FEES_FOOTNOTE, VAT_RATE, longDate, reasonText } from './repriceReasons';
 
 const OCEAN_700 = [25, 58, 80];
 const OCEAN_600 = [30, 69, 96];
@@ -167,18 +167,18 @@ export async function buildRepricePdf({ clientName, contactName, effectiveAt, li
   doc.text('Per year', aR, y, { align: 'right' });
   y += 2;
   const row = (label, m, { bold = false, fill = null, sign = false, star = false } = {}) => {
-    if (fill) { doc.setFillColor(...fill); doc.rect(sx, y, sw, 5.8, 'F'); }
+    if (fill) { doc.setFillColor(...fill); doc.rect(sx, y, sw, 5.4, 'F'); }
     doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.5);
     doc.setTextColor(...(fill ? [255, 255, 255] : DARK));
     doc.text(`${label}${star ? ' *' : ''}`, sx + 2, y + 4);
     const fmt = (v) => (sign ? (v === 0 ? '—' : signed(v)) : money(v));
     doc.text(fmt(m), mR, y + 4, { align: 'right' });
     doc.text(fmt(m * 12), aR, y + 4, { align: 'right' });
-    y += 5.8;
+    y += 5.4;
     if (!fill) { doc.setDrawColor(...RULE); doc.line(sx, y, sx + sw, y); }
   };
   row('Current fees', summary.current, { bold: true });
-  for (const b of BUCKETS) row(b.label, summary.buckets[b.key], { sign: true, star: b.star });
+  for (const b of visibleBuckets(summary)) row(b.label, summary.buckets[b.key], { sign: true, star: b.star });
   row('New fees (net of VAT)', summary.next, { bold: true });
   row(`VAT at ${Math.round(VAT_RATE * 100)}%`, summary.vat);
   row('Total including VAT', summary.gross, { bold: true, fill: OCEAN_700 });
@@ -236,11 +236,13 @@ function waterfall(doc, { x, y, w, h, summary }) {
   const barW = Math.min(22, slot * 0.62);
   const py = (v) => plotBottom - (v / peak) * plotH;
 
-  // Gridlines + axis labels — three steps is plenty on a letter.
   doc.setLineWidth(0.15);
   doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRAY);
-  for (let i = 0; i <= 3; i++) {
-    const v = (peak / 3) * i;
+  // Gridlines + axis labels in whole pounds: as many steps (4, 3, 5 or 2)
+  // as divide the axis evenly, so it never reads £133.33.
+  const gridSteps = [4, 3, 5, 2].find((k) => Number.isInteger(peak / k)) || 4;
+  for (let i = 0; i <= gridSteps; i++) {
+    const v = (peak / gridSteps) * i;
     const gy = py(v);
     doc.setDrawColor(...RULE);
     doc.line(axisL, gy, x + w, gy);

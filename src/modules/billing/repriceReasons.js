@@ -4,10 +4,16 @@
 // Every reason belongs to exactly one bucket, and the buckets are the
 // rows of the client-facing summary table:
 //
-//   ourFees      — our own price moved. Only two things may move it:
+//   ourFees      — our own price went up. Only two things may raise it:
 //                  inflation, or the client's business growing. The
 //                  email footnote promises the client exactly that, so
 //                  no other reason may map here.
+//   reductions   — our own price came down (less work, a smaller
+//                  business, a goodwill reduction)
+//   split        — one fee split out into separate services: the old
+//                  line comes down and the new lines take up the
+//                  difference, so they belong together in one row rather
+//                  than reading as a cut plus new services
 //   newService   — a service they did not have before
 //   removed      — a service they no longer take
 //   passedOn     — a cost we pay on their behalf, passed on at cost
@@ -15,11 +21,17 @@
 //
 // The label is what the client reads; it is also stored on the service
 // line as pending_uplift_reason so Push and the audit trail carry it.
+//
+// `optional` rows appear in the client's table only when a line uses
+// them — most reviews have no reductions and no split, and a column of
+// dashes for them would only raise the question.
 
 import { isCostPassThrough } from './composeUpliftEmail';
 
 export const BUCKETS = [
   { key: 'ourFees',    label: 'Increases in our fees', star: true },
+  { key: 'reductions', label: 'Reductions in our fees', optional: true },
+  { key: 'split',      label: 'Fees split into separate services', optional: true },
   { key: 'newService', label: 'New services' },
   { key: 'removed',    label: 'Services removed' },
   { key: 'passedOn',   label: 'Costs passed on' },
@@ -32,6 +44,13 @@ export const REASONS = [
   { key: 'employees',     bucket: 'ourFees',    label: 'More employees on the payroll' },
   { key: 'transactions',  bucket: 'ourFees',    label: 'More transactions to process' },
   { key: 'complexity',    bucket: 'ourFees',    label: 'Your affairs have become more complex' },
+  { key: 'less_work',     bucket: 'reductions', label: 'Less work is needed than before' },
+  { key: 'turnover_down', bucket: 'reductions', label: 'Your turnover has fallen' },
+  { key: 'fewer_employees', bucket: 'reductions', label: 'Fewer employees on the payroll' },
+  { key: 'fewer_transactions', bucket: 'reductions', label: 'Fewer transactions to process' },
+  { key: 'standard_rate', bucket: 'reductions', label: 'Brought into line with our standard fees' },
+  { key: 'goodwill',      bucket: 'reductions', label: 'Goodwill reduction' },
+  { key: 'split',         bucket: 'split',      label: 'Fee split out into separate services' },
   { key: 'new_service',   bucket: 'newService', label: 'New service added' },
   { key: 'removed',       bucket: 'removed',    label: 'Service no longer required' },
   { key: 'ch_fee',        bucket: 'passedOn',   label: 'Companies House fee increase' },
@@ -41,16 +60,22 @@ export const REASONS = [
 
 export const REASON_BY_KEY = Object.fromEntries(REASONS.map((r) => [r.key, r]));
 
-// Where a line's amount went. A £0 → £x line is a new service and a
-// £x → £0 line is a removal whatever reason is picked — those two are
-// facts about the amounts, not judgements, so the table never shows a
-// new service as a "fee increase".
+// Where a line's amount went. A split comes first: its new lines start
+// at £0 and its old line may fall to £0, and all of them belong to the
+// split. Otherwise a £0 → £x line is a new service and a £x → £0 line a
+// removal whatever reason is picked — facts about the amounts, not
+// judgements — and our-fee reasons follow the direction the fee actually
+// moved, so a cut can never be counted as an "increase in our fees".
 export function bucketFor(line) {
   const cur = Number(line.current) || 0;
   const neu = Number(line.next) || 0;
+  if (line.reasonKey === 'split') return 'split';
   if (cur === 0 && neu > 0) return 'newService';
   if (cur > 0 && neu === 0) return 'removed';
-  return REASON_BY_KEY[line.reasonKey]?.bucket || 'other';
+  const bucket = REASON_BY_KEY[line.reasonKey]?.bucket || 'other';
+  if (bucket === 'ourFees' && neu < cur) return 'reductions';
+  if (bucket === 'reductions' && neu > cur) return 'ourFees';
+  return bucket;
 }
 
 // Suggest a reason for a changed line. Staff always see it and can
@@ -60,6 +85,12 @@ export function suggestReason({ serviceId, current, next }) {
   const neu = Number(next) || 0;
   if (cur === 0 && neu > 0) return 'new_service';
   if (cur > 0 && neu === 0) return 'removed';
+  if (neu < cur) {
+    if (/payroll|pension|auto.?enrol/i.test(serviceId || '')) return 'fewer_employees';
+    if (/bookkeep|vat/i.test(serviceId || '')) return 'fewer_transactions';
+    if (/accounts/i.test(serviceId || '')) return 'turnover_down';
+    return 'less_work';
+  }
   if (/confirmation statement|companies house/i.test(serviceId || '')) return 'ch_fee';
   if (isCostPassThrough(serviceId)) return 'software';
   if (/payroll|pension|auto.?enrol/i.test(serviceId || '')) return cur > 0 && neu / cur > 1.1 ? 'employees' : 'inflation';
@@ -91,6 +122,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // callers multiply by 12 for the year.
 export function summarise(lines) {
   const buckets = Object.fromEntries(BUCKETS.map((b) => [b.key, 0]));
+  const used = new Set();
   let current = 0, next = 0;
   for (const l of lines) {
     const cur = Number(l.current) || 0;
@@ -98,13 +130,23 @@ export function summarise(lines) {
     current += cur;
     next += neu;
     if (cur === neu) continue;
-    buckets[bucketFor(l)] += neu - cur;
+    const b = bucketFor(l);
+    buckets[b] += neu - cur;
+    used.add(b);
   }
   for (const k of Object.keys(buckets)) buckets[k] = r2(buckets[k]);
   current = r2(current);
   next = r2(next);
   const vat = r2(next * VAT_RATE);
-  return { current, next, delta: r2(next - current), buckets, vat, gross: r2(next + vat) };
+  return { current, next, delta: r2(next - current), buckets, used: [...used], vat, gross: r2(next + vat) };
+}
+
+// The rows the client's table shows: every standard row, plus an
+// optional one when a line uses it (a split that nets to £0 still shows,
+// with a dash, because the letter lists its lines).
+export function visibleBuckets(summary) {
+  const used = new Set(summary?.used || []);
+  return BUCKETS.filter((b) => !b.optional || used.has(b.key));
 }
 
 export const OUR_FEES_FOOTNOTE =

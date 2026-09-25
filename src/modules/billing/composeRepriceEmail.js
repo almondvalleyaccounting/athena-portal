@@ -14,7 +14,7 @@
 //
 // with the footnote under it. Returns { subject, body, bodyHtml }.
 
-import { BUCKETS, OUR_FEES_FOOTNOTE, VAT_RATE, longDate, reasonText } from './repriceReasons';
+import { visibleBuckets, OUR_FEES_FOOTNOTE, VAT_RATE, longDate, reasonText } from './repriceReasons';
 
 const money = (n) => `£${Math.abs(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const signed = (n) => (Number(n) > 0 ? `+${money(n)}` : Number(n) < 0 ? `−${money(n)}` : '—');
@@ -49,7 +49,7 @@ export function composeRepriceEmail({ clientName, coveringText, effectiveAt, sum
 
   const rows = [
     { label: 'Current fees', v: summary.current, kind: 'total' },
-    ...BUCKETS.map((b) => ({ label: b.label, v: summary.buckets[b.key], kind: 'step', star: b.star })),
+    ...visibleBuckets(summary).map((b) => ({ label: b.label, v: summary.buckets[b.key], kind: 'step', star: b.star })),
     { label: 'New fees (net of VAT)', v: summary.next, kind: 'total' },
     { label: `VAT at ${Math.round(VAT_RATE * 100)}%`, v: summary.vat, kind: 'vat' },
     { label: 'Total including VAT', v: summary.gross, kind: 'grand' },
@@ -62,8 +62,8 @@ export function composeRepriceEmail({ clientName, coveringText, effectiveAt, sum
   const text = [
     coveringText.trim(),
     '',
-    pad('', 30) + padR('Per month', 14) + padR('Per year', 14),
-    ...rows.map((r) => pad(r.label + (r.star ? ' *' : ''), 30) + padR(fmtCell(r, r.v), 14) + padR(fmtCell(r, r.v * 12), 14)),
+    pad('', 36) + padR('Per month', 14) + padR('Per year', 14),
+    ...rows.map((r) => pad(r.label + (r.star ? ' *' : ''), 36) + padR(fmtCell(r, r.v), 14) + padR(fmtCell(r, r.v * 12), 14)),
     '',
     `* ${OUR_FEES_FOOTNOTE}`,
     '',
