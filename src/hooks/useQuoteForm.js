@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fmt } from '../components/ui';
+import { computeQuote, directorTotal, payrollFlat, lineItemsFor } from '../lib/quoteMaths';
 
 export default function useQuoteForm(D) {
   // ── Client ──
@@ -24,11 +25,6 @@ export default function useQuoteForm(D) {
   const [suHmrcRate, setSuHmrcRate] = useState(D.setup.hmrc_reg_rate);
   const [suRegFee, setSuRegFee] = useState(0);
   const [suOthers, setSuOthers] = useState([]);
-  const setupTotal =
-    (suFormation ? suFormationQty * suFormationRate : 0) +
-    (suHmrc ? suHmrcQty * suHmrcRate : 0) +
-    suRegFee +
-    suOthers.reduce((s, o) => s + (o.amount || 0), 0);
 
   // ── Accounts & CT ──
   const [accEnabled, setAccEnabled] = useState(true);
@@ -39,25 +35,12 @@ export default function useQuoteForm(D) {
   const [accPropExtra, setAccPropExtra] = useState(D.property_per_extra);
   const [accDormant, setAccDormant] = useState(D.dormant_rate);
 
-  const turnoverNum = parseFloat(client.turnover) || 0;
-  const detectedBand = D.accounts_bands.find(
-    (b) => turnoverNum >= b.min && turnoverNum <= (b.max === Infinity ? 999999999 : b.max)
-  );
-  useEffect(() => {
-    if (accType === 'trading' && detectedBand) setAccRate(detectedBand.rate);
-  }, [turnoverNum, accType]);
-
-  const accAnnual =
-    accType === 'dormant' ? accDormant
-    : accType === 'property' ? accPropBase + Math.max(0, accProperties - 1) * accPropExtra
-    : accRate;
 
   // ── Sole Trader Accounts ──
   // Flat annual fee add-on for unincorporated clients (no CT, no CH filing).
   // Off by default — this is a sole-trader-specific service.
   const [staEnabled, setStaEnabled] = useState(false);
   const [staFee, setStaFee] = useState(D.sole_trader_accounts ?? 450);
-  const staAnnual = staFee;
 
   // ── Confirmation statement ──
   const [csEnabled, setCsEnabled] = useState(true);
@@ -76,14 +59,7 @@ export default function useQuoteForm(D) {
   const updateDir = (i, f, v) => {
     const d = [...directors]; d[i] = { ...d[i], [f]: v }; setDirectors(d);
   };
-  const dirTotal = (d) =>
-    d.base +
-    (d.otherDividends ? addonRates.other_dividends : 0) +
-    (d.hasRentals ? d.rentalProperties * addonRates.rental_property : 0) +
-    (d.capitalGains ? addonRates.capital_gains : 0) +
-    (d.savingsIncome ? addonRates.savings_income : 0) +
-    (d.otherSources || []).reduce((s, o) => s + (o.amount || 0), 0);
-  const dtrAnnual = directors.reduce((s, d) => s + dirTotal(d), 0);
+  const dirTotal = (d) => directorTotal(d, addonRates);
 
   // ── Bookkeeping ──
   const [bkEnabled, setBkEnabled] = useState(false);
@@ -91,25 +67,20 @@ export default function useQuoteForm(D) {
   const [bkRate, setBkRate] = useState(D.bookkeeping_rate);
   const [bkIncVat, setBkIncVat] = useState(true);
   const [bkVatAdj, setBkVatAdj] = useState(0);
-  const bkAnnual = bkHours * bkRate * 12 + (bkIncVat ? bkVatAdj : 0);
 
   // ── VAT standalone ──
   const [vatEnabled, setVatEnabled] = useState(false);
   const [vatFreq, setVatFreq] = useState(4);
   const [vatRate, setVatRate] = useState(D.vat_per_return);
-  const vatAnnual = vatFreq * vatRate;
 
   // ── MTD Returns (MTD for Income Tax — quarterly ITSA submissions) ──
   const [mtdEnabled, setMtdEnabled] = useState(false);
   const [mtdFreq, setMtdFreq] = useState(D.mtd_returns?.freq ?? 4);
   const [mtdRate, setMtdRate] = useState(D.mtd_returns?.per_return ?? 35);
-  const mtdAnnual = mtdFreq * mtdRate;
 
   // ── Payroll ──
   const [prEnabled, setPrEnabled] = useState(false);
-  const prFlatCalc = Math.ceil(
-    (D.payroll.brightpay_annual / D.payroll.payroll_client_count) * (1 + D.payroll.markup_pct / 100)
-  );
+  const prFlatCalc = payrollFlat(D);
   const [prFlat, setPrFlat] = useState(prFlatCalc);
   const [prMonthlyEe, setPrMonthlyEe] = useState(0);
   const [prMonthlyEeRate, setPrMonthlyEeRate] = useState(D.payroll.monthly_ee_rate);
@@ -119,8 +90,6 @@ export default function useQuoteForm(D) {
   const [prCisRate, setPrCisRate] = useState(D.payroll.cis_rate);
   const [prP11d, setPrP11d] = useState(0);
   const [prP11dRate, setPrP11dRate] = useState(D.payroll.p11d_rate);
-  const prMoCalc = prFlat + prMonthlyEe * prMonthlyEeRate + prWeeklyEe * prWeeklyEeRate * 4.33 + prCis * prCisRate * 4.33;
-  const prAnnual = prMoCalc * 12 + prP11d * prP11dRate;
 
   // ── Auto-enrolment ──
   const [aeEnabled, setAeEnabled] = useState(false);
@@ -133,20 +102,16 @@ export default function useQuoteForm(D) {
   const [modPaymentRate, setModPaymentRate] = useState(D.modulr?.per_payment || 0.25);
   const [modRuns, setModRuns] = useState(0);
   const [modRunRate, setModRunRate] = useState(D.modulr?.per_run || 5);
-  const modMonthly = modSwPrice + modPayments * modPaymentRate + modRuns * modRunRate;
-  const modAnnual = modMonthly * 12;
 
   // ── Management Accounts ──
   const [maEnabled, setMaEnabled] = useState(false);
   const [maSets, setMaSets] = useState(4);
   const [maRate, setMaRate] = useState(D.management_accounts_per_set || 158);
-  const maAnnual = maSets * maRate;
 
   // ── Review Meetings ──
   const [rmEnabled, setRmEnabled] = useState(false);
   const [rmCount, setRmCount] = useState(4);
   const [rmRate, setRmRate] = useState(D.review_meeting_rate || 210);
-  const rmAnnual = rmCount * rmRate;
 
   // ── Budgeting & Forecasting ──
   const [budEnabled, setBudEnabled] = useState(false);
@@ -156,13 +121,11 @@ export default function useQuoteForm(D) {
   const [budAdvancedRate, setBudAdvancedRate] = useState(D.budget_advanced || 3255);
   const [budReforecastQty, setBudReforecastQty] = useState(0);
   const [budReforecastRate, setBudReforecastRate] = useState(D.reforecast || 225);
-  const budAnnual = (budBasic ? budBasicRate : 0) + (budAdvanced ? budAdvancedRate : 0) + budReforecastQty * budReforecastRate;
 
   // ── Fractional CFO ──
   const [cfoEnabled, setCfoEnabled] = useState(false);
   const [cfoDays, setCfoDays] = useState(1);
   const [cfoDayRate, setCfoDayRate] = useState(D.cfo_day_rate || 1680);
-  const cfoAnnual = cfoDays * cfoDayRate;
 
   // ── Registered office ──
   const [roEnabled, setRoEnabled] = useState(false);
@@ -172,63 +135,33 @@ export default function useQuoteForm(D) {
   const [swId, setSwId] = useState('none');
   const [dextEnabled, setDextEnabled] = useState(false);
   const [dextPrice, setDextPrice] = useState(D.dext.monthly_price);
-  const sw = D.software.find((s) => s.id === swId) || D.software[0];
-  const swMonthly = (sw?.monthly || 0) + (dextEnabled ? dextPrice : 0);
-  const swAnnual = swMonthly * 12;
+  // ── Figures ── (src/lib/quoteMaths.js; everything below here is state)
+  const {
+    setupTotal, turnoverNum, detectedBand,
+    accAnnual, staAnnual, dtrAnnual, bkAnnual, vatAnnual, mtdAnnual,
+    prMoCalc, prAnnual, modMonthly, modAnnual, maAnnual, rmAnnual, budAnnual, cfoAnnual,
+    sw, swMonthly, swAnnual,
+    lines, belowStandard, annualServices, annualTotal, monthlyNet, monthlyVat, monthlyGross,
+  } = computeQuote({
+    suFormation, suFormationQty, suFormationRate, suHmrc, suHmrcQty, suHmrcRate, suRegFee, suOthers,
+    turnover: client.turnover,
+    accEnabled, accType, accRate, accProperties, accPropBase, accPropExtra, accDormant,
+    staEnabled, staFee, csEnabled, csFee,
+    dtrEnabled, directors, addonRates,
+    bkEnabled, bkHours, bkRate, bkIncVat, bkVatAdj,
+    vatEnabled, vatFreq, vatRate, mtdEnabled, mtdFreq, mtdRate,
+    prEnabled, prFlat, prMonthlyEe, prMonthlyEeRate, prWeeklyEe, prWeeklyEeRate, prCis, prCisRate, prP11d, prP11dRate,
+    aeEnabled, aeFee,
+    modEnabled, modSwPrice, modPayments, modPaymentRate, modRuns, modRunRate,
+    maEnabled, maSets, maRate, rmEnabled, rmCount, rmRate,
+    budEnabled, budBasic, budBasicRate, budAdvanced, budAdvancedRate, budReforecastQty, budReforecastRate,
+    cfoEnabled, cfoDays, cfoDayRate, roEnabled, roFee,
+    swId, dextEnabled, dextPrice,
+  }, D);
 
-  // ── Totals ──
-  const lines = [];
-  if (accEnabled) lines.push({ id: 'accounts_ct', name: 'Accounts & CT', annual: accAnnual });
-  if (staEnabled) lines.push({ id: 'sole_trader_accounts', name: 'Sole Trader Accounts', annual: staAnnual });
-  if (csEnabled) lines.push({ id: 'confirmation_statement', name: 'Confirmation Statement', annual: csFee });
-  if (dtrEnabled) lines.push({ id: 'directors_tax_return', name: `Directors' Tax Returns`, annual: dtrAnnual });
-  if (bkEnabled) lines.push({ id: bkIncVat ? 'bookkeeping_vat' : 'bookkeeping', name: bkIncVat ? 'Bookkeeping & VAT Returns' : 'Bookkeeping', annual: bkAnnual });
-  if (vatEnabled) lines.push({ id: 'vat_returns', name: 'VAT Returns', annual: vatAnnual });
-  if (mtdEnabled) lines.push({ id: 'mtd_returns', name: 'MTD Returns', annual: mtdAnnual });
-  if (prEnabled) lines.push({ id: 'payroll', name: 'Payroll', annual: prAnnual });
-  if (aeEnabled) lines.push({ id: 'auto_enrolment', name: 'Auto-Enrolment', annual: aeFee });
-  if (modEnabled) lines.push({ id: 'modulr', name: 'Modulr Wage Payments', annual: modAnnual });
-  if (maEnabled) lines.push({ id: 'management_accounts', name: 'Management Accounts', annual: maAnnual });
-  if (rmEnabled) lines.push({ id: 'review_meetings', name: 'Review Meetings', annual: rmAnnual });
-  if (budEnabled) lines.push({ id: 'budgeting', name: 'Budgeting & Forecasting', annual: budAnnual });
-  if (cfoEnabled) lines.push({ id: 'fractional_cfo', name: 'Fractional CFO', annual: cfoAnnual });
-  if (roEnabled) lines.push({ id: 'registered_office', name: 'Registered Office', annual: roFee });
-
-  // ── Below-standard pricing ──
-  // For each enabled service, compute the standard (defaults-rate × the same
-  // quantities) and flag where the quoted amount is below it. Driver-based
-  // services (payroll, modulr, budgeting, CFO, software) are excluded — their
-  // "standard" isn't a single rate, so flagging would be noisy.
-  const belowStandard = [];
-  const flagBelow = (id, name, actual, standard) => {
-    if (standard > 0 && actual < standard - 0.5) belowStandard.push({ id, name, actual, standard });
-  };
-  if (accEnabled && accType === 'trading' && detectedBand) flagBelow('accounts_ct', 'Accounts & CT', accAnnual, detectedBand.rate);
-  if (csEnabled) flagBelow('confirmation_statement', 'Confirmation Statement', csFee, D.confirmation_statement.fee);
-  if (dtrEnabled) {
-    const stdDtr = directors.reduce((s, d) =>
-      s + D.director_base
-        + (d.otherDividends ? D.director_addons.other_dividends : 0)
-        + (d.hasRentals ? d.rentalProperties * D.director_addons.rental_property : 0)
-        + (d.capitalGains ? D.director_addons.capital_gains : 0)
-        + (d.savingsIncome ? D.director_addons.savings_income : 0)
-        + (d.otherSources || []).reduce((a, o) => a + (o.amount || 0), 0), 0);
-    flagBelow('directors_tax_return', "Directors' Tax Returns", dtrAnnual, stdDtr);
-  }
-  if (bkEnabled) flagBelow('bookkeeping_vat', 'Bookkeeping & VAT', bkAnnual, bkHours * D.bookkeeping_rate * 12 + (bkIncVat ? bkVatAdj : 0));
-  if (vatEnabled) flagBelow('vat_returns', 'VAT Returns', vatAnnual, vatFreq * D.vat_per_return);
-  if (staEnabled) flagBelow('sole_trader_accounts', 'Sole Trader Accounts', staAnnual, D.sole_trader_accounts ?? 450);
-  if (mtdEnabled) flagBelow('mtd_returns', 'MTD Returns', mtdAnnual, mtdFreq * (D.mtd_returns?.per_return ?? 35));
-  if (aeEnabled) flagBelow('auto_enrolment', 'Auto-Enrolment', aeFee, D.auto_enrolment.standard);
-  if (roEnabled) flagBelow('registered_office', 'Registered Office', roFee, D.registered_office);
-  if (rmEnabled) flagBelow('review_meetings', 'Review Meetings', rmAnnual, rmCount * (D.review_meeting_rate || 210));
-  if (maEnabled) flagBelow('management_accounts', 'Management Accounts', maAnnual, maSets * (D.management_accounts_per_set || 158));
-
-  const annualServices = lines.reduce((s, l) => s + l.annual, 0);
-  const annualTotal = annualServices + swAnnual;
-  const monthlyNet = Math.round((annualTotal / 12) * 100) / 100;
-  const monthlyVat = Math.round(monthlyNet * 0.2 * 100) / 100;
-  const monthlyGross = Math.round((monthlyNet + monthlyVat) * 100) / 100;
+  useEffect(() => {
+    if (accType === 'trading' && detectedBand) setAccRate(detectedBand.rate);
+  }, [turnoverNum, accType]);
 
   // ── Build quote data for save ──
   const buildQuoteData = () => {
@@ -272,24 +205,8 @@ export default function useQuoteForm(D) {
     };
   };
 
-  const buildLineItems = (qid, setupLines) => {
-    const items = lines.map((l, i) => ({
-      quote_id: qid, service_id: l.id, description: l.name,
-      annual_amount: Math.round(l.annual * 100) / 100,
-      monthly_amount: Math.round((l.annual / 12) * 100) / 100,
-      detail: l.detail || '', is_recurring: true, sort_order: i,
-    }));
-    if (sw?.id !== 'none' && sw?.monthly > 0) {
-      items.push({ quote_id: qid, service_id: 'software_accounting', description: sw.name, annual_amount: sw.monthly * 12, monthly_amount: sw.monthly, detail: '', is_recurring: true, sort_order: items.length });
-    }
-    if (dextEnabled) {
-      items.push({ quote_id: qid, service_id: 'software_dext', description: 'Dext', annual_amount: dextPrice * 12, monthly_amount: dextPrice, detail: '', is_recurring: true, sort_order: items.length });
-    }
-    setupLines.forEach((sl, i) => {
-      items.push({ quote_id: qid, service_id: `setup_${sl.type}`, description: sl.description, annual_amount: sl.amount, monthly_amount: 0, detail: '', is_recurring: false, sort_order: 100 + i });
-    });
-    return items;
-  };
+  const buildLineItems = (qid, setupLines) =>
+    lineItemsFor(qid, { lines, sw, dextEnabled, dextPrice }, setupLines);
 
   // ── Seed from an existing recurring bill ──
   // `seedLines` is a list of { serviceId (Athena), annual, monthly } already
