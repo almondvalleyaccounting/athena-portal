@@ -23,6 +23,7 @@ import SchedulesPage from './shell/SchedulesPage';
 import ShortcutsPage from './shell/ShortcutsMap';
 import DataImportModule from './modules/data-import/DataImportModule';
 import SetupModule from './modules/work-planner/setup/SetupModule';
+import PlanJobModule from './modules/work-planner/plan/PlanJobModule';
 import QboMappingPage from './modules/qbo-mapping/QboMappingPage';
 import BillingReviewPage from './modules/billing/BillingReviewPage';
 import BillingReviewAndChangePage from './modules/billing/BillingReviewAndChangePage';
@@ -148,6 +149,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/planner/setup/*" element={<SetupModule />} />
           {/* Job Review lives under Work — must precede the /planner/* wildcard. */}
           <Route path="/planner/review/*" element={<JobReviewModule />} />
+          {/* Plan the Job (sql/304) — must precede the /planner/* wildcard. */}
+          <Route path="/planner/plan/*" element={<PlanJobModule />} />
           {/* Admin Task List — must precede the /planner/* wildcard. */}
           <Route path="/planner/tasks" element={<AdminTasksPage />} />
           <Route path="/planner/tasks/:id" element={<AdminTaskDetailPage />} />
