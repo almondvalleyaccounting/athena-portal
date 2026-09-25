@@ -193,12 +193,19 @@ export async function fetchAdhocServices() {
 // line needs: lineServiceId is the key QBO pulls lines under ("Category:Item"),
 // so an added service sits in the same column as the ones already billed.
 export async function fetchFeeEngineServices() {
-  const { data, error } = await supabase
-    .from('qbo_service_items')
-    .select('service_id, qbo_item_id, qbo_item_name, qbo_category, default_description')
-    .eq('is_adhoc', false);
+  const [{ data, error }, { data: items }] = await Promise.all([
+    supabase
+      .from('qbo_service_items')
+      .select('service_id, qbo_item_id, qbo_item_name, qbo_category, default_description')
+      .eq('is_adhoc', false),
+    supabase.from('qbo_items').select('qbo_item_id, fully_qualified_name'),
+  ]);
   if (error) throw error;
   const labels = Object.fromEntries(FEE_ENGINE_SERVICES.map((s) => [s.id, s.label]));
+  // QBO's own full name — some products sit two levels deep ("All
+  // Inclusive:All Inclusive Fees - Ltd Companies:…"), so category + name is
+  // not always it. Same key live_billing and v_service_dimension use.
+  const fullName = Object.fromEntries((items || []).map((i) => [String(i.qbo_item_id), i.fully_qualified_name]));
   return (data || [])
     .filter((r) => r.service_id && r.qbo_item_id && !r.service_id.startsWith('setup_'))
     .map((r) => ({
@@ -207,7 +214,8 @@ export async function fetchFeeEngineServices() {
       category: r.qbo_category || 'Other',
       qboItemId: String(r.qbo_item_id),
       qboItemName: r.qbo_item_name || '',
-      lineServiceId: r.qbo_category ? `${r.qbo_category}:${r.qbo_item_name}` : (r.qbo_item_name || r.service_id),
+      lineServiceId: fullName[String(r.qbo_item_id)]
+        || (r.qbo_category ? `${r.qbo_category}:${r.qbo_item_name}` : (r.qbo_item_name || r.service_id)),
       defaultDescription: r.default_description || '',
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
