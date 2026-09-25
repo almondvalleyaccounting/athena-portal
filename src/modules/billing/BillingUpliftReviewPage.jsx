@@ -110,7 +110,7 @@ export default function BillingUpliftReviewPage() {
     let byId = {};
     if (pids.length) {
       const { data: fps } = await supabase.from('fee_proposals')
-        .select('id, kind, status, effective_at, issued_at, recipient_email, accepted_at, acceptance_received_on, acceptance_inbox')
+        .select('id, kind, status, effective_at, issued_at, recipient_email, accepted_at, acceptance_received_on, acceptance_inbox, accepted_via, accepted_name, accepted_client_email, link_opened_at')
         .in('id', pids);
       byId = Object.fromEntries((fps || []).map((p) => [p.id, p]));
     }
@@ -513,7 +513,7 @@ export default function BillingUpliftReviewPage() {
         const openProposal = p && p.kind === 'proposal' && (p.status === 'issued' || p.status === 'accepted');
         const canAccept = p && p.kind === 'proposal' && p.status === 'issued' && r._awaiting > 0;
         const signOffItems = openProposal ? [
-          canAccept && r._hold !== 'acceptance' && { label: 'Record acceptance…', icon: Check, onClick: guard(() => setSignOff({ mode: 'accept', proposal: p, clientName: r.entity?.name })) },
+          canAccept && { label: 'Record acceptance by email…', icon: Check, title: 'If the client replied by email instead of using the link', onClick: guard(() => setSignOff({ mode: 'accept', proposal: p, clientName: r.entity?.name })) },
           p.status === 'issued' && { label: 'Client declined…', icon: X, onClick: guard(() => setSignOff({ mode: 'decline', proposal: p, clientName: r.entity?.name })) },
           { label: 'Withdraw proposal…', icon: X, onClick: guard(() => setSignOff({ mode: 'withdraw', proposal: p, clientName: r.entity?.name })) },
         ] : [];
@@ -529,7 +529,7 @@ export default function BillingUpliftReviewPage() {
           );
         }
         if (r._hold === 'acceptance') {
-          main = <button onClick={() => setSignOff({ mode: 'accept', proposal: p, clientName: r.entity?.name })} disabled={saving} style={solid} title="The client has accepted by email"><Check size={13} strokeWidth={3} />Record acceptance</button>;
+          main = <span style={{ fontSize: 12.5, color: '#92400e', whiteSpace: 'nowrap' }} title="The client accepts with the link in the email. If they reply by email instead, record it from the menu.">Waiting for client</span>;
           items = [status === 'approved' ? restage : approve, preview, ...signOffItems, discard];
           return (
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -793,10 +793,17 @@ function ProposalChip({ p }) {
     return <span style={{ ...base, background: '#f1f5f9', color: '#475569' }} title={`Fee notice issued ${longDate(p.issued_at)}`}>Notice</span>;
   }
   if (p.status === 'issued') {
-    return <span style={{ ...base, background: '#fef3c7', color: '#92400e' }} title={`Proposal issued ${longDate(p.issued_at)} — needs the client's written acceptance before push`}>Awaiting acceptance</span>;
+    return (
+      <span style={{ ...base, background: '#fef3c7', color: '#92400e' }}
+        title={`Proposal issued ${longDate(p.issued_at)} — the client accepts with the link in the email${p.link_opened_at ? ` (opened ${longDate(p.link_opened_at)})` : ' (not opened yet)'}`}>
+        Awaiting acceptance{p.link_opened_at ? ' · link opened' : ''}
+      </span>
+    );
   }
   if (p.status === 'accepted') {
-    return <span style={{ ...base, background: '#dcfce7', color: '#166534' }} title={`Accepted by email received ${longDate(p.acceptance_received_on)} in ${p.acceptance_inbox}`}>Accepted {longDate(p.acceptance_received_on)}</span>;
+    return p.accepted_via === 'client_link'
+      ? <span style={{ ...base, background: '#dcfce7', color: '#166534' }} title={`Accepted online by ${p.accepted_name} (${p.accepted_client_email}) on ${longDate(p.accepted_at)}`}>Accepted online {longDate(p.accepted_at)}</span>
+      : <span style={{ ...base, background: '#dcfce7', color: '#166534' }} title={`Recorded by staff: email received ${longDate(p.acceptance_received_on)} in ${p.acceptance_inbox}`}>Accepted {longDate(p.acceptance_received_on)}</span>;
   }
   return <span style={{ ...base, background: '#f1f5f9', color: '#475569' }}>Proposal {p.status}</span>;
 }

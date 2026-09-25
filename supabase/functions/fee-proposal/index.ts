@@ -12,6 +12,13 @@
 //       effective date. An open fee change already on the same rows is
 //       superseded (withdrawn): one per client in flight at a time.
 //
+//       For a proposal the response carries accept_url: the signed link the
+//       client clicks to accept (fee-change-accept, /accept-fee-change).
+//
+//   { action: "set_draft", proposal_id, gmail_draft_id }
+//       Notes the Gmail draft the letter went out in. The modal issues first
+//       (it needs the link to write the email), then drafts.
+//
 //   { action: "record_acceptance", proposal_id, email_confirmed: true,
 //     received_on: "YYYY-MM-DD", inbox, note? }
 //       Staff record the client's WRITTEN acceptance. Verbal acceptance is not
@@ -32,6 +39,7 @@
 // live_billing itself.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { signFeeAcceptToken, feeAcceptUrl } from "../_shared/fee-accept-token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -76,6 +84,12 @@ Deno.serve(async (req) => {
     case "decline":
     case "withdraw": return await close(sb, body, userId, audit, body.action === "decline" ? "declined" : "withdrawn");
     case "save_drivers": return await saveDrivers(sb, body, userId);
+    case "set_draft": {
+      const id = String(body.proposal_id || ""), draft = String(body.gmail_draft_id || "");
+      if (!id || !draft) return json({ success: false, error: "proposal_id and gmail_draft_id required" }, 400);
+      const { error } = await sb.from("fee_proposals").update({ gmail_draft_id: draft, updated_at: new Date().toISOString() }).eq("id", id);
+      return error ? json({ success: false, error: error.message }, 500) : json({ success: true });
+    }
     default: return json({ success: false, error: "Unknown action" }, 400);
   }
 });
@@ -139,8 +153,14 @@ async function issue(sb: Sb, b: Record<string, unknown>, userId: string | null, 
     }).in("id", [...superseded]).in("status", ["issued", "accepted"]);
   }
 
+  // A proposal's new services are accepted by the client through a signed
+  // link, tied to the address it goes to.
+  const acceptUrl = kind === "proposal"
+    ? feeAcceptUrl(await signFeeAcceptToken(proposalId, String(b.recipient_email || "").trim().toLowerCase()))
+    : null;
+
   await audit("fee_proposal_issued", proposalId, { entity_id: entityId, kind, effective_at: effectiveAt, billing_ids: billingIds, superseded: [...superseded] });
-  return json({ success: true, proposal_id: proposalId, superseded: [...superseded] });
+  return json({ success: true, proposal_id: proposalId, accept_url: acceptUrl, superseded: [...superseded] });
 }
 
 async function recordAcceptance(sb: Sb, b: Record<string, unknown>, userId: string | null, audit: Audit) {
@@ -165,6 +185,7 @@ async function recordAcceptance(sb: Sb, b: Record<string, unknown>, userId: stri
   const now = new Date().toISOString();
   const { error } = await sb.from("fee_proposals").update({
     status: "accepted",
+    accepted_via: "staff_recorded",
     acceptance_email_confirmed: true,
     acceptance_received_on: receivedOn,
     acceptance_inbox: inbox,

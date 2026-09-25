@@ -51,7 +51,7 @@ async function getLogo() {
 // kind 'notice' tells the client what is changing. kind 'proposal' also
 // proposes new services: Part 1 is the changes we're making, Part 2 the
 // new services for the client to accept.
-export async function buildRepricePdf({ kind = 'notice', clientName, contactName, effectiveAt, lines, summary }) {
+export async function buildRepricePdf({ kind = 'notice', clientName, contactName, effectiveAt, lines, summary, acceptUrl = null }) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF('p', 'mm', 'a4');
   const pw = 210, margin = 18, cw = pw - margin * 2;
@@ -216,8 +216,15 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
   let ly = top + 2;
   if (proposal) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...OCEAN_700);
-    const accept = doc.splitTextToSize(`To accept the new services in Part 2, reply to our email to say you agree. The changes in Part 1 go ahead from ${when} either way.`, lw);
-    doc.text(accept, margin, ly); ly += accept.length * 4 + 4;
+    const accept = doc.splitTextToSize(`To accept the new services in Part 2, click Review and accept in our email${acceptUrl ? ', or use the link below' : ''}. The changes in Part 1 go ahead from ${when} either way.`, lw);
+    doc.text(accept, margin, ly); ly += accept.length * 4 + 2;
+    if (acceptUrl) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30, 69, 96);
+      doc.textWithLink('Review and accept online', margin, ly + 3, { url: acceptUrl });
+      ly += 8;
+    } else {
+      ly += 2;
+    }
   }
   doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
   const fn = doc.splitTextToSize(`* ${OUR_FEES_FOOTNOTE}`, lw);

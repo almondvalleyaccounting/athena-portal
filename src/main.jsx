@@ -50,6 +50,7 @@ import RecruitmentModule from './modules/recruitment/RecruitmentModule';
 import ClientDetailView from './modules/clients/ClientDetailView';
 import FeeEngineLayout from './contexts/FeeEngineContext';
 import AcceptQuotePage from './pages/AcceptQuotePage';
+import AcceptFeeChangePage from './pages/AcceptFeeChangePage';
 import OptInConfirmedPage from './pages/OptInConfirmedPage';
 import AdminTasksPage from './pages/AdminTasksPage';
 import AdminTaskDetailPage from './pages/AdminTaskDetailPage';
@@ -81,6 +82,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         {/* Public routes — rendered outside AppShell, no login required */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/accept-quote" element={<AcceptQuotePage />} />
+        <Route path="/accept-fee-change" element={<AcceptFeeChangePage />} />
         {/* Opt-in confirmation — comm-optin edge fn redirects here after
             recording the choice (Supabase's domain can't render HTML). */}
         <Route path="/opt-in" element={<OptInConfirmedPage />} />

@@ -937,6 +937,8 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
   const [previewTab, setPreviewTab] = useState('email'); // email | letter
 
   const [issued, setIssued] = useState(null); // proposal id once recorded
+  const [acceptUrl, setAcceptUrl] = useState(null); // the client's accept link, once issued
+  const [copied, setCopied] = useState(false);
 
   // First drafts once the contact is known, and again if the kind changes —
   // a notice and a proposal say different things.
@@ -949,11 +951,11 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
   }, [info, kind]);
 
   const email = useMemo(
-    () => composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary }),
-    [kind, entity.name, covering, effectiveAt, summary],
+    () => composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl }),
+    [kind, entity.name, covering, effectiveAt, summary, acceptUrl],
   );
 
-  const makePdf = () => buildRepricePdf({ kind, clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary });
+  const makePdf = (url = acceptUrl) => buildRepricePdf({ kind, clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary, acceptUrl: url });
 
   const download = async () => {
     setBusy('pdf');
@@ -984,7 +986,9 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
   const pendingBillingIds = clientRows
     .filter((r) => (r.services || []).some((s) => s.pending_monthly_amount != null))
     .map((r) => r.id);
-  const issue = async (gmailDraftId) => {
+  // Issue first: a proposal needs its accept link before the email and
+  // letter can be written. Returns { id, url }.
+  const issue = async () => {
     const { data, error: fnErr } = await supabase.functions.invoke('fee-proposal', {
       body: {
         action: 'issue',
@@ -992,22 +996,26 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
         kind,
         effective_at: effectiveAt,
         billing_ids: pendingBillingIds,
-        lines: lines.map((l) => ({ service: l.serviceId, current: l.current, next: l.next, reason: reasonText(l), reason_key: l.reasonKey, build: l.build?.description || null })),
+        lines: lines.map((l) => ({
+          service: l.serviceId, current: l.current, next: l.next, reason: reasonText(l), reason_key: l.reasonKey,
+          build: l.build?.description || null, needs_acceptance: lineNeedsAcceptance(l),
+        })),
         summary,
         subject,
         recipient_email: to || null,
-        gmail_draft_id: gmailDraftId,
       },
     });
-    if (fnErr || !data?.success) throw new Error(`The draft was created but the ${kind} wasn't recorded: ${data?.error || fnErr?.message || 'unknown error'}`);
+    if (fnErr || !data?.success) throw new Error(`The ${kind} couldn't be recorded: ${data?.error || fnErr?.message || 'unknown error'}`);
     setIssued(data.proposal_id);
+    setAcceptUrl(data.accept_url || null);
+    return { id: data.proposal_id, url: data.accept_url || null };
   };
 
   const issueWithoutEmail = async () => {
     if (!window.confirm(`Record this ${kind} as issued without an email (for example, sent by post)?`)) return;
     setBusy('issue');
     setError(null);
-    try { await issue(null); }
+    try { await issue(); }
     catch (e) { setError(e.message || String(e)); }
     finally { setBusy(null); }
   };
@@ -1016,15 +1024,18 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
     if (!to) { setError('Pick or type a recipient first.'); return; }
     setBusy('draft');
     setError(null);
+    let issuedNow = null;
     try {
-      const doc = await makePdf();
+      issuedNow = issued ? { id: issued, url: acceptUrl } : await issue();
+      const mail = composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl: issuedNow.url });
+      const doc = await makePdf(issuedNow.url);
       const { data, error: fnErr } = await supabase.functions.invoke('gmail-create-draft', {
         body: {
           billing_id: billingId,
           to,
           subject,
-          body_text: email.body,
-          body_html: email.bodyHtml,
+          body_text: mail.body,
+          body_html: mail.bodyHtml,
           attachments: [{ filename: pdfFilename(entity.name), mime_type: 'application/pdf', content_base64: pdfBase64(doc) }],
         },
       });
@@ -1033,8 +1044,17 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
         throw new Error(data?.error || fnErr?.message || 'Draft creation failed');
       }
       setDrafted(data.account_email || 'Gmail');
-      await issue(data.draft_id || null);
+      if (data.draft_id) {
+        await supabase.functions.invoke('fee-proposal', { body: { action: 'set_draft', proposal_id: issuedNow.id, gmail_draft_id: data.draft_id } });
+      }
     } catch (e) {
+      // Recorded but no draft: nothing reached the client, so don't leave a
+      // fee change marked as sent.
+      if (issuedNow && !issued) {
+        await supabase.functions.invoke('fee-proposal', { body: { action: 'withdraw', proposal_id: issuedNow.id, note: `Gmail draft failed: ${e.message || e}` } });
+        setIssued(null);
+        setAcceptUrl(null);
+      }
       setError(e.message || String(e));
     } finally {
       setBusy(null);
@@ -1071,6 +1091,16 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
               <Field label="Covering note" hint="The summary table, footnote and sign-off follow it automatically.">
                 <textarea value={covering} onChange={(e) => setCovering(e.target.value)} rows={14} style={{ ...input, width: '100%', resize: 'vertical', lineHeight: 1.5, fontFamily: font }} />
               </Field>
+              {acceptUrl && (
+                <Field label="Client's accept link" hint="In the email as a Review and accept button. Copy it if you send the letter another way.">
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input readOnly value={acceptUrl} onFocus={(e) => e.target.select()} style={{ ...input, flex: 1, fontSize: 11.5, fontFamily: 'monospace' }} />
+                    <button onClick={async () => { try { await navigator.clipboard.writeText(acceptUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } }} style={BTN.secondary.sm}>
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </Field>
+              )}
               <Field label="Attachment">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#f8fafc' }}>
                   <FileText size={16} style={{ color: '#b91c1c', flexShrink: 0 }} />
@@ -1107,7 +1137,7 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
         <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : drafted ? '#15803d' : '#64748b' }}>
           {error || (issued
             ? (kind === 'proposal'
-              ? `${drafted ? `Draft created in ${drafted}. ` : ''}Proposal recorded — once the client accepts by email, record it on Push uplifts.`
+              ? `${drafted ? `Draft created in ${drafted}. ` : ''}Proposal recorded — the client accepts with the link; you'll see it on Push uplifts.`
               : `${drafted ? `Draft created in ${drafted}. ` : ''}Notice recorded — the new fees are ready to push from ${longDate(effectiveAt)}.`)
             : `Nothing sends from here — the draft goes to Gmail with the letter attached.${kind === 'proposal' ? ' The new fees are held until the client accepts in writing.' : ''}`)}
         </span>

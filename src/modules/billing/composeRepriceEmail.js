@@ -34,7 +34,7 @@ export function defaultCoveringText({ kind = 'notice', contactName, clientName, 
   if (kind === 'proposal') {
     paras.push(`From ${when} we're making some changes to your fees (Part 1), and we'd like to add some new services (Part 2). If you accept, your monthly fee will go from ${from} to ${to}, plus VAT.`);
     paras.push('The table below sums it up and the attached letter has the detail.');
-    paras.push("To accept the new services, please reply to this email to say you agree. We won't add them until we have your reply. The changes in Part 1 go ahead either way.");
+    paras.push("To accept the new services, click Review and accept below. We won't add them until you do. The changes in Part 1 go ahead either way.");
   } else {
     paras.push(`From ${when}, your monthly fee will go from ${from} to ${to}, plus VAT.`);
     if (reasons.length === 1) paras.push(`This is because of: ${reasons[0].charAt(0).toLowerCase()}${reasons[0].slice(1)}.`);
@@ -45,7 +45,7 @@ export function defaultCoveringText({ kind = 'notice', contactName, clientName, 
   return paras.join('\n\n');
 }
 
-export function composeRepriceEmail({ kind = 'notice', clientName, coveringText, effectiveAt, summary }) {
+export function composeRepriceEmail({ kind = 'notice', clientName, coveringText, effectiveAt, summary, acceptUrl = null }) {
   const when = effectiveAt ? longDate(effectiveAt) : 'next month';
   const subject = kind === 'proposal'
     ? `Proposed changes to your services from ${when} — ${clientName}`
@@ -66,6 +66,7 @@ export function composeRepriceEmail({ kind = 'notice', clientName, coveringText,
         + padR(cell(r, r.v).replace('−', '-'), 14) + padR(cell(r, r.v * 12).replace('−', '-'), 14))),
     '',
     `* ${OUR_FEES_FOOTNOTE}`,
+    ...(kind === 'proposal' ? ['', `Review and accept: ${acceptUrl || '[your link appears here once issued]'}`] : []),
     '',
     'Kind regards,',
     'Almond Valley Accounting',
@@ -122,6 +123,10 @@ export function composeRepriceEmail({ kind = 'notice', clientName, coveringText,
           </table>
           <p style="margin:12px 0 0;font-size:12px;line-height:1.55;color:#64748b;"><sup style="color:#1E4560;">*</sup> ${esc(OUR_FEES_FOOTNOTE)}</p>
         </td></tr>
+        ${kind === 'proposal' ? `<tr><td align="center" style="padding:24px 32px 4px;">
+          <a href="${esc(acceptUrl || '#')}" style="display:inline-block;background:#193a50;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Review and accept</a>
+          <p style="margin:10px 0 0;font-size:12px;color:#94a3b8;">${acceptUrl ? 'Or copy this link into your browser: ' + esc(acceptUrl) : 'Your link appears here once the proposal is issued.'}</p>
+        </td></tr>` : ''}
         <tr><td style="padding:22px 32px 28px;">
           <p style="margin:0 0 4px;font-size:15px;color:#1f2937;">Kind regards,</p>
           <p style="margin:0;font-size:15px;color:#1f2937;font-weight:600;">Almond Valley Accounting</p>
