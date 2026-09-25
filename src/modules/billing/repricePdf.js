@@ -138,11 +138,21 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
     for (const l of rows) {
       const changed = Number(l.current) !== Number(l.next);
       const svc = doc.splitTextToSize(serviceName(l.serviceId), col.why - col.svc - 4);
+      // How a quantity-priced service was built, e.g. "Quarterly management
+      // accounts: 4 sets a year at £158.00" — under the service name.
+      doc.setFontSize(7.5);
+      const built = l.build?.description ? doc.splitTextToSize(l.build.description, col.why - col.svc - 4) : [];
+      doc.setFontSize(8.5);
       const why = doc.splitTextToSize(changed ? reasonText(l) : 'No change', col.old - 19 - col.why - 2);
-      const h = Math.max(svc.length, why.length) * 3.8 + 3;
+      const h = Math.max(svc.length * 3.8 + built.length * 3.3, why.length * 3.8) + 3;
       if (y + h > 268) { newPage(); head(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); }
       doc.setTextColor(...DARK);
       doc.text(svc, col.svc, y + 4);
+      if (built.length) {
+        doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+        doc.text(built, col.svc, y + 4 + svc.length * 3.8);
+        doc.setFontSize(8.5);
+      }
       doc.setTextColor(...(changed ? DARK : GRAY));
       doc.text(why, col.why, y + 4);
       doc.setTextColor(...GRAY);

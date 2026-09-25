@@ -11,7 +11,7 @@ import {
 import { buildRepricePdf, pdfBase64, pdfFilename, serviceName } from './repricePdf';
 import { composeRepriceEmail, defaultCoveringText } from './composeRepriceEmail';
 import { resolvePrimaryContact, firstNameOf, candidateAddresses } from './recipients';
-import { buildServiceResolver, standardFor, EMPTY_DRIVERS, DRIVER_LABEL } from './standardPricing';
+import { buildServiceResolver, standardFor, EMPTY_DRIVERS, DRIVER_LABEL, BUILDERS, builderDefaults, priceBuild } from './standardPricing';
 import { fetchFeeDefaults } from '../../contexts/FeeEngineContext';
 import { fetchFeeEngineServices } from './billingServices';
 import ServicePicker from './ServicePicker';
@@ -221,7 +221,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
           if (!s) continue;
           if (neu === l.current) {
             if (s.pending_monthly_amount != null) {
-              services[l.idx] = { ...s, pending_monthly_amount: null, pending_effective_at: null, pending_uplift_reason: null, pending_uplift_reason_key: null, pending_uplift_staged_at: null, pending_proposal_id: null, pending_changes: null, pending_needs_acceptance: null };
+              services[l.idx] = { ...s, pending_monthly_amount: null, pending_effective_at: null, pending_uplift_reason: null, pending_uplift_reason_key: null, pending_uplift_staged_at: null, pending_proposal_id: null, pending_changes: null, pending_needs_acceptance: null, pending_build: null };
               touched = true;
             }
             continue;
@@ -305,13 +305,15 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             setAdding={setAdding}
             feServices={feServices}
             priceFor={(svc) => (feeDefaults ? standardFor(svc.id, drivers, feeDefaults) : null)}
-            onAdd={(svc, amount) => {
+            feeDefaults={feeDefaults}
+            onAdd={(svc, amount, build) => {
               const target = clientRows.find((r) => r.qbo_recurring_txn_id) || clientRows[0];
               if (!target) return;
               setLines((prev) => [...prev, {
                 key: `new-${Date.now()}`, rowId: target.id, idx: null, isNew: true,
                 serviceId: svc.lineServiceId, qboItemId: svc.qboItemId, feeEngineServiceId: svc.id,
                 description: svc.defaultDescription || svc.label,
+                build: build ? { serviceId: svc.id, values: build.values, description: build.description } : null,
                 cadence: 'monthly', current: 0, next: String(amount), original: 0,
                 // Mid-split, a service added is where the old fee went.
                 ...(prev.some((l) => l.reasonKey === 'split' && isChanged(l))
@@ -375,7 +377,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
 function PriceStep({
   lines, summary, effectiveAt, setEffectiveAt, setLine,
   standards, drivers, setDrivers, driverSources, relevant, standardsReady, onSeedStandard, seedNote,
-  onRemoveNew, adding, setAdding, feServices, priceFor, onAdd,
+  onRemoveNew, adding, setAdding, feServices, priceFor, feeDefaults, onAdd,
 }) {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px' }}>
@@ -420,6 +422,18 @@ function PriceStep({
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>
                         {l.isNew ? 'New service' : l.cadence === 'annual' ? 'Annual service · shown per month' : l.serviceId.includes(':') ? l.serviceId.split(':')[0] : ''}
                       </div>
+                      {l.build && (
+                        <>
+                          <BuildFields
+                            compact serviceId={l.build.serviceId} values={l.build.values} feeDefaults={feeDefaults}
+                            onChange={(values) => {
+                              const p = priceBuild(l.build.serviceId, values, feeDefaults);
+                              setLine(l.key, { build: { ...l.build, values, description: p?.description || l.build.description }, ...(p ? { next: String(p.monthly) } : {}) });
+                            }}
+                          />
+                          <div style={{ fontSize: 10.5, color: '#64748b', marginTop: 3 }}>{l.build.description}</div>
+                        </>
+                      )}
                     </td>
                     <td style={{ ...td, fontFamily: 'monospace', color: changed ? '#94a3b8' : '#0f172a', textDecoration: changed ? 'line-through' : 'none' }}>
                       {fmtGbpDetailed(l.current)}
@@ -492,7 +506,7 @@ function PriceStep({
           </div>
           <div style={{ padding: '10px 12px', borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
             {adding
-              ? <AddLine services={feServices} priceFor={priceFor} takenItems={new Set(lines.map((l) => l.qboItemId).filter(Boolean))} onCancel={() => setAdding(false)} onAdd={onAdd} />
+              ? <AddLine services={feServices} priceFor={priceFor} feeDefaults={feeDefaults} takenItems={new Set(lines.map((l) => l.qboItemId).filter(Boolean))} onCancel={() => setAdding(false)} onAdd={onAdd} />
               : <button onClick={() => setAdding(true)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Plus size={13} /> Add a service</button>}
           </div>
         </div>
@@ -692,18 +706,27 @@ function MiniWaterfall({ summary }) {
 // product this client is already billed for are left out: the push would
 // refuse a second line on the same product. The amount starts at the
 // standard price when the drivers allow one.
-function AddLine({ services, priceFor, takenItems, onCancel, onAdd }) {
+function AddLine({ services, priceFor, feeDefaults, takenItems, onCancel, onAdd }) {
   const options = (services || []).filter((s) => !takenItems.has(s.qboItemId));
   const hidden = (services || []).length - options.length;
   const [id, setId] = useState('');
   const svc = options.find((s) => s.id === id) || null;
   const [amount, setAmount] = useState('');
+  const [build, setBuild] = useState(null); // builder values, for quantity-priced services
   const std = svc ? priceFor(svc) : null;
+  const built = svc && build ? priceBuild(svc.id, build, feeDefaults) : null;
   const pick = (next) => {
     setId(next);
     const s = options.find((o) => o.id === next);
-    const p = s ? priceFor(s) : null;
+    const values = s ? builderDefaults(s.id, feeDefaults) : null;
+    setBuild(values);
+    const p = values ? priceBuild(s.id, values, feeDefaults) : (s ? priceFor(s) : null);
     setAmount(p && p.monthly != null ? String(p.monthly) : '');
+  };
+  const changeBuild = (values) => {
+    setBuild(values);
+    const p = priceBuild(svc.id, values, feeDefaults);
+    if (p) setAmount(String(p.monthly));
   };
   const ok = svc && Number(amount) > 0;
   return (
@@ -713,17 +736,54 @@ function AddLine({ services, priceFor, takenItems, onCancel, onAdd }) {
           <ServicePicker value={id} options={options} onChange={pick} placeholder="Pick a fee-engine service…" style={{ ...input, width: '100%' }} />
         </div>
         <input type="number" step="0.5" min="0" placeholder="£ / month" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...input, width: 100, fontFamily: 'monospace', textAlign: 'right' }} />
-        <button onClick={() => ok && onAdd(svc, Number(amount))} disabled={!ok} style={{ ...BTN.primary.sm, opacity: ok ? 1 : 0.5 }}>Add</button>
+        <button onClick={() => ok && onAdd(svc, Number(amount), build ? { values: build, description: built?.description || '' } : null)} disabled={!ok} style={{ ...BTN.primary.sm, opacity: ok ? 1 : 0.5 }}>Add</button>
         <button onClick={onCancel} style={BTN.secondary.sm}>Cancel</button>
       </div>
+      {svc && build && (
+        <BuildFields serviceId={svc.id} values={build} feeDefaults={feeDefaults} onChange={changeBuild} />
+      )}
       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>
         {svc
           ? <>QuickBooks product: <strong style={{ color: '#64748b', fontWeight: 500 }}>{svc.qboItemName}</strong>
-              {std?.monthly != null ? <> · standard {fmtGbpDetailed(std.monthly)}/mo ({std.basis})</>
+              {built ? <> · {built.description} = {fmtGbpDetailed(built.monthly)}/mo</>
+                : std?.monthly != null ? <> · standard {fmtGbpDetailed(std.monthly)}/mo ({std.basis})</>
                 : std?.missing ? <> · set the {DRIVER_LABEL[std.missing]} above for a standard price</>
                 : <> · no standard rate — enter the fee</>}</>
-          : hidden > 0 ? `${hidden} service${hidden === 1 ? '' : 's'} on products this client is already billed for are not listed.` : ' '}
+          : hidden > 0 ? `${hidden} service${hidden === 1 ? '' : 's'} on products this client is already billed for are not listed.` : '\u00a0'}
       </div>
+    </div>
+  );
+}
+
+// The inputs a quantity-priced service is built from (standardPricing
+// BUILDERS): e.g. how often × cost per set for management accounts. Rates
+// start at the fee engine's price book and stay editable, as on a quote.
+function BuildFields({ serviceId, values, feeDefaults, onChange, compact }) {
+  const [showAll, setShowAll] = useState(false);
+  const b = BUILDERS[serviceId];
+  if (!b || !feeDefaults) return null;
+  const fields = b.fields(feeDefaults).filter((f) => !f.advanced || showAll);
+  const hasAdvanced = b.fields(feeDefaults).some((f) => f.advanced);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'flex-end', marginTop: compact ? 4 : 8 }}>
+      {fields.map((f) => (
+        <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontSize: 10.5, fontWeight: 600, color: '#64748b' }}>{f.label}</span>
+          {f.options ? (
+            <select value={values[f.key]} onChange={(e) => onChange({ ...values, [f.key]: Number(e.target.value) })} style={{ ...input, fontSize: 12, padding: '4px 6px' }}>
+              {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : (
+            <input type="number" min="0" step={f.step || 1} value={values[f.key]} onChange={(e) => onChange({ ...values, [f.key]: e.target.value })}
+              style={{ ...input, width: 90, fontSize: 12, padding: '4px 6px', fontFamily: 'monospace', textAlign: 'right' }} />
+          )}
+        </label>
+      ))}
+      {hasAdvanced && (
+        <button onClick={() => setShowAll(!showAll)} style={{ background: 'none', border: 'none', padding: '0 0 6px', fontSize: 11, color: '#1E4560', cursor: 'pointer', fontFamily: font }}>
+          {showAll ? 'Fewer' : 'Rates…'}
+        </button>
+      )}
     </div>
   );
 }
@@ -795,7 +855,7 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
         kind,
         effective_at: effectiveAt,
         billing_ids: pendingBillingIds,
-        lines: lines.map((l) => ({ service: l.serviceId, current: l.current, next: l.next, reason: reasonText(l), reason_key: l.reasonKey })),
+        lines: lines.map((l) => ({ service: l.serviceId, current: l.current, next: l.next, reason: reasonText(l), reason_key: l.reasonKey, build: l.build?.description || null })),
         summary,
         subject,
         recipient_email: to || null,
@@ -949,8 +1009,8 @@ function ExtraChanges({ line, onChange }) {
         </div>
       )}
       {extra.map((e, i) => (
-        <div key={e.id} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4 }}>
-          <select value={e.reasonKey} onChange={(ev) => set(i, { reasonKey: ev.target.value })} style={{ ...input, flex: 1, minWidth: 0, fontSize: 12, padding: '4px 6px' }}>
+        <div key={e.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', marginTop: 4 }}>
+          <select value={e.reasonKey} onChange={(ev) => set(i, { reasonKey: ev.target.value })} style={{ ...input, flex: '1 1 150px', minWidth: 150, fontSize: 12, padding: '4px 6px' }}>
             {BUCKETS.filter((b) => b.key !== 'newService' && b.key !== 'removed').map((b) => (
               <optgroup key={b.key} label={b.label}>
                 {REASONS.filter((r) => r.bucket === b.key).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
@@ -961,7 +1021,7 @@ function ExtraChanges({ line, onChange }) {
             style={{ ...input, width: 70, fontSize: 12, padding: '4px 6px', fontFamily: 'monospace', textAlign: 'right' }} />
           <IconBtn title="Remove this reason" onClick={() => onChange(extra.filter((_, j) => j !== i))}><X size={12} /></IconBtn>
           {e.reasonKey === 'other' && (
-            <input value={e.otherText || ''} placeholder="Explain…" onChange={(ev) => set(i, { otherText: ev.target.value })} style={{ ...input, width: '100%', fontSize: 12, marginTop: 2 }} />
+            <input value={e.otherText || ''} placeholder="Explain…" onChange={(ev) => set(i, { otherText: ev.target.value })} style={{ ...input, flex: '1 1 100%', fontSize: 12, marginTop: 2 }} />
           )}
         </div>
       ))}
@@ -1054,11 +1114,15 @@ function initialLines(clientRows) {
         serviceId, description: s.description || '',
         qboItemId: s.qbo_item_id != null ? String(s.qbo_item_id) : null,
         feeEngineServiceId: s.fee_engine_service_id || null,
+        build: s.pending_build && s.pending_build.values
+          ? { serviceId: s.pending_build.fee_engine_service_id, values: s.pending_build.values, description: s.pending_build.description || '' }
+          : null,
         cadence: s.cadence, current, next: String(next), original: next,
         reasonKey, otherText, extra, reasonTouched: !!saved,
         // What is stored now: a staged line with no saved reason key (a
         // bulk pass) counts as unsaved until its reason is written.
         originalReason: saved ? reasonSig({ reasonKey, otherText, extra }) : '',
+        originalBuild: s.pending_build?.values ? JSON.stringify(s.pending_build.values) : null,
       });
     });
   }
@@ -1084,6 +1148,9 @@ function pendingFields(l, amount, effectiveAt, stagedAt, strategy) {
     // client's written acceptance — qbo-push-recurring reads the flag.
     pending_changes: savedChanges(line),
     pending_needs_acceptance: lineNeedsAcceptance(line),
+    // How a quantity-priced service was built (e.g. 4 sets a year × £158),
+    // so reopening shows it and the letter can say it.
+    pending_build: l.build ? { fee_engine_service_id: l.build.serviceId, values: l.build.values, description: l.build.description } : null,
     pending_uplift_staged_at: stagedAt,
     pending_uplift_strategy: strategy,
   };
@@ -1095,7 +1162,8 @@ const isChanged = (l) => round2(l.next) !== l.current;
 // Unsaved: a new line, an amount moved from what was loaded, or a
 // changed line whose reason differs from the one stored on it.
 const reasonSig = (l) => JSON.stringify([l.reasonKey, l.otherText || '', (l.extra || []).map((e) => [e.reasonKey, round2(e.amount), e.otherText || ''])]);
-const lineDirty = (l) => l.isNew || round2(l.next) !== l.original || (isChanged(l) && reasonSig(l) !== l.originalReason);
+const lineDirty = (l) => l.isNew || round2(l.next) !== l.original || (isChanged(l) && reasonSig(l) !== l.originalReason)
+  || (l.build && JSON.stringify(l.build.values) !== l.originalBuild);
 
 function Field({ label, hint, children }) {
   return (
