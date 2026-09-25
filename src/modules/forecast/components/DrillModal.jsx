@@ -18,15 +18,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { colors, fmtP, fontStack, serifStack } from './ui';
 import { loadDriversForContext } from '../lib/queries';
 import { trace as traceLine } from '../lib/explainers';
+import { buildOccupancyIndex } from '../lib/occupancy';
 
 export const DRILL_MAP = {
   // ─── P&L lines ─────────────────────────────────────────────
   'pnl.revenue_total':           { kind: 'upstream', upstream_nts: ['revenue'] },
   'pnl.revenue_private':         { kind: 'upstream', upstream_nts: ['revenue'], filter: r => r.tags?.revenue_kind !== 'funded' },
   'pnl.revenue_la_funded':       { kind: 'upstream', upstream_nts: ['revenue'], filter: r => r.tags?.revenue_kind === 'funded' },
-  'pnl.income_inflation_uplift': { kind: 'formula', formula: 'Revenue × (income_inflation_factor − 1)' },
+  'pnl.income_inflation_uplift': { kind: 'formula', formula: 'Revenue × income inflation rate' },
   'pnl.cost_total':              { kind: 'upstream', upstream_nts: ['staff_cost', 'overhead', 'cost_of_sales'] },
-  'pnl.cost_inflation_uplift':   { kind: 'formula', formula: 'Operating costs × (cost_inflation_factor − 1)' },
+  'pnl.cost_inflation_uplift':   { kind: 'formula', formula: 'Operating costs × cost inflation rate' },
 
   // Direct (site-level) costs
   'pnl.cost_staff_direct':       { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r =>
@@ -65,7 +66,7 @@ export const DRILL_MAP = {
   'pnl.depreciation_total':      { kind: 'upstream', upstream_nts: ['depreciation'] },
   'pnl.interest_total':          { kind: 'upstream', upstream_nts: ['debt_interest'] },
   'pnl.tax_total':               { kind: 'upstream', upstream_nts: ['tax'] },
-  'pnl.dividends':               { kind: 'formula', formula: 'YTD NPAT × payout_ratio (paid at year-end)' },
+  'pnl.dividends':               { kind: 'formula', formula: 'Profit after tax for the year to date × payout ratio, paid at the year end' },
 
   'pnl.ebitda':  { kind: 'formula', formula: 'Revenue − Operating costs', components: ['pnl.revenue_total', 'pnl.cost_total'] },
   'pnl.ebit':    { kind: 'formula', formula: 'EBITDA − Depreciation', components: ['pnl.ebitda', 'pnl.depreciation_total'] },
@@ -73,20 +74,20 @@ export const DRILL_MAP = {
   'pnl.npat':    { kind: 'formula', formula: 'PBT + Tax', components: ['pnl.pbt', 'pnl.tax_total'] },
 
   // ─── BS lines ──────────────────────────────────────────────
-  'bs.fixed_assets_gross':        { kind: 'running', formula: 'Σ capex (cumulative)', upstream_nts: ['capex'] },
-  'bs.accumulated_depreciation':  { kind: 'running', formula: 'Σ depreciation (cumulative)', upstream_nts: ['depreciation'] },
-  'bs.fixed_assets_net':          { kind: 'formula', formula: 'Fixed assets gross − Accumulated depreciation', components: ['bs.fixed_assets_gross', 'bs.accumulated_depreciation'] },
-  'bs.cash':                      { kind: 'formula', formula: 'Opening cash + Σ net cash movement' },
+  'bs.fixed_assets_gross':        { kind: 'running', formula: 'Total capital spend to date', upstream_nts: ['capex'] },
+  'bs.accumulated_depreciation':  { kind: 'running', formula: 'Total depreciation to date', upstream_nts: ['depreciation'] },
+  'bs.fixed_assets_net':          { kind: 'formula', formula: 'Fixed assets at cost − depreciation to date', components: ['bs.fixed_assets_gross', 'bs.accumulated_depreciation'] },
+  'bs.cash':                      { kind: 'formula', formula: 'Opening cash + net cash movement to date' },
   'bs.debt':                      { kind: 'upstream', upstream_nts: ['debt_balance'], aggregate: 'last' },
-  'bs.equity':                    { kind: 'formula', formula: 'Opening equity + Σ NPAT − Σ dividends' },
-  'bs.tax_payable':               { kind: 'formula', formula: 'Σ tax accrued − Σ tax paid (lagged)' },
+  'bs.equity':                    { kind: 'formula', formula: 'Opening equity + profit after tax to date − dividends to date' },
+  'bs.tax_payable':               { kind: 'formula', formula: 'Tax charged to date − tax paid to date' },
   'bs.net_wc':                    { kind: 'wc_balance' },
 
   // ─── CF lines ──────────────────────────────────────────────
-  'cf.opening_cash':     { kind: 'formula', formula: 'Closing cash from prior period' },
+  'cf.opening_cash':     { kind: 'formula', formula: 'Closing cash from last month' },
   'cf.in.private':       { kind: 'upstream', upstream_nts: ['revenue'], filter: r => r.tags?.revenue_kind !== 'funded' },
   'cf.in.la_funded':     { kind: 'upstream', upstream_nts: ['revenue'], filter: r => r.tags?.revenue_kind === 'funded' },
-  'cf.in.debt_drawdown': { kind: 'formula', formula: 'Increases in mortgage outstanding' },
+  'cf.in.debt_drawdown': { kind: 'formula', formula: 'New mortgage borrowing' },
   'cf.out.staff':        { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r => r.module_key !== 'pre_opening' },
   'cf.out.premises':     { kind: 'upstream', upstream_nts: ['overhead'], filter: r => ['Rent','Service charge','NDR','Maintenance'].includes(r.line_label || '') },
   'cf.out.utilities':    { kind: 'upstream', upstream_nts: ['overhead'], filter: r => /utilit/i.test(r.line_label || '') },
@@ -111,14 +112,14 @@ export const DRILL_MAP = {
   'cf.out.pre_opening_staffing': { kind: 'upstream', upstream_nts: ['staff_cost'], filter: r =>
     r.module_key === 'pre_opening'
   },
-  'cf.out.one_off_total':   { kind: 'formula', formula: 'Capex + Pre-opening (overhead + marketing + staffing)', components: ['cf.out.capex', 'cf.out.pre_opening_overhead', 'cf.out.pre_opening_marketing', 'cf.out.pre_opening_staffing'] },
-  'cf.out.recurring_total': { kind: 'formula', formula: 'Staff + Premises (incl. utilities) + Other overheads', components: ['cf.out.staff', 'cf.out.premises', 'cf.out.other_overhead'] },
+  'cf.out.one_off_total':   { kind: 'formula', formula: 'Capital spend + pre-opening overhead, marketing and staffing', components: ['cf.out.capex', 'cf.out.pre_opening_overhead', 'cf.out.pre_opening_marketing', 'cf.out.pre_opening_staffing'] },
+  'cf.out.recurring_total': { kind: 'formula', formula: 'Staff + premises (including utilities) + other overheads', components: ['cf.out.staff', 'cf.out.premises', 'cf.out.other_overhead'] },
   'cf.out.fin_tax_total':   { kind: 'formula', formula: 'Interest + Principal + Tax + Dividends', components: ['cf.out.interest', 'cf.out.principal', 'cf.out.tax', 'cf.out.dividends'] },
   'cf.out.capex':        { kind: 'upstream', upstream_nts: ['capex'] },
   'cf.out.interest':     { kind: 'upstream', upstream_nts: ['debt_interest'] },
   'cf.out.principal':    { kind: 'upstream', upstream_nts: ['debt_principal'] },
-  'cf.out.tax':          { kind: 'formula', formula: 'Tax accrued 9 months ago (cash settlement of CT)' },
-  'cf.out.dividends':    { kind: 'formula', formula: 'Year-end dividend = YTD NPAT × payout ratio' },
+  'cf.out.tax':          { kind: 'formula', formula: 'CT charged 9 months earlier, paid now' },
+  'cf.out.dividends':    { kind: 'formula', formula: 'Year-end dividend = profit after tax for the year × payout ratio' },
   'cf.wc_movement':      { kind: 'upstream', upstream_nts: ['working_capital_movement'] },
 };
 
@@ -127,6 +128,9 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
   // Premises & Overheads view for ad-hoc cost-line drills.
   const drill = line.drill || DRILL_MAP[line.nominal_type] || { kind: 'unsupported' };
   const periodSet = useMemo(() => new Set(periods), [periods]);
+  // The occupancy the engine actually used (incl. August dips) — the
+  // childcare traces read it so their steps add up to the clicked figure.
+  const occupancyIndex = useMemo(() => buildOccupancyIndex(outputs), [outputs]);
 
   const inScope = (r) => !entityIds || r.entity_id == null || entityIds.has(r.entity_id);
 
@@ -149,7 +153,7 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
       const entKey = r.entity_id || '__group__';
       const entLabel = r.entity_id ? (entitiesById?.[r.entity_id]?.label || 'Location') : 'Group';
       const mod = r.module_key;
-      const lbl = r.line_label || '(no label)';
+      const lbl = r.line_label || '(unnamed)';
       grouped[entKey] ||= { label: entLabel, entity_id: r.entity_id || null, modules: {} };
       grouped[entKey].modules[mod] ||= {};
       grouped[entKey].modules[mod][lbl] ||= 0;
@@ -181,10 +185,10 @@ export default function DrillModal({ line, periods, periodsLabel, outputs, entit
             <FormulaSection drill={drill} line={line} periods={periods} scopedMap={scopedMap} />
           )}
           {(drill.kind === 'upstream' || drill.kind === 'running' || drill.kind === 'wc_balance') && (
-            <ContributorsSection contributors={contributors} scenarioId={scenarioId} periods={periods} entitiesById={entitiesById} />
+            <ContributorsSection contributors={contributors} scenarioId={scenarioId} periods={periods} entitiesById={entitiesById} occupancyIndex={occupancyIndex} />
           )}
           {drill.kind === 'unsupported' && (
-            <p style={{ color: colors.muted, fontSize: 14 }}>No drill view configured for this line.</p>
+            <p style={{ color: colors.muted, fontSize: 14 }}>No breakdown for this line yet.</p>
           )}
         </div>
       </div>
@@ -222,18 +226,18 @@ function FormulaSection({ drill, periods, scopedMap }) {
   );
 }
 
-function ContributorsSection({ contributors, scenarioId, periods, entitiesById }) {
+function ContributorsSection({ contributors, scenarioId, periods, entitiesById, occupancyIndex }) {
   const [expanded, setExpanded] = useState(null);   // `${entKey}|${mod}|${lbl}` when expanded
   if (!contributors) return null;
   const entries = Object.entries(contributors);
   if (entries.length === 0) {
-    return <p style={{ color: colors.muted, fontSize: 14 }}>No contributing rows in scope for this period.</p>;
+    return <p style={{ color: colors.muted, fontSize: 14 }}>Nothing feeds this figure for this period.</p>;
   }
   const toggle = (key) => setExpanded(prev => prev === key ? null : key);
   return (
     <div>
       <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 6px' }}>
-        Click a module row to drill into its driver assumptions.
+        Click a row to see its assumptions.
       </p>
       <table style={tableStyle}>
         <thead>
@@ -284,6 +288,7 @@ function ContributorsSection({ contributors, scenarioId, periods, entitiesById }
                               entity={ent.entity_id ? entitiesById?.[ent.entity_id] : null}
                               periods={periods}
                               lineLabel={lbl}
+                              occupancyIndex={occupancyIndex}
                             />
                           </td>
                         </tr>
@@ -300,13 +305,13 @@ function ContributorsSection({ contributors, scenarioId, periods, entitiesById }
   );
 }
 
-function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLabel }) {
+function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLabel, occupancyIndex }) {
   const [state, setState] = useState({ loading: true, drivers: [], values: [], err: null });
   const [tracePeriod, setTracePeriod] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    if (!scenarioId) { setState({ loading: false, drivers: [], values: [], err: 'No scenario context' }); return; }
+    if (!scenarioId) { setState({ loading: false, drivers: [], values: [], err: 'No scenario selected' }); return; }
     setState(s => ({ ...s, loading: true, err: null }));
     (async () => {
       try {
@@ -324,7 +329,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
     if (periods && periods.length > 0) setTracePeriod(Math.max(...periods));
   }, [periods]);
 
-  if (state.loading) return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>Loading drivers…</div>;
+  if (state.loading) return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>Loading assumptions…</div>;
   if (state.err) return <div style={{ padding: 12, fontSize: 13, color: colors.red }}>{state.err}</div>;
   if (state.drivers.length === 0) {
     return <div style={{ padding: 12, fontSize: 13, color: colors.muted }}>No assumptions for this line.</div>;
@@ -332,7 +337,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
 
   // Try to produce a calc trace for this line at the chosen period
   const traceResult = tracePeriod != null ? traceLine({
-    moduleKey, lineLabel, period: tracePeriod, entity, drivers: state.drivers, values: state.values,
+    moduleKey, lineLabel, period: tracePeriod, entity, drivers: state.drivers, values: state.values, occupancyIndex,
   }) : null;
 
   const valueOf = (driverId, period = -1) => {
@@ -359,7 +364,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
       return (
         <span>
           {formatDriverValue(lo, d.unit)} – {formatDriverValue(hi, d.unit)}
-          <span style={{ color: colors.muted, fontSize: 11, marginLeft: 4 }}>(over period range)</span>
+          <span style={{ color: colors.muted, fontSize: 11, marginLeft: 4 }}>(across these months)</span>
         </span>
       );
     }
@@ -372,13 +377,13 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700 }}>
-              Calculation — {lineLabel} · t={tracePeriod}
+              Calculation — {lineLabel} · month {tracePeriod}
             </div>
             {periods.length > 1 && (
               <div style={{ display: 'flex', gap: 2, alignItems: 'center', fontSize: 12 }}>
-                <span style={{ color: colors.muted, marginRight: 4 }}>Period:</span>
+                <span style={{ color: colors.muted, marginRight: 4 }}>Month:</span>
                 <select value={tracePeriod} onChange={(e) => setTracePeriod(Number(e.target.value))} style={{ padding: '3px 6px', fontSize: 12, border: `1px solid ${colors.border}`, borderRadius: 4, fontFamily: fontStack, background: '#fff' }}>
-                  {periods.map(p => <option key={p} value={p}>t={p}</option>)}
+                  {periods.map(p => <option key={p} value={p}>Month {p}</option>)}
                 </select>
               </div>
             )}
@@ -412,19 +417,19 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
       )}
       {!traceResult && tracePeriod != null && (
         <div style={{ padding: '6px 10px', background: colors.bgSoft, borderRadius: 6, fontSize: 12, color: colors.muted, marginBottom: 10 }}>
-          No detailed calculation trace yet for this line. Drivers below.
+          No worked calculation for this line yet. Assumptions below.
         </div>
       )}
       <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700, marginBottom: 6 }}>
-        Drivers — {moduleKey} {entityId ? '· location' : '· group'}
+        Assumptions — {moduleKey} {entityId ? '· this location' : '· whole group'}
         <span style={{ marginLeft: 8, color: colors.muted, fontWeight: 400 }}>({state.drivers.length})</span>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: fontStack }}>
         <thead>
           <tr>
-            <th style={driverTh}>Driver</th>
+            <th style={driverTh}>Assumption</th>
             <th style={driverTh}>Scope</th>
-            <th style={driverTh}>Kind</th>
+            <th style={driverTh}>Type</th>
             <th style={{ ...driverTh, textAlign: 'right' }}>Value</th>
           </tr>
         </thead>
@@ -436,7 +441,7 @@ function DriversPanel({ scenarioId, moduleKey, entityId, entity, periods, lineLa
                 <div style={{ fontSize: 10, color: colors.muted, fontFamily: 'ui-monospace, monospace' }}>{d.driver_key}</div>
               </td>
               <td style={driverTd}>
-                <span style={{ fontSize: 11, color: colors.muted }}>{d.entity_id ? 'entity' : 'group'}</span>
+                <span style={{ fontSize: 11, color: colors.muted }}>{d.entity_id ? 'location' : 'group'}</span>
               </td>
               <td style={driverTd}>
                 <span style={{ fontSize: 11, color: colors.muted }}>{d.kind}</span>

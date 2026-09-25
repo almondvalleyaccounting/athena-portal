@@ -21,7 +21,7 @@
 //   - value: display string (formatted with units)
 //   - kind: 'input' | 'derived' | 'result' (for styling)
 
-import { curveForBand, occupancyOnCurve } from './occupancy.js';
+import { curveForBand, occupancyOnCurve, occKey } from './occupancy.js';
 import { AGE_BAND_LABELS } from './modules/locations.js';
 
 const AGE_BANDS = ['babies', 'twos', 'three_to_five', 'after_school'];
@@ -101,19 +101,31 @@ const explainers = {
   tax_simple: explainTaxSimple,
 };
 
-export function trace({ moduleKey, lineLabel, period, entity, drivers, values }) {
+export function trace({ moduleKey, lineLabel, period, entity, drivers, values, occupancyIndex }) {
   const fn = explainers[moduleKey];
   if (!fn) return null;
   try {
-    return fn({ lineLabel, period, entity, drivers, values });
+    return fn({ lineLabel, period, entity, drivers, values, occupancyIndex });
   } catch (e) {
-    return { formula: 'Error tracing calculation', steps: [{ label: e.message, kind: 'result' }] };
+    return { formula: 'Could not trace this figure', steps: [{ label: e.message, kind: 'result' }] };
   }
+}
+
+// Is a driver actually set (not just defaulted)? Mirrors drivers.js
+// driverIsSet, so the trace falls back to the same defaults as the engine.
+function isSet(drivers, values, key) {
+  const d = drivers.find((x) => x.driver_key === key && x.entity_id) || drivers.find((x) => x.driver_key === key && !x.entity_id);
+  return !!d && values.some((v) => v.driver_id === d.id && v.value != null && v.value !== '' && Number.isFinite(Number(v.value)));
+}
+
+// A room's standard weekly hours by age band — same as services_childcare.js.
+function defaultHoursPerWeek(band) {
+  return band === 'after_school' ? 15 : 50;
 }
 
 // ── Services childcare ──────────────────────────────────────────
 
-function explainServicesChildcare({ lineLabel, period, entity, drivers, values }) {
+function explainServicesChildcare({ lineLabel, period, entity, drivers, values, occupancyIndex }) {
   const r = makeResolver(drivers, values, entity?.key);
 
   // Match "Private fees — {band}" or "Funded hours — {band}"
@@ -124,7 +136,10 @@ function explainServicesChildcare({ lineLabel, period, entity, drivers, values }
 
   const cfg = entity?.config || {};
   const capacity = cfg.capacity_by_age_band?.[band] ?? 0;
-  const occPct = occupancyAt(entity, band, period, r);
+  // Prefer the occupancy the engine persisted (it includes the August
+  // cohort dips the raw curve doesn't); the curve is only a fallback.
+  const savedOcc = entity?.id != null ? occupancyIndex?.get(occKey(entity.id, band, period)) : undefined;
+  const occPct = savedOcc ?? occupancyAt(entity, band, period, r);
   const children = capacity * occPct / 100;
   const eligiblePct = r(`eligible_for_funded_pct.${band}`);
   const takeupPct = r(`funded_hours_take_up_pct.${band}`);
@@ -134,40 +149,59 @@ function explainServicesChildcare({ lineLabel, period, entity, drivers, values }
   const weeks = r('weeks_per_year') || 51;
   const monthlyWeeks = weeks / 12;
   const laRateP = r(`la_funded_rate_p.${band}`);
+  // Same rules as the engine (modules/services_childcare.js) so the steps add
+  // up to the figure that was clicked: fees work in HOURS. A room's weekly
+  // hours default by age band when not set (0 means the band isn't offered).
+  const hpw = isSet(drivers, values, `operating_hours_per_week.${band}`)
+    ? r(`operating_hours_per_week.${band}`)
+    : defaultHoursPerWeek(band);
+  const fundedOnlyPct = r(`funded_only_pct.${band}`);
+  const hourlyRateP = hpw > 0 ? weeklyRateP / hpw : 0;
+  const fundedHoursPerWeek = Math.min(hpw, FUNDED_HOURS_PER_YEAR / weeks);
+  const fundedOnly = fundedChildren * (fundedOnlyPct / 100);
+  const blended = fundedChildren - fundedOnly;
+  const privateHoursPerFundedChild = Math.max(0, hpw - fundedHoursPerWeek);
 
   const steps = [
-    { label: 'Capacity (entity config)', value: `${capacity} children`, kind: 'input' },
-    { label: 'Occupancy at this period (ramp curve)', value: fmtPct(occPct), kind: 'derived' },
+    { label: 'Places at this location', value: `${capacity} children`, kind: 'input' },
+    { label: savedOcc != null ? 'Occupancy this month' : 'Occupancy this month (from the ramp-up curve)', value: fmtPct(occPct), kind: 'derived' },
     { label: 'Children attending', expr: `${capacity} × ${fmtPct(occPct)}`, value: fmtNum(children) + ' children', kind: 'derived' },
     { label: 'Eligible for funded hours', value: fmtPct(eligiblePct, 0), kind: 'input' },
     { label: 'Funded hours take-up', value: fmtPct(takeupPct, 0), kind: 'input' },
     { label: 'Funded children', expr: `${fmtNum(children)} × ${fmtPct(eligiblePct, 0)} × ${fmtPct(takeupPct, 0)}`, value: fmtNum(fundedChildren), kind: 'derived' },
     { label: 'Private children', expr: `${fmtNum(children)} − ${fmtNum(fundedChildren)}`, value: fmtNum(privateChildren), kind: 'derived' },
-    { label: 'Operating weeks / year', value: `${weeks} weeks`, kind: 'input' },
+    { label: 'Funded-only families (use funded hours and nothing more)', expr: `${fmtNum(fundedChildren)} × ${fmtPct(fundedOnlyPct, 0)}`, value: fmtNum(fundedOnly), kind: 'derived' },
+    { label: 'Funded children who also pay for extra hours', expr: `${fmtNum(fundedChildren)} − ${fmtNum(fundedOnly)}`, value: fmtNum(blended), kind: 'derived' },
+    { label: 'Hours the room is open a week', value: `${fmtNum(hpw, 1)} hours`, kind: 'input' },
+    { label: 'Funded hours per child a week (1140 a year ÷ weeks open)', expr: `min(${fmtNum(hpw, 1)}, 1140 ÷ ${weeks})`, value: `${fmtNum(fundedHoursPerWeek)} hours`, kind: 'derived' },
+    { label: 'Weeks open a year', value: `${weeks} weeks`, kind: 'input' },
     { label: 'Weeks per month', expr: `${weeks} / 12`, value: fmtNum(monthlyWeeks) + ' weeks', kind: 'derived' },
   ];
 
   if (kind === 'Private fees') {
-    const billable = privateChildren + fundedChildren * 0.5;
-    const revenueP = billable * weeklyRateP * monthlyWeeks;
+    const privateHours = privateChildren * hpw * monthlyWeeks
+      + blended * privateHoursPerFundedChild * monthlyWeeks;
+    const revenueP = privateHours * hourlyRateP;
     steps.push(
       { label: 'Weekly rate', value: fmtGBP(weeklyRateP), kind: 'input' },
-      { label: 'Funded children also pay 50% private fee for non-funded hours', kind: 'note' },
-      { label: 'Billable child-equivalents', expr: `${fmtNum(privateChildren)} + (${fmtNum(fundedChildren)} × 0.5)`, value: fmtNum(billable), kind: 'derived' },
-      { label: 'Private fees revenue', expr: `${fmtNum(billable)} × ${fmtGBP(weeklyRateP)}/wk × ${fmtNum(monthlyWeeks)} weeks`, value: fmtGBP(revenueP), kind: 'result' },
+      { label: 'Hourly fee (weekly rate ÷ hours open)', expr: `${fmtGBP(weeklyRateP)} ÷ ${fmtNum(hpw, 1)}`, value: fmtGBP2(hourlyRateP), kind: 'derived' },
+      { label: 'Paid hours a week for a funded child', expr: `${fmtNum(hpw, 1)} − ${fmtNum(fundedHoursPerWeek)}`, value: `${fmtNum(privateHoursPerFundedChild)} hours`, kind: 'derived' },
+      { label: 'Paid hours this month', expr: `(${fmtNum(privateChildren)} × ${fmtNum(hpw, 1)} + ${fmtNum(blended)} × ${fmtNum(privateHoursPerFundedChild)}) × ${fmtNum(monthlyWeeks)} weeks`, value: `${fmtInt(privateHours)} hours`, kind: 'derived' },
+      { label: 'Private fee income', expr: `${fmtInt(privateHours)} hours × ${fmtGBP2(hourlyRateP)}`, value: fmtGBP(revenueP), kind: 'result' },
     );
-    return { formula: 'billable_child_equivalents × weekly_rate × monthly_weeks', steps };
+    return { formula: 'Paid hours this month × hourly fee', steps };
   }
 
   if (kind === 'Funded hours') {
-    const monthlyHours = FUNDED_HOURS_PER_YEAR / 12;
-    const revenueP = fundedChildren * monthlyHours * laRateP;
+    const fundedHours = fundedOnly * hpw * monthlyWeeks
+      + blended * fundedHoursPerWeek * monthlyWeeks;
+    const revenueP = fundedHours * laRateP;
     steps.push(
-      { label: '1140-hour scheme — monthly hours per child', expr: `${FUNDED_HOURS_PER_YEAR} / 12`, value: fmtNum(monthlyHours) + ' hours', kind: 'derived' },
-      { label: 'LA funded rate £/hr', value: fmtGBP2(laRateP), kind: 'input' },
-      { label: 'Funded hours revenue', expr: `${fmtNum(fundedChildren)} × ${fmtNum(monthlyHours)} × ${fmtGBP2(laRateP)}`, value: fmtGBP(revenueP), kind: 'result' },
+      { label: 'Funded hours this month', expr: `(${fmtNum(fundedOnly)} × ${fmtNum(hpw, 1)} + ${fmtNum(blended)} × ${fmtNum(fundedHoursPerWeek)}) × ${fmtNum(monthlyWeeks)} weeks`, value: `${fmtInt(fundedHours)} hours`, kind: 'derived' },
+      { label: 'Council rate per funded hour', value: fmtGBP2(laRateP), kind: 'input' },
+      { label: 'Funded hours income', expr: `${fmtInt(fundedHours)} hours × ${fmtGBP2(laRateP)}`, value: fmtGBP(revenueP), kind: 'result' },
     );
-    return { formula: 'funded_children × (1140/12) × la_funded_rate', steps };
+    return { formula: 'Funded hours this month × council hourly rate', steps };
   }
 
   return null;
@@ -207,18 +241,18 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
     const salary = r(salaryKey);
     const monthlyCost = (salary / 12) * loadFactor;
 
-    return { formula: 'required = ceil(children / ratio); split by mix %; cost = HC × monthly_loaded_salary', steps: [
-      { label: 'Capacity (entity config)', value: `${cap} children`, kind: 'input' },
-      { label: 'Occupancy at this period', value: fmtPct(occ), kind: 'derived' },
+    return { formula: 'Staff needed = children ÷ ratio, rounded up, split by staff mix. Cost = headcount × monthly cost per head', steps: [
+      { label: 'Places at this location', value: `${cap} children`, kind: 'input' },
+      { label: 'Occupancy this month', value: fmtPct(occ), kind: 'derived' },
       { label: 'Children attending', expr: `${cap} × ${fmtPct(occ)}`, value: fmtNum(children) + ' children', kind: 'derived' },
-      { label: `Statutory ratio (${band})`, value: `1 : ${ratio}`, kind: 'input' },
-      { label: 'Required practitioners (band)', expr: `ceil(${fmtNum(children)} / ${ratio})`, value: `${required}`, kind: 'derived' },
-      { label: 'Direct staff mix', value: `Senior ${fmtPct(seniorPct * 100, 0)} · Qualified ${fmtPct(qualPct * 100, 0)} · Apprentice ${fmtPct(apprPct * 100, 0)}`, kind: 'note' },
-      { label: `Allocation to ${roleLabel.toLowerCase()}`, value: `${headcount} headcount`, kind: 'derived' },
+      { label: `Statutory ratio (${AGE_BAND_LABELS[band] ?? band})`, value: `1 : ${ratio}`, kind: 'input' },
+      { label: 'Practitioners needed for this age group', expr: `ceil(${fmtNum(children)} / ${ratio})`, value: `${required}`, kind: 'derived' },
+      { label: 'Room staff mix', value: `Senior ${fmtPct(seniorPct * 100, 0)} · Qualified ${fmtPct(qualPct * 100, 0)} · Apprentice ${fmtPct(apprPct * 100, 0)}`, kind: 'note' },
+      { label: `Of which ${roleLabel.toLowerCase()}`, value: `${headcount} staff`, kind: 'derived' },
       { label: 'Annual salary', value: fmtGBP(salary), kind: 'input' },
-      { label: 'Loaded cost factor', expr: `(1 + NI + pension) × (1 + vac × agency)`, value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
+      { label: 'On-cost factor', expr: `(1 + NI + pension) × (1 + vac × agency)`, value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
       { label: 'Monthly cost per head', expr: `${fmtGBP(salary)} / 12 × ${fmtNum(loadFactor, 4)}`, value: fmtGBP(monthlyCost), kind: 'derived' },
-      { label: `${roleLabel} cost (this band)`, expr: `${headcount} × ${fmtGBP(monthlyCost)}`, value: fmtGBP(headcount * monthlyCost), kind: 'result' },
+      { label: `${roleLabel} cost for this age group`, expr: `${headcount} × ${fmtGBP(monthlyCost)}`, value: fmtGBP(headcount * monthlyCost), kind: 'result' },
     ]};
   }
 
@@ -236,10 +270,10 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
     }[lbl];
     const salary = r(salaryKey);
     const monthlyCost = (salary / 12) * loadFactor;
-    return { formula: 'headcount × monthly_loaded_salary', steps: [
+    return { formula: 'Headcount × monthly cost per head', steps: [
       { label: 'Headcount', value: `${hc}`, kind: 'input' },
       { label: 'Annual salary', value: fmtGBP(salary), kind: 'input' },
-      { label: 'Loaded cost factor', value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
+      { label: 'On-cost factor', value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
       { label: 'Monthly cost per head', expr: `${fmtGBP(salary)} / 12 × ${fmtNum(loadFactor, 4)}`, value: fmtGBP(monthlyCost), kind: 'derived' },
       { label: `${lbl} monthly cost`, expr: `${hc} × ${fmtGBP(monthlyCost)}`, value: fmtGBP(hc * monthlyCost), kind: 'result' },
     ]};
@@ -280,16 +314,16 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
     const children = cap * occ / 100;
     const ratio = ratioFor(band);
     const required = children > 0 ? Math.ceil(children / ratio) : 0;
-    return { formula: 'ceil(children / ratio) × monthly_loaded_salary', steps: [
-      { label: 'Capacity (entity config)', value: `${cap} children`, kind: 'input' },
-      { label: 'Occupancy at this period', value: fmtPct(occ), kind: 'derived' },
+    return { formula: 'Practitioners needed (children ÷ ratio, rounded up) × monthly cost each', steps: [
+      { label: 'Places at this location', value: `${cap} children`, kind: 'input' },
+      { label: 'Occupancy this month', value: fmtPct(occ), kind: 'derived' },
       { label: 'Children attending', expr: `${cap} × ${fmtPct(occ)}`, value: fmtNum(children) + ' children', kind: 'derived' },
-      { label: `Statutory ratio (${band})`, value: `1 : ${ratio}`, kind: 'input' },
-      { label: 'Required practitioners', expr: `ceil(${fmtNum(children)} / ${ratio})`, value: `${required}`, kind: 'derived' },
+      { label: `Statutory ratio (${AGE_BAND_LABELS[band] ?? band})`, value: `1 : ${ratio}`, kind: 'input' },
+      { label: 'Practitioners needed', expr: `ceil(${fmtNum(children)} / ${ratio})`, value: `${required}`, kind: 'derived' },
       { label: 'Annual practitioner salary', value: fmtGBP(salaryPract), kind: 'input' },
-      { label: 'Loaded cost factor', expr: `(1 + NI + pension) × (1 + vac × agency)`, value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
+      { label: 'On-cost factor', expr: `(1 + NI + pension) × (1 + vac × agency)`, value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
       { label: 'Monthly cost per practitioner', expr: `${fmtGBP(salaryPract)} / 12 × ${fmtNum(loadFactor, 4)}`, value: fmtGBP(monthlyPractCost), kind: 'derived' },
-      { label: `Practitioner cost for ${band}`, expr: `${required} × ${fmtGBP(monthlyPractCost)}`, value: fmtGBP(required * monthlyPractCost), kind: 'result' },
+      { label: `Practitioner cost for ${AGE_BAND_LABELS[band] ?? band}`, expr: `${required} × ${fmtGBP(monthlyPractCost)}`, value: fmtGBP(required * monthlyPractCost), kind: 'result' },
     ]};
   }
 
@@ -298,7 +332,7 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
     const steps = [];
     for (const b of bandRows) {
       steps.push({
-        label: `${b.band}: ${b.cap} cap × ${fmtPct(b.occ)} occ = ${fmtNum(b.children)} children, ratio 1:${b.ratio}`,
+        label: `${AGE_BAND_LABELS[b.band] ?? b.band}: ${b.cap} places × ${fmtPct(b.occ)} occupancy = ${fmtNum(b.children)} children, ratio 1:${b.ratio}`,
         expr: `ceil(${fmtNum(b.children)} / ${b.ratio})`,
         value: `${b.required} practitioner${b.required !== 1 ? 's' : ''}`,
         kind: 'derived',
@@ -307,25 +341,25 @@ function explainStaff({ lineLabel, period, entity, drivers, values }) {
     steps.push(
       { label: 'Total practitioners', value: `${totalPract}`, kind: 'derived' },
       { label: 'Annual practitioner salary', value: fmtGBP(salaryPract), kind: 'input' },
-      { label: 'Loaded cost factor', value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
+      { label: 'On-cost factor', value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
       { label: 'Monthly cost per practitioner', value: fmtGBP(monthlyPractCost), kind: 'derived' },
       { label: 'Practitioner monthly cost', expr: `${totalPract} × ${fmtGBP(monthlyPractCost)}`, value: fmtGBP(totalPract * monthlyPractCost), kind: 'result' },
     );
-    return { formula: 'ceil(children / ratio) × monthly_loaded_salary', steps };
+    return { formula: 'Practitioners needed (children ÷ ratio, rounded up) × monthly cost each', steps };
   }
 
   // Managers
   const managers = totalPract > 0 ? Math.max(1, Math.ceil(totalPract / managerPerN)) : 0;
   const steps = [
-    { label: 'Total practitioners (from above)', value: `${totalPract}`, kind: 'derived' },
+    { label: 'Total practitioners', value: `${totalPract}`, kind: 'derived' },
     { label: 'Practitioners per manager', value: `${managerPerN}`, kind: 'input' },
-    { label: 'Required managers', expr: `max(1, ceil(${totalPract} / ${managerPerN}))`, value: `${managers}`, kind: 'derived' },
+    { label: 'Managers needed', expr: `max(1, ceil(${totalPract} / ${managerPerN}))`, value: `${managers}`, kind: 'derived' },
     { label: 'Annual manager salary', value: fmtGBP(salaryManager), kind: 'input' },
-    { label: 'Loaded cost factor', value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
+    { label: 'On-cost factor', value: fmtNum(loadFactor, 4) + '×', kind: 'derived' },
     { label: 'Monthly cost per manager', expr: `${fmtGBP(salaryManager)} / 12 × ${fmtNum(loadFactor, 4)}`, value: fmtGBP(monthlyManagerCost), kind: 'derived' },
     { label: 'Manager monthly cost', expr: `${managers} × ${fmtGBP(monthlyManagerCost)}`, value: fmtGBP(managers * monthlyManagerCost), kind: 'result' },
   ];
-  return { formula: 'max(1, ceil(practitioners / managers_per_n)) × monthly_loaded_salary', steps };
+  return { formula: 'Practitioners ÷ practitioners per manager, rounded up (at least 1) × monthly cost per manager', steps };
 }
 
 // ── Premises ────────────────────────────────────────────────────
@@ -346,7 +380,7 @@ function explainPremises({ lineLabel, period, entity, drivers, values }) {
       const v = r('premises.rent_monthly_p');
       const eff = v * factor;
       const steps = [
-        { label: 'Full monthly rent (entity driver)', value: fmtGBP(v), kind: 'input' },
+        { label: 'Full monthly rent', value: fmtGBP(v), kind: 'input' },
         { label: 'Months since opening', value: tIn < 0 ? '—' : `${tIn}`, kind: 'derived' },
       ];
       if (stageRows) {
@@ -354,20 +388,20 @@ function explainPremises({ lineLabel, period, entity, drivers, values }) {
         for (const sr of stageRows) steps.push(sr);
       }
       steps.push(
-        { label: 'Concession factor at this period', value: `× ${(factor * 100).toFixed(0)}%`, kind: 'derived' },
-        { label: 'Effective rent', expr: `${fmtGBP(v)} × ${(factor * 100).toFixed(0)}%`, value: fmtGBP(eff), kind: 'result' },
+        { label: 'Share payable this month', value: `× ${(factor * 100).toFixed(0)}%`, kind: 'derived' },
+        { label: 'Rent this month', expr: `${fmtGBP(v)} × ${(factor * 100).toFixed(0)}%`, value: fmtGBP(eff), kind: 'result' },
       );
-      return { formula: 'rent_monthly_p × concession_factor(months since opening)', steps };
+      return { formula: 'Full monthly rent × share payable (set by months since opening)', steps };
     }
     if (lineLabel === 'Service charge') {
       const v = r('premises.service_charge_monthly_p');
       const eff = v * factor;
       const steps = [
         { label: 'Full monthly service charge', value: fmtGBP(v), kind: 'input' },
-        { label: 'Concession factor at this period', value: `× ${(factor * 100).toFixed(0)}%`, kind: 'derived' },
-        { label: 'Effective service charge', expr: `${fmtGBP(v)} × ${(factor * 100).toFixed(0)}%`, value: fmtGBP(eff), kind: 'result' },
+        { label: 'Share payable this month', value: `× ${(factor * 100).toFixed(0)}%`, kind: 'derived' },
+        { label: 'Service charge this month', expr: `${fmtGBP(v)} × ${(factor * 100).toFixed(0)}%`, value: fmtGBP(eff), kind: 'result' },
       ];
-      return { formula: 'service_charge_monthly_p × concession_factor', steps };
+      return { formula: 'Full monthly service charge × share payable', steps };
     }
     return null;
   }
@@ -411,7 +445,7 @@ function explainPremises({ lineLabel, period, entity, drivers, values }) {
   const setup = [
     { label: 'Purchase price', value: fmtGBP(price), kind: 'input' },
     { label: 'Deposit %', value: fmtPct(depositPct * 100, 0), kind: 'input' },
-    { label: 'Loan = price × (1 − deposit%)', expr: `${fmtGBP(price)} × ${fmtPct((1 - depositPct) * 100, 0)}`, value: fmtGBP(loan), kind: 'derived' },
+    { label: 'Loan (price less deposit)', expr: `${fmtGBP(price)} × ${fmtPct((1 - depositPct) * 100, 0)}`, value: fmtGBP(loan), kind: 'derived' },
     { label: 'Annual mortgage rate', value: fmtPct(ratePct * 100, 2), kind: 'input' },
     { label: 'Monthly rate', expr: `${fmtPct(ratePct * 100, 2)} / 12`, value: fmtPct(monthlyRate * 100, 4), kind: 'derived' },
     { label: 'Term (months)', expr: `${termYears} × 12`, value: `${nMonths}`, kind: 'derived' },
@@ -419,33 +453,33 @@ function explainPremises({ lineLabel, period, entity, drivers, values }) {
   ];
 
   if (lineLabel === 'Mortgage interest') {
-    return { formula: 'outstanding[t-1] × monthly_rate', steps: [
+    return { formula: 'Balance at the end of last month × monthly rate', steps: [
       ...setup,
-      { label: `Outstanding at t=${period - 1}`, value: fmtGBP(outstanding + lastPrincipal), kind: 'derived' },
-      { label: `Interest at t=${period}`, expr: `${fmtGBP(outstanding + lastPrincipal)} × ${fmtPct(monthlyRate * 100, 4)}`, value: fmtGBP(lastInterest), kind: 'result' },
+      { label: `Balance at month ${period - 1}`, value: fmtGBP(outstanding + lastPrincipal), kind: 'derived' },
+      { label: `Interest in month ${period}`, expr: `${fmtGBP(outstanding + lastPrincipal)} × ${fmtPct(monthlyRate * 100, 4)}`, value: fmtGBP(lastInterest), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Mortgage principal') {
-    return { formula: 'monthly_payment − interest[t]', steps: [
+    return { formula: 'Monthly payment − interest this month', steps: [
       ...setup,
-      { label: `Interest at t=${period}`, value: fmtGBP(lastInterest), kind: 'derived' },
-      { label: `Principal at t=${period}`, expr: `${fmtGBP(payment)} − ${fmtGBP(lastInterest)}`, value: fmtGBP(lastPrincipal), kind: 'result' },
+      { label: `Interest in month ${period}`, value: fmtGBP(lastInterest), kind: 'derived' },
+      { label: `Capital repaid in month ${period}`, expr: `${fmtGBP(payment)} − ${fmtGBP(lastInterest)}`, value: fmtGBP(lastPrincipal), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Mortgage outstanding') {
-    return { formula: 'opening loan − Σ principal repaid', steps: [
+    return { formula: 'Starting loan − capital repaid to date', steps: [
       ...setup,
-      { label: `Outstanding at t=${period}`, value: fmtGBP(outstanding), kind: 'result' },
+      { label: `Balance at month ${period}`, value: fmtGBP(outstanding), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Property + fit-out') {
     if (period >= opening) {
       const monthlyDep = (price + fitOut) / (depYears * 12);
-      return { formula: '(purchase_price + fit-out) / (depreciation_years × 12)', steps: [
+      return { formula: '(Purchase price + fit-out) ÷ (depreciation years × 12)', steps: [
         { label: 'Purchase price', value: fmtGBP(price), kind: 'input' },
         { label: 'Fit-out capex', value: fmtGBP(fitOut), kind: 'input' },
-        { label: 'Depreciable base', expr: `${fmtGBP(price)} + ${fmtGBP(fitOut)}`, value: fmtGBP(price + fitOut), kind: 'derived' },
-        { label: 'Depreciation horizon', value: `${depYears} years`, kind: 'input' },
+        { label: 'Cost to depreciate', expr: `${fmtGBP(price)} + ${fmtGBP(fitOut)}`, value: fmtGBP(price + fitOut), kind: 'derived' },
+        { label: 'Depreciation period', value: `${depYears} years`, kind: 'input' },
         { label: 'Monthly depreciation', expr: `${fmtGBP(price + fitOut)} / (${depYears} × 12)`, value: fmtGBP(monthlyDep), kind: 'result' },
       ]};
     }
@@ -453,28 +487,28 @@ function explainPremises({ lineLabel, period, entity, drivers, values }) {
   if (lineLabel === 'NDR') {
     const ndrAnnual = rv * poundage * (1 - ndrRelief);
     const ndrMonthly = ndrAnnual / 12;
-    return { formula: 'rateable_value × poundage × (1 − relief) / 12', steps: [
+    return { formula: 'Rateable value × poundage × (1 − relief) ÷ 12', steps: [
       { label: 'Rateable value', value: fmtGBP(rv), kind: 'input' },
       { label: 'Poundage', value: fmtPct(poundage * 100, 3), kind: 'input' },
       { label: 'Relief %', value: fmtPct(ndrRelief * 100, 1), kind: 'input' },
-      { label: 'NDR annual', expr: `${fmtGBP(rv)} × ${fmtPct(poundage * 100, 3)} × (1 − ${fmtPct(ndrRelief * 100, 1)})`, value: fmtGBP(ndrAnnual), kind: 'derived' },
-      { label: 'NDR monthly', expr: `${fmtGBP(ndrAnnual)} / 12`, value: fmtGBP(ndrMonthly), kind: 'result' },
+      { label: 'NDR a year', expr: `${fmtGBP(rv)} × ${fmtPct(poundage * 100, 3)} × (1 − ${fmtPct(ndrRelief * 100, 1)})`, value: fmtGBP(ndrAnnual), kind: 'derived' },
+      { label: 'NDR a month', expr: `${fmtGBP(ndrAnnual)} / 12`, value: fmtGBP(ndrMonthly), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Maintenance') {
-    return { formula: 'maintenance_annual / 12', steps: [
+    return { formula: 'Annual maintenance ÷ 12', steps: [
       { label: 'Annual maintenance', value: fmtGBP(maintAnnual), kind: 'input' },
-      { label: 'Monthly', expr: `${fmtGBP(maintAnnual)} / 12`, value: fmtGBP(maintAnnual / 12), kind: 'result' },
+      { label: 'Maintenance a month', expr: `${fmtGBP(maintAnnual)} / 12`, value: fmtGBP(maintAnnual / 12), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Acquisition + fit-out') {
-    return { formula: 'purchase + LBTT + legal + fit-out (one-shot at acq month)', steps: [
+    return { formula: 'Purchase price + LBTT + legal fees + fit-out, all in the month of purchase', steps: [
       { label: 'Purchase price', value: fmtGBP(price), kind: 'input' },
-      { label: 'LBTT (Scotland non-residential bands)', value: fmtGBP(lbtt), kind: 'derived' },
-      { label: 'Legal & acquisition fees', value: fmtGBP(legalFees), kind: 'input' },
-      { label: 'Fit-out capex', value: fmtGBP(fitOut), kind: 'input' },
-      { label: 'Total capex at acquisition', value: fmtGBP(price + lbtt + legalFees + fitOut), kind: 'result' },
-      { label: `Recorded once at month ${acqMonth} (opening month − 1)`, kind: 'note' },
+      { label: 'LBTT (non-residential bands)', value: fmtGBP(lbtt), kind: 'derived' },
+      { label: 'Legal and purchase fees', value: fmtGBP(legalFees), kind: 'input' },
+      { label: 'Fit-out cost', value: fmtGBP(fitOut), kind: 'input' },
+      { label: 'Total cost at purchase', value: fmtGBP(price + lbtt + legalFees + fitOut), kind: 'result' },
+      { label: `Charged once in month ${acqMonth}, the month before opening`, kind: 'note' },
     ]};
   }
   return null;
@@ -537,9 +571,9 @@ function explainOverheads({ lineLabel, period, entity, drivers, values }) {
   const d = drivers.find(d => d.label === lineLabel);
   if (!d) return null;
   const v = values.find(x => x.driver_id === d.id && x.period === -1);
-  return { formula: 'driver value (applies each month after opening)', steps: [
-    { label: lineLabel + ' (driver)', value: d.unit === 'gbp_p' ? fmtGBP(Number(v?.value ?? 0)) : String(v?.value ?? 0), kind: 'result' },
-    { label: d.entity_id ? 'Entity-scoped — applies once entity opens' : 'Group-scope — applies every month', kind: 'note' },
+  return { formula: 'Monthly amount, charged each month once open', steps: [
+    { label: lineLabel + ' (assumption)', value: d.unit === 'gbp_p' ? fmtGBP(Number(v?.value ?? 0)) : String(v?.value ?? 0), kind: 'result' },
+    { label: d.entity_id ? 'This location only — starts when it opens' : 'Whole group — charged every month', kind: 'note' },
   ]};
 }
 
@@ -553,26 +587,26 @@ function explainPreOpening({ lineLabel, period, entity, drivers, values }) {
     const v = r('pre_open.monthly_overhead_p');
     const lead = r('pre_open.registration_lead_months');
     const start = Math.max(0, opening - lead);
-    return { formula: 'monthly_overhead applied from (opening − registration_lead) to opening − 1', steps: [
-      { label: 'Opening month', value: `t=${opening}`, kind: 'input' },
+    return { formula: 'Monthly overhead from (opening − registration lead time) to the month before opening', steps: [
+      { label: 'Opening month', value: `Month ${opening}`, kind: 'input' },
       { label: 'Registration lead time', value: `${lead} months`, kind: 'input' },
-      { label: 'Pre-opening window', value: `t=${start} … t=${opening - 1}`, kind: 'derived' },
+      { label: 'Pre-opening window', value: `Month ${start} to ${opening - 1}`, kind: 'derived' },
       { label: 'Monthly pre-opening overhead', value: fmtGBP(v), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Pre-opening staffing') {
     const v = r('pre_open.staffing_monthly_p');
     const months = r('pre_open.staffing_months');
-    return { formula: 'staffing_monthly applied for last N months before opening', steps: [
-      { label: 'Pre-opening staffing months', value: `${months}`, kind: 'input' },
+    return { formula: 'Monthly staffing cost, for the set number of months before opening', steps: [
+      { label: 'Months of staffing before opening', value: `${months}`, kind: 'input' },
       { label: 'Monthly staffing cost', value: fmtGBP(v), kind: 'result' },
     ]};
   }
   if (lineLabel === 'Pre-opening marketing') {
     const v = r('pre_open.marketing_spike_p');
-    return { formula: 'one-shot marketing spike at month opening − 1', steps: [
-      { label: 'Marketing spike', value: fmtGBP(v), kind: 'result' },
-      { label: `Recorded once at t=${opening - 1}`, kind: 'note' },
+    return { formula: 'One-off marketing spend in the month before opening', steps: [
+      { label: 'Launch marketing', value: fmtGBP(v), kind: 'result' },
+      { label: `Charged once in month ${opening - 1}`, kind: 'note' },
     ]};
   }
   return null;
@@ -584,9 +618,9 @@ function explainTaxSimple({ lineLabel, period, entity, drivers, values }) {
   if (lineLabel !== 'Corporation tax') return null;
   const r = makeResolver(drivers, values, null);
   const ctRate = r('tax.ct_rate_pct');
-  return { formula: 'max(0, PBT × CT_rate). Cash settlement lags 9 months.', steps: [
-    { label: 'CT rate (worst-case marginal)', value: fmtPct(ctRate, 1), kind: 'input' },
-    { label: 'Tax accrued = PBT × CT rate (zeroed if PBT < 0)', kind: 'note' },
-    { label: 'Cash CT paid = tax accrued at t − 9 months', kind: 'note' },
+  return { formula: 'PBT × CT rate, nil if a loss. Paid 9 months later.', steps: [
+    { label: 'CT rate (top marginal rate)', value: fmtPct(ctRate, 1), kind: 'input' },
+    { label: 'Tax charged = PBT × CT rate, nil if PBT is a loss', kind: 'note' },
+    { label: 'CT paid = tax charged 9 months earlier', kind: 'note' },
   ]};
 }

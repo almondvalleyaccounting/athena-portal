@@ -14,9 +14,9 @@ export default function InsightsView({ outputs, findings, forecast, periods, ent
   return (
     <div>
       <H2>
-        AI Insights
+        Insights
         <span style={{ fontSize: 13, fontWeight: 400, color: colors.muted, marginLeft: 8, fontFamily: fontStack }}>
-          · deterministic rule-based · auto-refreshes on recompute
+          · updates when you recompute
         </span>
       </H2>
 
@@ -36,7 +36,7 @@ export default function InsightsView({ outputs, findings, forecast, periods, ent
 
       {insights.length === 0 ? (
         <p style={{ color: colors.muted, fontSize: 14, padding: 24, textAlign: 'center', background: colors.bgSoft, borderRadius: 8 }}>
-          Recompute the forecast to surface insights.
+          Recompute the forecast to see insights.
         </p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -112,7 +112,7 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
   const ratioBreach = findings.find(f => f.code === 'staff.ratio_breach');
   if (ratioBreach) {
     insights.push({
-      category: 'Ratio compliance — statutory breach',
+      category: 'Ratio breach',
       tone: 'risk',
       headline: ratioBreach.message.split('. ').slice(0, 2).join('. ') + '.',
       detail: ratioBreach.message.split('. ').slice(2).join('. '),
@@ -126,10 +126,10 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
       insights.push({
         category: 'Ratio compliance',
         tone,
-        headline: `Practitioner ratios meet statutory requirement at ${x.toFixed(2)}× cover at end of forecast.`,
+        headline: `Staff ratios are met with ${x.toFixed(2)}× cover at the end of the forecast.`,
         detail: x >= 1.2
-          ? 'Headroom in case of vacancies. Could potentially reduce mix toward apprentices to lower cost while still meeting ratios.'
-          : 'Within compliance but limited slack — a single vacancy could push you below ratio. Consider modelling a buffer.',
+          ? 'Room to absorb vacancies. More apprentices in the mix could cut cost and still meet ratios.'
+          : 'Ratios are met with little slack. One vacancy could take you below ratio. Consider modelling a buffer.',
       });
     }
   }
@@ -140,8 +140,8 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
     insights.push({
       category: 'Cash risk',
       tone: 'risk',
-      headline: `Cash goes negative at ${periodLabelFor(cashTrough.period)} (low: ${fmtP(cashTrough.amount_p, { compact: true })}).`,
-      detail: 'Without additional funding the model implies an overdraft. Consider a director loan, larger bank facility, or staggering site openings.',
+      headline: `Cash goes negative in ${periodLabelFor(cashTrough.period)} (lowest ${fmtP(cashTrough.amount_p, { compact: true })}).`,
+      detail: 'Without more funding this needs an overdraft. Options: a director loan, a bigger bank facility or staggered openings.',
     });
   } else if (cashTrough) {
     const lo = cashTrough.amount_p;
@@ -149,8 +149,8 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
       insights.push({
         category: 'Cash buffer',
         tone: 'warning',
-        headline: `Cash dips to ${fmtP(lo, { compact: true })} at ${periodLabelFor(cashTrough.period)} — thin runway.`,
-        detail: 'Lenders typically want >£100k buffer. A small director loan or extended supplier terms would smooth this.',
+        headline: `Cash falls to ${fmtP(lo, { compact: true })} in ${periodLabelFor(cashTrough.period)}, a thin buffer.`,
+        detail: 'Lenders usually want a buffer of over £100k. A small director loan or longer supplier terms would cover it.',
       });
     }
   }
@@ -166,22 +166,22 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
       insights.push({
         category: 'Profitability',
         tone: 'positive',
-        headline: `Y${lastYear} EBITDA margin of ${margin.toFixed(1)}% is healthy for the nursery sector (typical 15–22%).`,
+        headline: `Year ${lastYear} EBITDA margin of ${margin.toFixed(1)}% is healthy for a nursery (typically 15–22%).`,
         detail: `Revenue ${fmtP(revLY, { compact: true })} → EBITDA ${fmtP(ebitLY, { compact: true })}.`,
       });
     } else if (margin >= 10) {
       insights.push({
         category: 'Profitability',
         tone: 'neutral',
-        headline: `Y${lastYear} EBITDA margin ${margin.toFixed(1)}% — modest for the sector.`,
-        detail: 'Sector benchmark for established sites is 15–22%. Levers: occupancy, fee uplift, staff:child ratio efficiency.',
+        headline: `Year ${lastYear} EBITDA margin of ${margin.toFixed(1)}% is modest for the sector.`,
+        detail: 'Established nurseries typically make 15–22%. Levers: occupancy, fee increases and staffing efficiency.',
       });
     } else {
       insights.push({
         category: 'Profitability',
         tone: 'warning',
-        headline: `Y${lastYear} EBITDA margin only ${margin.toFixed(1)}% — below sector floor (15%).`,
-        detail: 'Re-check ratio assumptions, weekly fee rates, and central admin allocation.',
+        headline: `Year ${lastYear} EBITDA margin of ${margin.toFixed(1)}% is below the sector floor of 15%.`,
+        detail: 'Check the ratio assumptions, weekly fees and central admin costs.',
       });
     }
   }
@@ -193,22 +193,22 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
       insights.push({
         category: 'Debt service',
         tone: 'positive',
-        headline: `DSCR ${dscrLast.toFixed(2)}× at end of forecast — comfortably above lender minimums.`,
-        detail: 'Most UK childcare lenders require DSCR ≥ 1.25× as a covenant.',
+        headline: `DSCR of ${dscrLast.toFixed(2)}× at the end of the forecast, well above lender minimums.`,
+        detail: 'Most UK childcare lenders set a DSCR covenant of at least 1.25×.',
       });
     } else if (dscrLast >= 1.25) {
       insights.push({
         category: 'Debt service',
         tone: 'warning',
-        headline: `DSCR ${dscrLast.toFixed(2)}× — meets typical 1.25× covenant but with limited headroom.`,
-        detail: 'Stress-test with lower occupancy or rate uplift to see when it breaches.',
+        headline: `DSCR of ${dscrLast.toFixed(2)}× meets the usual 1.25× covenant, with little headroom.`,
+        detail: 'Try lower occupancy or smaller fee increases to see when it breaks.',
       });
     } else {
       insights.push({
         category: 'Debt service',
         tone: 'risk',
-        headline: `DSCR ${dscrLast.toFixed(2)}× — below the 1.25× covenant most lenders require.`,
-        detail: 'Reduce debt, increase EBITDA, or extend term to lift cover.',
+        headline: `DSCR of ${dscrLast.toFixed(2)}× is below the 1.25× covenant most lenders require.`,
+        detail: 'Reduce debt, raise EBITDA or extend the loan term to lift cover.',
       });
     }
   }
@@ -232,15 +232,15 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
         insights.push({
           category: 'Revenue mix',
           tone: 'warning',
-          headline: `Y${lastYear} funded-hours income is ${fundedPct.toFixed(0)}% of revenue — sensitive to LA rate uplifts.`,
-          detail: 'Scottish 1140-hour rate moves with each council\'s budget cycle and rarely tracks cost inflation. Sensitivity to funded-rate changes is material.',
+          headline: `Funded hours are ${fundedPct.toFixed(0)}% of year ${lastYear} income, so council rate changes matter.`,
+          detail: 'The Scottish 1140-hour rate follows each council\'s budget and rarely keeps up with cost inflation.',
         });
       } else if (fundedPct < 15) {
         insights.push({
           category: 'Revenue mix',
           tone: 'neutral',
-          headline: `Funded hours only ${fundedPct.toFixed(0)}% of Y${lastYear} revenue — primarily a private-fee business.`,
-          detail: 'Less LA-rate exposure but missing potential 1140 partnership upside.',
+          headline: `Funded hours are only ${fundedPct.toFixed(0)}% of year ${lastYear} income, so this is mainly a private-fee business.`,
+          detail: 'Less exposed to council rates, but may be missing out on 1140-hour partnership income.',
         });
       }
     }
@@ -251,10 +251,10 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
     const target = e.config?.target_occupancy_pct;
     if (target && target > 92) {
       insights.push({
-        category: 'Operational realism',
+        category: 'Occupancy',
         tone: 'warning',
-        headline: `${e.label}: target occupancy ${target}% is aggressive — UK nursery norm is 80–88%.`,
-        detail: 'Most operators model 85% steady-state. A 92%+ assumption rarely holds across all rooms in practice.',
+        headline: `${e.label}: target occupancy of ${target}% is high. UK nurseries usually run at 80–88%.`,
+        detail: 'Most operators plan on 85% once settled. 92% or more rarely holds across every room.',
       });
     }
   }
@@ -267,8 +267,8 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
     insights.push({
       category: 'Capital structure',
       tone: 'warning',
-      headline: `Directors\' loans (${fmtP(directorBal, { compact: true })}) exceed 1.5× equity at end of forecast.`,
-      detail: 'Heavy director funding is normal in early-stage builds but lenders may prefer to see this converted to equity before refinancing.',
+      headline: `Directors\' loans (${fmtP(directorBal, { compact: true })}) are more than 1.5× equity at the end of the forecast.`,
+      detail: 'Heavy director funding is normal early on, but lenders may want it turned into equity before refinancing.',
     });
   }
 
@@ -276,10 +276,10 @@ function generateInsights({ outputs, findings, forecast, periods, entities }) {
   const errCount = findings.filter(f => f.severity === 'error').length;
   if (errCount === 0) {
     insights.push({
-      category: 'Model integrity',
+      category: 'Model checks',
       tone: 'positive',
-      headline: 'Balance sheet ties and cashflow reconciles to BS cash movement at every period.',
-      detail: '3-statement model is internally consistent — outputs are safe to share with lenders or investors.',
+      headline: 'The balance sheet balances and the cash flow matches the change in cash in every month.',
+      detail: 'The P&L, balance sheet and cash flow agree, so the figures are safe to share with lenders or investors.',
     });
   }
 
