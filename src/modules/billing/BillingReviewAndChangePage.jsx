@@ -4,6 +4,7 @@ import { TrendingUp, RotateCcw, Plus, EyeOff, Eye, ArrowUp, ArrowDown } from 'lu
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
+import RepriceClientModal from './RepriceClientModal';
 import SearchInput from '../../components/SearchInput';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
@@ -34,6 +35,7 @@ export default function BillingReviewAndChangePage() {
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(null); // null | { entityId?, serviceId? } — opens AddServiceModal
+  const [repriceFor, setRepriceFor] = useState(null); // entity { id, name } — opens RepriceClientModal
   // Seed the client filter from a ?client= deep link (e.g. from a client's
   // detail page "Manage billing"), so the matrix opens scoped to them.
   const [search, setSearch] = useState(searchParams.get('client') || '');
@@ -240,6 +242,21 @@ export default function BillingReviewAndChangePage() {
       setSaving(false);
       setAddOpen(null);
     }
+  };
+
+  // Write one billing row's services from the single-client reprice
+  // modal. Same shape as stagePending: the row goes back to 'staged' so
+  // the new prices are re-approved on Push uplifts before reaching QBO.
+  const saveRepricedRow = async (rowId, services) => {
+    const stillPending = services.some((s) => s.pending_monthly_amount != null);
+    const { error } = await supabase.from('live_billing').update({
+      services,
+      uplift_review_status: stillPending ? 'staged' : null,
+      uplift_reviewed_by: null,
+      uplift_reviewed_at: null,
+    }).eq('id', rowId);
+    if (error) throw error;
+    setRows((prev) => prev.map((r) => r.id === rowId ? { ...r, services } : r));
   };
 
   // Toggle whether this client is excluded from bulk fee raises.
@@ -661,13 +678,13 @@ export default function BillingReviewAndChangePage() {
                         >
                           {entity.excluded ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
-                        <a
-                          href={`/clients/${entity.id}`}
-                          style={{ color: 'inherit', textDecoration: entity.excluded ? 'line-through' : 'none' }}
-                          onClick={(ev) => { ev.preventDefault(); navigate(`/clients/${entity.id}`); }}
+                        <button
+                          onClick={() => setRepriceFor(entity)}
+                          title="Reprice this client and write to them"
+                          style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', textAlign: 'left', cursor: 'pointer', color: 'inherit', textDecoration: entity.excluded ? 'line-through' : 'underline', textDecorationColor: '#cbd5e1', textUnderlineOffset: 3 }}
                         >
                           {entity.name}
-                        </a>
+                        </button>
                       </div>
                     </td>
                     {(() => {
@@ -724,6 +741,17 @@ export default function BillingReviewAndChangePage() {
           onApplyInflation={applyInflation}
           onApplyFloor={applyFloor}
           saving={saving}
+        />
+      )}
+      {repriceFor && (
+        <RepriceClientModal
+          entity={repriceFor}
+          rows={rows}
+          qboItems={qboItems}
+          profile={profile}
+          onSaveRow={saveRepricedRow}
+          onClose={() => setRepriceFor(null)}
+          onOpenClient={() => navigate(`/clients/${repriceFor.id}`)}
         />
       )}
       {addOpen && (
@@ -1110,7 +1138,7 @@ const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
 const clearBtnStyle = { width: 16, height: 16, padding: 0, fontSize: 14.5, lineHeight: 1, background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' };
 
 const overlayStyle = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, fontFamily: font };
-const modalStyle = { background: '#fff', borderRadius: 12, width: 460, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' };
+const modalStyle = { background: '#fff', borderRadius: 12, width: 460, maxWidth: '95vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' };
 const inputStyle = { padding: '6px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', color: '#0f172a', outline: 'none', width: '100%', boxSizing: 'border-box' };
 const modalBtnPrimary = { ...BTN.primary.md, cursor: 'pointer' };
 const modalBtnGhost = { ...BTN.secondary.md, cursor: 'pointer' };

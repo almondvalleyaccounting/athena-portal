@@ -12,44 +12,12 @@ import EmptyState from '../../components/EmptyState';
 import GmailConnectionPanel from '../../components/GmailConnectionPanel';
 import { tones } from '../../lib/tokens';
 import { composeUpliftEmail } from './composeUpliftEmail';
+import { splitEmails, resolvePrimaryContact, firstNameOf } from './recipients';
 import { explainRows, explainBlocked } from './pushOutcome';
 import { fmtGbp } from '../../lib/money';
 import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
-
-// Parse "a@b.com, c@d.com; e@f.com" → ["a@b.com", "c@d.com", "e@f.com"].
-// QBO routinely packs multiple emails into one PrimaryEmailAddr string,
-// and BM's primary email may differ from the company billing address —
-// the modal shows whichever set we find as a candidate list.
-function splitEmails(s) {
-  if (!s) return [];
-  return String(s)
-    .split(/[,;]/)
-    .map((x) => x.trim())
-    .filter((x) => /.+@.+\..+/.test(x));
-}
-
-// Pick the primary contact for an entity. Falls back to any linked
-// person if no row is flagged is_primary_contact (small entities
-// often have a single person attached without the flag set).
-function resolvePrimaryContact(entity) {
-  const links = entity?.entity_people || [];
-  if (links.length === 0) return null;
-  const primary = links.find((l) => l.is_primary_contact) || links[0];
-  return primary?.person || null;
-}
-
-// Greeting name preference: preferred_name (BM "Preferred Name") wins
-// over first_name; falls back to the first word of `name` so legacy
-// people rows pre-dating the column split still render sensibly.
-function firstNameOf(person) {
-  if (!person) return null;
-  if (person.preferred_name) return person.preferred_name.trim();
-  if (person.first_name) return person.first_name.trim();
-  if (person.name) return person.name.trim().split(/\s+/)[0] || null;
-  return null;
-}
 
 // Review staged uplifts (pending_monthly_amount on services) before
 // they're pushed to QBO. Approval is row-level — every pending service
