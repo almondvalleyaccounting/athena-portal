@@ -70,7 +70,7 @@ function CallLogModal({ group, onConfirm, onCancel, busy }) {
   const name = group.rows[0].person?.name || 'this person';
   return (
     <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, fontFamily: font }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 400, maxWidth: '92vw', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, padding: 22, width: 400, maxWidth: '92vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <PhoneCall size={16} color={tones.accent.solid} />
           <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Log a call</div>

@@ -426,7 +426,7 @@ function AddCaseModal({ entityList, staffList, onClose, onAdd }) {
 
   return (
     <div onClick={onClose} style={backdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 520 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modal, width: 520, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <LifeBuoy size={16} color="#0e7fe0" /> Add a client to triage
         </div>

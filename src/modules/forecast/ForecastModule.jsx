@@ -806,7 +806,7 @@ function Field({ label, children }) {
 }
 
 const modalBackdrop = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: fontStack };
-const modalCard = { background: '#fff', borderRadius: 16, padding: 28, maxWidth: 540, width: '100%' };
+const modalCard = { background: '#fff', borderRadius: 16, padding: 28, maxWidth: 540, width: '100%', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' };
 
 function IntegrityBadge({ state, label }) {
   const bg = state === 'ok' ? '#dcfce7' : '#fee2e2';

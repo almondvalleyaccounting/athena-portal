@@ -284,7 +284,7 @@ function Header() {
 
       {showNew && (
         <div onClick={() => setShowNew(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 28, maxWidth: 440, width: '100%' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 28, maxWidth: 440, width: '100%', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
             <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 500, color: '#0f172a', margin: '0 0 10px' }}>
               {duplicate ? 'Duplicate scenario' : 'New scenario'}
             </h2>

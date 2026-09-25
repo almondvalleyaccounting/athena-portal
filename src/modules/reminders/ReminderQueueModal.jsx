@@ -164,7 +164,7 @@ export default function ReminderQueueModal({ commType = 'tax_reminders', entityB
 
   return (
     <div style={overlay}>
-      <div style={{ ...card, width: 1080, maxWidth: '96vw', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 20, fontFamily: font }}>
+      <div style={{ ...card, width: 1080, maxWidth: '96vw', maxHeight: 'calc(100vh - 48px)', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Client Tax Reminders queue</div>
           {tab('queued', 'Queued')}

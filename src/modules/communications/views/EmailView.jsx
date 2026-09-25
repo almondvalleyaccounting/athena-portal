@@ -1601,7 +1601,7 @@ export default function EmailView() {
       {/* ── Signature editor ── */}
       {sigOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ width: 520, maxWidth: '92vw', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
+          <div style={{ width: 520, maxWidth: '92vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Email signature</span>
               <button onClick={() => setSigOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>

@@ -352,6 +352,7 @@ function ConfirmModal({ pending, confirmText, onConfirmTextChange, onCancel, onC
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#fff', borderRadius: 10, padding: 22, width: 440,
+          maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
           fontFamily: font, boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
         }}
       >

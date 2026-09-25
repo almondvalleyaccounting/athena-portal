@@ -131,6 +131,8 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
           padding: '32px',
           boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
           position: 'relative',
+          maxHeight: 'calc(100vh - 48px)',
+          overflowY: 'auto',
         }}
       >
         {/* Close button */}

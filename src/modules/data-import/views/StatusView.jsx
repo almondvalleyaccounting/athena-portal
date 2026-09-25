@@ -219,6 +219,7 @@ function PullModal({ source, onClose, onGoToImport }) {
       <div onClick={(e) => e.stopPropagation()} style={{
         background: '#fff', borderRadius: 12, width: 560, maxWidth: '90vw',
         padding: 24, fontFamily: font,
+        maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a' }}>

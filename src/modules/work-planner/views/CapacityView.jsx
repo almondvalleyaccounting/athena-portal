@@ -424,6 +424,7 @@ function ShiftPopover({ popover, months, onClose, onSubmit }) {
           left: Math.min(x, window.innerWidth - 320),
           top: Math.min(y, window.innerHeight - 240),
           width: 300, padding: 14, zIndex: 101,
+          maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
           boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
           fontFamily: "'Outfit', sans-serif",

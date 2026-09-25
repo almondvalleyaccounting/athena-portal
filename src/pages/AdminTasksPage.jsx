@@ -1726,7 +1726,7 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
 
   return (
     <div onClick={onClose} style={modalBackdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Receipt size={16} color="#0e7fe0" /> Raise a bill
         </div>
@@ -1792,7 +1792,7 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
 
   return (
     <div onClick={onClose} style={modalBackdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 420 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 420, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
           <CheckCircle2 size={16} color="#16a34a" /> Complete task
         </div>
@@ -2587,7 +2587,7 @@ function EscalateModal({ task, staffList, onClose, onSend }) {
 
   return (
     <div onClick={onClose} style={modalBackdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 440 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 440, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
           <AlertTriangle size={16} color="#b45309" /> Escalate task
         </div>

@@ -94,7 +94,7 @@ export default function EmailTemplatesModal({ commType = 'tax_reminders', onClos
 
   return (
     <div style={overlayStyle}>
-      <div style={{ ...card, width: 1040, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto', padding: 20, fontFamily: font }}>
+      <div style={{ ...card, width: 1040, maxWidth: '96vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', padding: 20, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Email templates</div>
           <div style={{ flex: 1 }} />

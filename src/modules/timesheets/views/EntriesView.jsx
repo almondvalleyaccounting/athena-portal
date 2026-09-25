@@ -356,7 +356,7 @@ function EditEntryModal({ row, staffName, clientName, onClose, onSaved }) {
   const lbl = { fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 5 };
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, width: 440, maxWidth: '94vw', fontFamily: F }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 20, width: 440, maxWidth: '94vw', fontFamily: F, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Edit timesheet entry</div>
         <div style={{ fontSize: 13.5, color: '#64748b', marginBottom: 14 }}>
           {staffName} · {clientName} · {row._date ? new Date(row._date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''}

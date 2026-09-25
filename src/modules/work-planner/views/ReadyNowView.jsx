@@ -1087,7 +1087,7 @@ function EditChangeDialog({ row, staffList, pendingByKey, onCancel, onSave }) {
 
   return (
     <div onClick={onCancel} style={modalBackdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
           Queue change for {row.client}
         </div>
@@ -1201,7 +1201,7 @@ function FeedbackModal({ row, feedback: fb, onClose }) {
   const conf = fb?.confidence ? CONF_STYLE[fb.confidence] : null;
   return (
     <div onClick={onClose} style={modalBackdrop}>
-      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 460, maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
         <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
           Job Review feedback
         </div>
@@ -1295,6 +1295,7 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
         style={{
           background: '#fff', borderRadius: 10, padding: '18px 20px',
           width: 380, fontFamily: font, boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+          maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
         }}
       >
         <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>

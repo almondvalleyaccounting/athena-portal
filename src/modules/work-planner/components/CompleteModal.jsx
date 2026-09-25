@@ -47,6 +47,7 @@ export default function CompleteModal({ task, mode, onConfirm, onClose }) {
         style={{
           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
           padding: 18, width: 420, maxWidth: '92vw',
+          maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
           boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
           fontFamily: "'Outfit', sans-serif",
         }}

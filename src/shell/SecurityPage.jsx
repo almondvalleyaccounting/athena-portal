@@ -202,7 +202,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
       {/* Enrollment flow */}
       {enrolling && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 420, maxWidth: '90vw' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, width: 420, maxWidth: '90vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto' }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0, marginBottom: 8 }}>
               Enrol authenticator
             </h3>
