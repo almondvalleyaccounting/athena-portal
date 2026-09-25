@@ -336,6 +336,17 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
     }
   };
 
+  // The modal stays open until Save & close, Cancel or ✕ — a stray click
+  // outside it no longer throws work away — and those two ask first when
+  // there are unsaved changes.
+  const requestClose = () => {
+    if (dirty && !window.confirm('Close without saving? Your changes to this client will be lost.')) return;
+    onClose();
+  };
+  const saveAndClose = async () => {
+    if (await save()) onClose();
+  };
+
   const saveAndWrite = async () => {
     if (dirty && !(await save())) return;
     setLetterPreview(false);
@@ -345,7 +356,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   const changedCount = lines.filter(isChanged).length;
 
   return (
-    <div style={overlay} onClick={onClose}>
+    <div style={overlay}>
       <div style={shell} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={{ padding: '16px 22px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -360,7 +371,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             <ExternalLink size={12} /> Client record
           </button>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }} aria-label="Close"><X size={18} /></button>
+          <button onClick={requestClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }} aria-label="Close"><X size={18} /></button>
         </div>
 
         {step === 'price' && letterPreview ? (
@@ -448,9 +459,12 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             >
               {letterPreview ? <><ArrowLeft size={14} /> Back to prices</> : <><FileText size={14} /> Preview letter</>}
             </button>
-            <button onClick={onClose} disabled={saving} style={BTN.secondary.md}>Cancel</button>
+            <button onClick={requestClose} disabled={saving} style={BTN.secondary.md}>Cancel</button>
             <button onClick={save} disabled={saving || !dirty || missingReason} style={{ ...BTN.secondary.md, opacity: (!dirty || missingReason) ? 0.5 : 1 }}>
               {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button onClick={saveAndClose} disabled={saving || !dirty || missingReason} style={{ ...BTN.secondary.md, whiteSpace: 'nowrap', opacity: (!dirty || missingReason) ? 0.5 : 1 }}>
+              Save &amp; close
             </button>
             <button
               onClick={saveAndWrite}
