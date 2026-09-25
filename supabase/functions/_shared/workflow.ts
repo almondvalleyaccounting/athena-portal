@@ -170,15 +170,6 @@ export function computeChain(stages: StageRule[], ctx: JobContext): Milestone[] 
         if (floor > d) d = floor;
       }
 
-      // Never before the stage that gates it. Filing is anchored on the year
-      // end (+7 months) but cannot precede approval; when approval slips
-      // past that, filing follows it and then meets its statutory clamp.
-      const gate = firstPresent(s.gate_stage_key, present);
-      if (gate) {
-        const floor = resolve(gate);
-        if (floor > d) d = floor;
-      }
-
       // Working day for the owner
       const ownerId = ctx.owners[s.owner_role] ?? null;
       const set = workingSet(ownerId ? ctx.workingDays[ownerId] : null);
@@ -195,6 +186,32 @@ export function computeChain(stages: StageRule[], ctx: JobContext): Milestone[] 
   };
 
   for (const s of active) resolve(s.key);
+
+  // Second pass: never before the stage that gates it. Filing is anchored on
+  // the year end (+7 months) but cannot precede approval; when approval
+  // slips past that, filing follows it and then meets its statutory clamp.
+  // Done as a pass over settled dates, not inside resolve(), because the
+  // chain is worked back (review is anchored on the send, which review
+  // gates) and a floor inside the recursion would be a cycle.
+  for (let pass = 0; pass < 5; pass++) {
+    let moved = false;
+    for (const s of active) {
+      if (ctx.pinned?.[s.key]) continue;
+      const gate = firstPresent(s.gate_stage_key, present);
+      if (!gate) continue;
+      const floor = due.get(gate)!;
+      let d = due.get(s.key)!;
+      if (floor > d) {
+        const ownerId = ctx.owners[s.owner_role] ?? null;
+        d = roll(floor, workingSet(ownerId ? ctx.workingDays[ownerId] : null), 1);
+        const lim = limitFor(s);
+        if (lim && d > lim) d = lim;
+        due.set(s.key, d);
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
 
   return active.map((s) => ({
     stage_key: s.key,
