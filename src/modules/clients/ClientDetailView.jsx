@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronDown, Copy, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import { Btn } from '../../components/ui';
-import { approvedServicesOf, feeTotals, underBillingOf } from './feeRollup';
+import { approvedServicesOf, feeTotals, underBillingOf, yearlyFeeOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
 import ClientAgendaCard from './ClientAgendaCard';
 import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
@@ -355,7 +355,7 @@ export default function ClientDetailView() {
                 })()}
               </span>
               <span style={{ fontWeight: 500, fontFamily: 'monospace' }}>
-                {s.cadence === 'annual' ? `${fmt(s.monthly_amount)}/yr` : `${fmt(s.monthly_amount)}/mo`}
+                {s.cadence === 'annual' ? `${fmt(yearlyFeeOf(s))}/yr` : `${fmt(s.monthly_amount)}/mo`}
               </span>
             </div>
           ))}

@@ -19,7 +19,7 @@ export async function searchEntities(raw, { limit = 8 } = {}) {
        `paye_ref.ilike.%${compact}%`, `bm_client_id.ilike.%${compact}%`,
        `billing_email.ilike.%${compact}%`, `prospect_email.ilike.%${compact}%`]
     : [];
-  const [{ data: rows }, { data: emailRows }] = await Promise.all([
+  const [{ data: rows }, { data: emailRows }, { data: qboRows }] = await Promise.all([
     supabase.from('entities')
       .select('id, name, type, company_number, entity_status, utr, vat_number, paye_ref, bm_client_id, billing_email, prospect_email')
       .or([`name.ilike.%${q}%`, ...idFilters].join(','))
@@ -29,11 +29,24 @@ export async function searchEntities(raw, { limit = 8 } = {}) {
       ? supabase.from('v_email_reconciliation').select('entity_id, name, bm_contact_email')
           .ilike('bm_contact_email', `%${compact}%`).limit(5)
       : Promise.resolve({ data: [] }),
+    // Nor are QuickBooks billing emails — they sit on the customer mapping
+    // (one text field, sometimes several addresses separated by , or ;).
+    compact.length >= 3
+      ? supabase.from('qbo_customer_mappings').select('entity_id, qbo_email, entity:entities(name)')
+          .not('entity_id', 'is', null).ilike('qbo_email', `%${compact}%`).limit(5)
+      : Promise.resolve({ data: [] }),
   ]);
   const out = (rows || []).map((c) => ({ ...c, matched: matchedOn(c, q, compact, vat) }));
   for (const e of emailRows || []) {
     if (!out.some((c) => c.id === e.entity_id)) {
       out.push({ id: e.entity_id, name: e.name, matched: `Email ${e.bm_contact_email}` });
+    }
+  }
+  for (const m of qboRows || []) {
+    if (!out.some((c) => c.id === m.entity_id)) {
+      const hit = String(m.qbo_email || '').split(/[,;]+/).map((x) => x.trim())
+        .find((x) => x.toLowerCase().includes(compact.toLowerCase())) || m.qbo_email;
+      out.push({ id: m.entity_id, name: m.entity?.name || 'Client', matched: `QBO email ${hit}` });
     }
   }
   return out.slice(0, limit);

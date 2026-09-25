@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbp } from '../../lib/money';
+import { yearlyFeeOf } from '../clients/feeRollup';
 
 const font = "'Outfit', sans-serif";
 
@@ -68,12 +69,11 @@ export default function RevenueByFeeEarner() {
           if (s.recurring_status === 'ending') continue;
 
           // House convention (see feeRollup.js): monthly_amount is the
-          // per-cycle charge for BOTH cadences — for annual lines it IS the
-          // yearly fee, and the stored annual_amount is ×12-inflated. This
-          // block previously summed annual_amount and overstated annual-
-          // cadence revenue twelvefold.
+          // monthly equivalent for both cadences; an annual line's yearly fee
+          // is annual_amount. (A July change read monthly_amount as the yearly
+          // fee and understated annual revenue twelvefold.)
           const monthly = s.cadence === 'monthly' ? (Number(s.monthly_amount) || 0) : 0;
-          const annual  = s.cadence === 'annual'  ? (Number(s.monthly_amount) || 0) : 0;
+          const annual  = s.cadence === 'annual'  ? yearlyFeeOf(s) : 0;
           if (monthly === 0 && annual === 0) continue;
 
           const sid = s.service_id || s.description || '';
