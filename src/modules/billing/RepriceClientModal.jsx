@@ -421,10 +421,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
                 description: svc.defaultDescription || svc.label,
                 build: build ? { serviceId: svc.id, values: build.values, description: build.description } : null,
                 cadence: 'monthly', current: 0, next: String(amount), original: 0,
-                // Mid-split, a service added is where the old fee went.
-                ...(prev.some((l) => l.reasonKey === 'split' && isChanged(l))
-                  ? { reasonKey: 'split', reasonTouched: true }
-                  : { reasonKey: 'new_service', reasonTouched: false }),
+                reasonKey: 'new_service', reasonTouched: false,
                 otherText: '', extra: [], originalReason: '',
               }]);
               setAdding(false);

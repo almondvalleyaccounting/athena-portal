@@ -106,9 +106,10 @@ export function componentsOf(line) {
     });
 }
 
-// The bucket of a line's main change — for hints in the modal.
+// The bucket of a line's first reason — for the modal's hint. null when
+// the first reason nets to £0 (all of the change is in extra reasons).
 export function bucketFor(line) {
-  return componentsOf(line)[0]?.bucket || 'other';
+  return componentsOf(line).find((c) => c.primary)?.bucket || null;
 }
 
 // Does this line wait for the client's written acceptance?
