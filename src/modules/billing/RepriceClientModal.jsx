@@ -180,8 +180,8 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
         )}
 
         {step === 'price' && (
-          <div style={{ padding: '12px 22px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, color: error ? '#b91c1c' : '#64748b' }}>
+          <div style={{ padding: '12px 22px', borderTop: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+            <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : '#64748b' }}>
               {error ? `Save failed: ${error}` : missingReason
                 ? 'Give the "Other" reason some words — the client reads it.'
                 : `${changedCount} change${changedCount === 1 ? '' : 's'} · saving stages them for Push uplifts; nothing reaches QBO until pushed.`}
@@ -195,7 +195,7 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
               onClick={saveAndWrite}
               disabled={saving || missingReason || changedCount === 0}
               title={changedCount === 0 ? 'Change a fee first' : ''}
-              style={{ ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (missingReason || changedCount === 0) ? 0.5 : 1 }}
+              style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (missingReason || changedCount === 0) ? 0.5 : 1 }}
             >
               {dirty ? 'Save & write to client' : 'Write to client'} <ArrowRight size={14} />
             </button>
@@ -212,14 +212,17 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px' }}>
       {/* Old vs new */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: 16 }}>
         <PriceCard title="Current" monthly={summary.current} />
         <PriceCard title="New" monthly={summary.next} delta={summary.delta} emphasis />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 16, alignItems: 'start' }}>
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      {/* Table and rail sit side by side on a wide screen and stack on a
+          narrow one; the table scrolls sideways rather than clip a column. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ flex: '999 1 560px', minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ ...th, textAlign: 'left' }}>Service</th>
@@ -305,6 +308,7 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
               })}
             </tbody>
           </table>
+          </div>
           <div style={{ padding: '10px 12px', borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
             {adding
               ? <AddLine qboItems={qboItems} taken={new Set(lines.map((l) => l.serviceId))} onCancel={() => setAdding(false)} onAdd={onAdd} />
@@ -313,7 +317,7 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
         </div>
 
         {/* Right rail: where the change comes from */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: '1 1 280px', maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>Where the change comes from</div>
             <MiniWaterfall summary={summary} />
@@ -526,9 +530,9 @@ function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) 
 
   return (
     <>
-      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '400px minmax(0, 1fr)' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexWrap: 'wrap' }}>
         {/* Compose */}
-        <div style={{ borderRight: '1px solid #e5e7eb', padding: '16px 18px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: '1 1 360px', maxWidth: 440, minWidth: 0, borderRight: '1px solid #e5e7eb', padding: '16px 18px', overflow: 'auto', maxHeight: '100%', display: 'flex', flexDirection: 'column', gap: 12, boxSizing: 'border-box' }}>
           {!info ? <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading contacts…</p> : (
             <>
               <Field label="To">
@@ -567,7 +571,7 @@ function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) 
         </div>
 
         {/* Preview */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: '#f3f5f8', minHeight: 0 }}>
+        <div style={{ flex: '999 1 420px', minWidth: 0, minHeight: 520, height: '100%', display: 'flex', flexDirection: 'column', background: '#f3f5f8' }}>
           <div style={{ padding: '8px 14px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
             <strong style={{ color: '#0f172a' }}>{subject}</strong>
             <span style={{ marginLeft: 8 }}>→ {to || 'no recipient'}</span>
@@ -576,9 +580,9 @@ function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) 
         </div>
       </div>
 
-      <div style={{ padding: '12px 22px', borderTop: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: '12px 22px', borderTop: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={onBack} disabled={!!busy} style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowLeft size={14} /> Back to prices</button>
-        <span style={{ fontSize: 12, color: error ? '#b91c1c' : drafted ? '#15803d' : '#64748b' }}>
+        <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : drafted ? '#15803d' : '#64748b' }}>
           {error || (drafted
             ? `Draft created in ${drafted} with the letter attached — review and send it from Gmail.`
             : `Nothing sends from here. The draft lands in Gmail with the PDF attached. New fees still need approving on Push uplifts${effectiveAt ? ` before ${longDate(effectiveAt)}` : ''}.`)}
@@ -587,7 +591,7 @@ function EmailStep({ entity, clientRows, lines, summary, effectiveAt, onBack }) 
         <button
           onClick={draft}
           disabled={!!busy || !info || !to || !billingId}
-          style={{ ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to) ? 0.5 : 1 }}
+          style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to) ? 0.5 : 1 }}
         >
           <Mail size={14} /> {busy === 'draft' ? 'Creating draft…' : drafted ? 'Create another draft' : 'Create Gmail draft'}
         </button>
