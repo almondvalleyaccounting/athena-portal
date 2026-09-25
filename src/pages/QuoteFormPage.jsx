@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Inp, TabRow, Section, Btn, fmt, G4, C4 } from '../components/ui';
 import DirectorCard from '../components/DirectorCard';
+import ClientNamePicker from '../components/ClientNamePicker';
+import ExistingFeesChoiceModal from '../components/ExistingFeesChoiceModal';
 import useQuoteForm from '../hooks/useQuoteForm';
 import { useAuth } from '../shell/AppShell';
 import { useFeeEngine } from '../contexts/FeeEngineContext';
@@ -55,6 +57,11 @@ export default function QuoteFormPage({ mode = 'new' }) {
   // Existing recurring bill available to seed this quote from (new quotes only).
   const [billingSeed, setBillingSeed] = useState(null); // { lines: [{serviceId, annual, monthly}], unmapped: [], raw }
   const [seedReview, setSeedReview] = useState(null); // string[] after seeding
+  // An existing billed client: ask whether this is really a fee review.
+  // freshQuote = they chose a brand new quote, so nothing compares or
+  // seeds from what the client pays now.
+  const [feesChoice, setFeesChoice] = useState(null); // { entity, monthlyNet, serviceCount, fromUrl }
+  const [freshQuote, setFreshQuote] = useState(false);
 
   // The hook holds all form state, computed values, and builders
   const f = useQuoteForm(D);
@@ -113,6 +120,54 @@ export default function QuoteFormPage({ mode = 'new' }) {
     })();
     return () => { cancelled = true; };
   }, [mode]);
+
+  // Opened for a billed client (?entity=, e.g. from the client record):
+  // offer the fee review before quoting.
+  useEffect(() => {
+    if (mode === 'edit' || fromId || !entityId || freshQuote || sourceClients.length === 0) return;
+    const own = sourceClients.find((c) => c.entity_id === entityId);
+    if (own) setFeesChoice({ entity: { id: own.entity_id, name: own.name }, monthlyNet: own.monthly_net, serviceCount: own.services.length, fromUrl: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId, mode, fromId, sourceClients]);
+
+  // Link the quote to an existing client picked from the name search (or
+  // matched on company number). If we already bill them, ask first.
+  const linkExistingClient = async (row) => {
+    const { data } = await supabase.from('entities').select('*').eq('id', row.id).single();
+    const ent = data || row;
+    setEntity(ent);
+    setFreshQuote(false);
+    f.setClient((c) => ({
+      ...c,
+      name: ent.name || c.name,
+      companyNumber: ent.company_number || c.companyNumber,
+      entityType: ent.type || c.entityType,
+    }));
+    const { data: bills } = await supabase.from('live_billing')
+      .select('monthly_net, services').eq('entity_id', ent.id).eq('status', 'active');
+    const billed = (bills || []).filter((b) => Array.isArray(b.services) && b.services.length > 0);
+    if (billed.length) {
+      setFeesChoice({
+        entity: ent,
+        monthlyNet: billed.reduce((t, b) => t + (Number(b.monthly_net) || 0), 0),
+        serviceCount: billed.reduce((t, b) => t + b.services.length, 0),
+        fromUrl: false,
+      });
+    }
+  };
+
+  // A company number typed for a "prospect" that we already hold.
+  const checkCompanyNumber = async () => {
+    const num = (f.client.companyNumber || '').replace(/\s+/g, '').toUpperCase();
+    if (mode === 'edit' || entity || num.length < 6) return;
+    const { data } = await supabase.from('entities').select('id, name, entity_status')
+      .eq('company_number', num).neq('entity_status', 'nlac').limit(1).maybeSingle();
+    if (data) linkExistingClient(data);
+  };
+
+  const goToFeeReview = (ent) => {
+    navigate(`/manage/billing/change?client=${encodeURIComponent(ent.name || '')}&reprice=${ent.id}`);
+  };
 
   // Auto-detect this client's own bill once maps + source list are loaded.
   useEffect(() => {
@@ -383,7 +438,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
       {error && <div className="text-xs text-red-600 bg-red-50 rounded p-2 mb-3">{error}</div>}
 
       {/* Seed from this client's own recurring bill */}
-      {mode !== 'edit' && !fromId && billingSeed && !seedReview && (
+      {mode !== 'edit' && !fromId && billingSeed && !seedReview && !freshQuote && (
         <div className="bg-ocean-50 border border-ocean-200 rounded-lg p-3 mb-3 flex items-center justify-between gap-3">
           <div className="text-xs text-ocean-800">
             This client has a live recurring bill ({fmt(billingSeed.monthlyNet)}/mo net across {billingSeed.lines.length + (billingSeed.unmapped?.length || 0)} services).
@@ -448,8 +503,19 @@ export default function QuoteFormPage({ mode = 'new' }) {
       {/* Client info */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
         <div className="grid grid-cols-2 min-[900px]:grid-cols-6 gap-2">
-          <input value={f.client.name} onChange={(e) => f.setClient({ ...f.client, name: e.target.value })} placeholder="Client name" className="text-sm border border-gray-200 rounded px-2 py-1.5 col-span-2" />
-          <input value={f.client.companyNumber} onChange={(e) => f.setClient({ ...f.client, companyNumber: e.target.value })} placeholder="Company number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
+          {mode === 'edit' ? (
+            <input value={f.client.name} onChange={(e) => f.setClient({ ...f.client, name: e.target.value })} placeholder="Client name" className="text-sm border border-gray-200 rounded px-2 py-1.5 col-span-2" />
+          ) : (
+            <ClientNamePicker
+              className="col-span-2"
+              value={f.client.name}
+              onChange={(name) => f.setClient((c) => ({ ...c, name }))}
+              onPick={linkExistingClient}
+              linked={entity?.name ? entity : null}
+              onUnlink={() => { setEntity(null); setFreshQuote(false); }}
+            />
+          )}
+          <input value={f.client.companyNumber} onChange={(e) => f.setClient({ ...f.client, companyNumber: e.target.value })} onBlur={checkCompanyNumber} placeholder="Company number" className="text-sm border border-gray-200 rounded px-2 py-1.5" />
           <select value={f.client.entityType} onChange={(e) => f.setClient({ ...f.client, entityType: e.target.value })} className="text-sm border border-gray-200 rounded px-2 py-1.5 bg-white">
             <option value="limited_company">Limited Company</option>
             <option value="sole_trader">Sole Trader</option>
@@ -726,6 +792,22 @@ export default function QuoteFormPage({ mode = 'new' }) {
           </button>
         </div>
       </div>
+      {feesChoice && (
+        <ExistingFeesChoiceModal
+          name={feesChoice.entity.name}
+          monthlyNet={feesChoice.monthlyNet}
+          serviceCount={feesChoice.serviceCount}
+          onReview={() => goToFeeReview(feesChoice.entity)}
+          onFresh={() => { setFreshQuote(true); setFeesChoice(null); }}
+          onClose={() => {
+            // Closing without choosing: opened for this client → go back;
+            // picked from the search → unlink and keep the typed name.
+            if (feesChoice.fromUrl) { navigate(-1); return; }
+            setEntity(null);
+            setFeesChoice(null);
+          }}
+        />
+      )}
     </div>
   );
 }

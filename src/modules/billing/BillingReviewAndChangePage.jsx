@@ -73,6 +73,20 @@ export default function BillingReviewAndChangePage() {
   };
   useEffect(() => { load(); }, []);
 
+  // ?reprice=<entity id> (from New Quote's "Review their existing fees")
+  // opens the single-client modal once the billing rows are in. Dropped
+  // from the URL afterwards so a refresh doesn't reopen it.
+  useEffect(() => {
+    const id = searchParams.get('reprice');
+    if (!id || loading) return;
+    const row = rows.find((r) => r.entity_id === id);
+    if (row) setRepriceFor({ id, name: row.entity?.name || 'Client', excluded: !!row.entity?.fee_raise_excluded });
+    const next = new URLSearchParams(searchParams);
+    next.delete('reprice');
+    setSearchParams(next, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   // Decide whether a service line is in scope for this view.
   const inScope = (s) => {
     if (s.approval_status !== 'approved') return false;
