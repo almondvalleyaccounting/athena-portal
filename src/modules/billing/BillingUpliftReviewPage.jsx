@@ -13,7 +13,7 @@ import GmailConnectionPanel from '../../components/GmailConnectionPanel';
 import { tones } from '../../lib/tokens';
 import { composeUpliftEmail } from './composeUpliftEmail';
 import { splitEmails, resolvePrimaryContact, firstNameOf } from './recipients';
-import { RecordAcceptanceDialog, CloseProposalDialog } from './FeeProposalDialogs';
+import { RecordAcceptanceDialog, CloseProposalDialog, GoLiveDialog } from './FeeProposalDialogs';
 import { longDate } from './repriceReasons';
 import { explainRows, explainBlocked } from './pushOutcome';
 import { fmtGbp } from '../../lib/money';
@@ -41,6 +41,7 @@ export default function BillingUpliftReviewPage() {
   const [emailFor, setEmailFor] = useState(null); // row whose draft email is being previewed
   const [proposals, setProposals] = useState({}); // fee_proposals by id
   const [signOff, setSignOff] = useState(null); // { mode: 'accept'|'decline'|'withdraw', proposal, clientName }
+  const [goLiveFor, setGoLiveFor] = useState(null); // summarised row whose go-live date is being approved
   const [emailsBatch, setEmailsBatch] = useState(null); // list of rows for bulk preview
   // Sort state for the Push table. Default: largest delta first so
   // the user works through the meaningful changes top-down.
@@ -70,6 +71,7 @@ export default function BillingUpliftReviewPage() {
           id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date,
           uplift_review_status, uplift_reviewed_at,
           uplift_email_sent_at, uplift_email_to, uplift_email_skipped,
+          uplift_go_live_date, uplift_go_live_approved_at, uplift_catchup_billing_item_id,
           uplift_gmail_draft_id, uplift_gmail_draft_created_at,
           entity:entities(
             id, name, billing_email, entity_status,
@@ -269,16 +271,45 @@ export default function BillingUpliftReviewPage() {
     await load();
   };
 
+  // Approving means approving the go-live date (fee-proposal
+  // approve_go_live) — this handles only the other moves, and clears any
+  // approved date so a row can't keep one it's no longer approved for.
   const setStatus = async (ids, status) => {
     if (ids.length === 0) return;
+    if (status === 'approved') return approveMany(ids);
     setSaving(true);
     const updates = {
       uplift_review_status: status,
       uplift_reviewed_by: profile?.id || null,
       uplift_reviewed_at: new Date().toISOString(),
+      uplift_go_live_date: null,
+      uplift_go_live_approved_at: null,
+      uplift_go_live_approved_by: null,
     };
     await supabase.from('live_billing').update(updates).in('id', ids);
     setSaving(false);
+    await load();
+  };
+
+  // Approve several at once at their own go-live dates. A row whose date is
+  // already past (it may need a catch-up invoice) or still waiting on the
+  // client is left for approving one at a time.
+  const approveMany = async (ids) => {
+    const list = summarised.filter((r) => ids.includes(r.id));
+    if (list.length === 1) { setGoLiveFor(list[0]); return; }
+    const today = new Date().toISOString().slice(0, 10);
+    const easy = list.filter((r) => !r._held && r._goLive && (!r.qbo_next_run_date || r._goLive >= r.qbo_next_run_date || r._goLive >= today));
+    const left = list.length - easy.length;
+    if (!easy.length) { alert('Approve these one at a time — each needs its go-live date checked.'); return; }
+    if (!window.confirm(`Approve the go-live date for ${easy.length} row${easy.length === 1 ? '' : 's'} as staged?${left ? `\n\n${left} need approving one at a time (date already past, or still with the client).` : ''}`)) return;
+    setSaving(true);
+    let failed = 0;
+    for (const r of easy) {
+      const { data } = await supabase.functions.invoke('fee-proposal', { body: { action: 'approve_go_live', billing_id: r.id, go_live_date: r._goLive } });
+      if (!data?.success) failed++;
+    }
+    setSaving(false);
+    if (failed) alert(`${failed} couldn't be approved — open them one at a time.`);
     await load();
   };
 
@@ -328,7 +359,7 @@ export default function BillingUpliftReviewPage() {
   };
 
   const pushApproved = async (dryRun = false) => {
-    const ready = summarised.filter((r) => r.uplift_review_status === 'approved' && r.qbo_recurring_txn_id);
+    const ready = summarised.filter((r) => r.uplift_review_status === 'approved' && r.uplift_go_live_approved_at && r.qbo_recurring_txn_id);
     const approvedRows = ready.filter((r) => !r._hold);
     const held = ready.length - approvedRows.length;
     if (approvedRows.length === 0) {
@@ -484,7 +515,17 @@ export default function BillingUpliftReviewPage() {
     },
     {
       key: 'status', label: 'Status', width: 100, sortValue: (r) => r.uplift_review_status || 'staged',
-      render: (r) => <StatusChip status={r.uplift_review_status || 'staged'} />,
+      render: (r) => (
+        <div>
+          <StatusChip status={r.uplift_review_status || 'staged'} />
+          {r.uplift_review_status === 'approved' && r.uplift_go_live_date && (
+            <div style={{ fontSize: 10.5, color: '#475569', marginTop: 2 }} title="Approved go-live date">from {r.uplift_go_live_date}</div>
+          )}
+          {r.uplift_catchup_billing_item_id && (
+            <a href="/billing" onClick={(e) => { e.preventDefault(); navigate('/billing'); }} style={{ fontSize: 10.5, color: '#1E4560', display: 'block', marginTop: 2 }}>catch-up invoice (draft)</a>
+          )}
+        </div>
+      ),
     },
     {
       key: 'actions', label: '', width: 175, sortable: false,
@@ -495,7 +536,9 @@ export default function BillingUpliftReviewPage() {
         const status = r.uplift_review_status || 'staged';
         const skipped = !!r.uplift_email_skipped;
         const guard = (fn) => () => { if (!saving) fn(); };
-        const approve = { label: 'Approve', icon: Check, onClick: guard(() => setStatus([r.id], 'approved')) };
+        const approve = r._held
+          ? null
+          : { label: 'Approve go-live…', icon: Check, onClick: guard(() => setGoLiveFor(r)) };
         const preview = !skipped && { label: 'Preview email', icon: Mail, onClick: guard(() => setEmailFor(r)) };
         const emailToggle = skipped
           ? { label: 'Email this client after all', icon: Mail, onClick: guard(() => setEmailSkipped([r.id], false)) }
@@ -558,7 +601,9 @@ export default function BillingUpliftReviewPage() {
           main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset"><RotateCcw size={13} />Back to pending</button>;
           items = [approve, preview, emailToggle, discard];
         } else {
-          main = <button onClick={() => setStatus([r.id], 'approved')} disabled={saving} style={solid} title="Approve for push"><Check size={13} strokeWidth={3} />Approve</button>;
+          main = r._held
+            ? <span style={{ fontSize: 12.5, color: '#92400e', whiteSpace: 'nowrap' }} title="Some changes are still with the client">Waiting for client</span>
+            : <button onClick={() => setGoLiveFor(r)} disabled={saving} style={solid} title="Approve the date the new fees start — required before push"><Check size={13} strokeWidth={3} />Approve go-live</button>;
           items = [preview, emailToggle, reject, discard];
         }
         return (
@@ -581,7 +626,7 @@ export default function BillingUpliftReviewPage() {
             Push uplifts
           </h1>
           <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 0 }}>
-            Approve fee increases, then send to QBO.
+            Approve each client's go-live date, then send to QBO.
           </p>
         </div>
         <button onClick={refreshFromQbo} disabled={refreshing} style={btnSecondary} title="Pull next-run dates from QBO">
@@ -719,6 +764,9 @@ export default function BillingUpliftReviewPage() {
         </div>
       )}
 
+      {goLiveFor && (
+        <GoLiveDialog row={goLiveFor} clientName={goLiveFor.entity?.name || 'Client'} onClose={() => setGoLiveFor(null)} onDone={load} />
+      )}
       {signOff?.mode === 'accept' && (
         <RecordAcceptanceDialog proposal={signOff.proposal} clientName={signOff.clientName} onClose={() => setSignOff(null)} onDone={load} />
       )}

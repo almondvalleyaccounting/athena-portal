@@ -99,6 +99,22 @@ Deno.serve(async (req) => {
       user_id: null, action: "fee_proposal_accepted", entity_type: "fee_proposal", entity_id: p.id,
       detail: { via: "client_link", name, recipient_email: claims.recipient_email, ip: clientIp(req) },
     });
+
+    // Tell the people who push fees (the bell, and tomorrow's digest email).
+    // Best effort: the client's acceptance is recorded whatever happens here.
+    try {
+      const clientName = (p.entity as { name?: string } | null)?.name || "A client";
+      const { data: staff } = await sb.from("staff_profiles").select("id").eq("is_active", true).eq("can_view_client_fees", true);
+      const sourceKey = `fee_proposal_accepted:${p.id}`;
+      const rows = ((staff || []) as Array<{ id: string }>).map((s) => ({
+        recipient_id: s.id, kind: "fee_proposal_accepted",
+        title: `${clientName} accepted the proposed new services`,
+        body: `Accepted online by ${name}. Approve the go-live date on Push uplifts to send it to QuickBooks.`,
+        link_path: "/manage/billing/uplifts", source_key: sourceKey,
+      }));
+      if (rows.length) await sb.from("notifications").insert(rows);
+    } catch (_) { /* never block the acceptance */ }
+
     return json({ ok: true, accepted_at: now });
   }
 

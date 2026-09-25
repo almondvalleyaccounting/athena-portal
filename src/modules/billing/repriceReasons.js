@@ -124,24 +124,35 @@ export function partFor(line) {
 
 // Suggest a reason for a changed line. Staff always see it and can
 // change it; this only saves picking the obvious one every time.
-export function suggestReason({ serviceId, current, next }) {
+//
+// `growth` says what actually moved in the client's pricing drivers since
+// they were last saved — { employees, turnover }: 'up' | 'down' | null.
+// A payroll or accounts rise is put down to growth only when the driver
+// behind it grew; otherwise it reads as inflation, however big the rise
+// (Accona: payroll +11% suggested "more employees" when headcount hadn't
+// changed). Without drivers, a rise over ~10% still reads as growth.
+export function suggestReason({ serviceId, current, next, growth = null }) {
   const cur = Number(current) || 0;
   const neu = Number(next) || 0;
+  const id = serviceId || '';
+  const isPayroll = /payroll|pension|auto.?enrol/i.test(id);
+  const isAccounts = /accounts/i.test(id) && !/management/i.test(id);
+  const known = (k) => growth && growth[k] != null;
   if (cur === 0 && neu > 0) return 'new_service';
   if (cur > 0 && neu === 0) return 'removed';
   if (neu < cur) {
-    if (/payroll|pension|auto.?enrol/i.test(serviceId || '')) return 'fewer_employees';
-    if (/bookkeep|vat/i.test(serviceId || '')) return 'fewer_transactions';
-    if (/accounts/i.test(serviceId || '')) return 'turnover_down';
+    if (isPayroll) return known('employees') && growth.employees !== 'down' ? 'less_work' : 'fewer_employees';
+    if (/bookkeep|vat/i.test(id)) return 'fewer_transactions';
+    if (isAccounts) return known('turnover') && growth.turnover !== 'down' ? 'less_work' : 'turnover_down';
     return 'less_work';
   }
-  if (/confirmation statement|companies house/i.test(serviceId || '')) return 'ch_fee';
-  if (isCostPassThrough(serviceId)) return 'software';
-  if (/payroll|pension|auto.?enrol/i.test(serviceId || '')) return cur > 0 && neu / cur > 1.1 ? 'employees' : 'inflation';
-  if (/bookkeep|vat/i.test(serviceId || '')) return cur > 0 && neu / cur > 1.1 ? 'transactions' : 'inflation';
-  // A rise within ~10% reads as inflation; beyond it, growth.
-  if (cur > 0 && neu / cur > 1.1) return 'turnover';
-  return 'inflation';
+  if (/confirmation statement|companies house/i.test(id)) return 'ch_fee';
+  if (isCostPassThrough(id)) return 'software';
+  const bigRise = cur > 0 && neu / cur > 1.1;
+  if (isPayroll) return known('employees') ? (growth.employees === 'up' ? 'employees' : 'inflation') : (bigRise ? 'employees' : 'inflation');
+  if (isAccounts) return known('turnover') ? (growth.turnover === 'up' ? 'turnover' : 'inflation') : (bigRise ? 'turnover' : 'inflation');
+  if (/bookkeep|vat/i.test(id)) return bigRise ? 'transactions' : 'inflation';
+  return bigRise ? 'complexity' : 'inflation';
 }
 
 // Restore what a line was saved with, so reopening the modal shows the

@@ -135,6 +135,127 @@ export function CloseProposalDialog({ proposal, mode, clientName, onClose, onDon
   );
 }
 
+// Approve the date the new fees start — required before anything is
+// pushed (sql/303). If the date is already past, the template has invoiced
+// at the old fee since, and this offers a one-off catch-up invoice for the
+// difference, which needs a reason.
+const CATCHUP_REASONS = [
+  { key: 'approval_late', label: 'Client approval not received on time' },
+  { key: 'template_late', label: 'Invoice template not updated on time' },
+  { key: 'other', label: 'Other' },
+];
+
+export function GoLiveDialog({ row, clientName, onClose, onDone }) {
+  const [date, setDate] = useState(row._goLive || row.qbo_next_run_date || todayUk());
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [raise, setRaise] = useState(true);
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return undefined;
+    let live = true;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const data = await call({ action: 'preview_go_live', billing_id: row.id, go_live_date: date });
+        if (live) { setPreview(data.catchup); setError(null); }
+      } catch (e) {
+        if (live) { setPreview(null); setError(e.message || String(e)); }
+      } finally {
+        if (live) setLoading(false);
+      }
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [date, row.id]);
+
+  const missed = preview?.missed_invoices?.length || 0;
+  const owed = preview && preview.net > 0;
+  const credit = preview && preview.net < 0;
+  const wantsCatchup = owed && raise;
+  const ok = preview && !loading && (!wantsCatchup || (reason && (reason !== 'other' || note.trim().length > 2)));
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await call({
+        action: 'approve_go_live', billing_id: row.id, go_live_date: date,
+        ...(wantsCatchup ? { catchup: { reason, note: note.trim() || null } } : {}),
+      });
+      onDone?.();
+      onClose();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const gbp = (n) => `£${(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return (
+    <Shell title={`Approve go-live — ${clientName}`} onClose={onClose}>
+      <p style={{ fontSize: 13, color: '#475569', margin: '0 0 12px', lineHeight: 1.5 }}>
+        The new fees reach QuickBooks only once this date is approved.
+      </p>
+      <Label>New fees start from</Label>
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
+      <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 8, lineHeight: 1.5 }}>
+        {loading ? 'Checking the invoice template…'
+          : !preview ? ''
+          : !preview.next_run ? "The template's next invoice date isn't known — refresh from QBO on Push uplifts first if the date is in the past."
+          : missed === 0
+            ? (date <= preview.next_run
+              ? `The ${longDate(preview.next_run)} invoice will be the first at the new fee.`
+              : `Push after the ${longDate(preview.next_run)} invoice has been raised — that one still goes out at the current fee.`)
+            : `${missed} invoice${missed === 1 ? ' has' : 's have'} already gone out at the current fee since then (${preview.period}).`}
+      </div>
+
+      {missed > 0 && owed && (
+        <div style={{ marginTop: 14, padding: '12px 14px', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 8 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}>
+            <input type="checkbox" checked={raise} onChange={(e) => setRaise(e.target.checked)} />
+            Raise a one-off catch-up invoice for {gbp(preview.net)} + VAT
+          </label>
+          <div style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0 24px' }}>
+            {preview.lines.map((l) => `${l.service}: ${missed} × ${gbp(l.delta)}`).join(' · ')}. Created as a draft in Billing to check and push.
+          </div>
+          {raise && (
+            <div style={{ margin: '10px 0 0 24px' }}>
+              <Label>Why wasn't it billed on time?</Label>
+              {CATCHUP_REASONS.map((r) => (
+                <label key={r.key} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 4, cursor: 'pointer' }}>
+                  <input type="radio" name="catchup-reason" checked={reason === r.key} onChange={() => setReason(r.key)} />
+                  {r.label}
+                </label>
+              ))}
+              {reason === 'other' && (
+                <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Explain…" style={{ ...input, marginTop: 6 }} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {missed > 0 && credit && (
+        <p style={{ marginTop: 12, fontSize: 12.5, color: '#92400e' }}>
+          The client has been over-billed {gbp(Math.abs(preview.net))} + VAT since then — raise a credit note in QuickBooks.
+        </p>
+      )}
+
+      {error && <p style={{ fontSize: 12.5, color: '#b91c1c', margin: '12px 0 0' }}>{error}</p>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+        <button onClick={onClose} disabled={busy} style={BTN.secondary.md}>Cancel</button>
+        <button onClick={submit} disabled={!ok || busy} style={{ ...BTN.primary.md, opacity: ok ? 1 : 0.5, cursor: ok ? 'pointer' : 'not-allowed' }}>
+          {busy ? 'Approving…' : wantsCatchup ? 'Approve & raise catch-up' : 'Approve go-live'}
+        </button>
+      </div>
+    </Shell>
+  );
+}
+
 function Shell({ title, onClose, children }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, fontFamily: font, padding: 16 }} onClick={onClose}>

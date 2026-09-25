@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
 import BillingTabs from './BillingTabs';
 import RepriceClientModal from './RepriceClientModal';
+import ClientNamePicker from '../../components/ClientNamePicker';
 import SearchInput from '../../components/SearchInput';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
@@ -61,7 +62,7 @@ export default function BillingReviewAndChangePage() {
     setLoading(true);
     const { data } = await supabase
       .from('live_billing')
-      .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status, fee_raise_excluded)')
+      .select('id, entity_id, services, qbo_recurring_txn_id, qbo_next_run_date, entity:entities(id, name, entity_status, fee_raise_excluded)')
       .eq('status', 'active')
       .order('id', { ascending: false });
     setRows((data || []).filter((r) => (r.entity?.entity_status || 'active') !== 'nlac'));
@@ -77,6 +78,8 @@ export default function BillingReviewAndChangePage() {
     if (!id || loading) return;
     const row = rows.find((r) => r.entity_id === id);
     if (row) setRepriceFor({ id, name: row.entity?.name || 'Client', excluded: !!row.entity?.fee_raise_excluded });
+    // A client with no recurring bill can still be reviewed (from a quote).
+    else supabase.from('entities').select('id, name').eq('id', id).maybeSingle().then(({ data }) => { if (data) setRepriceFor({ id: data.id, name: data.name }); });
     const next = new URLSearchParams(searchParams);
     next.delete('reprice');
     setSearchParams(next, { replace: true });
@@ -542,6 +545,7 @@ export default function BillingReviewAndChangePage() {
           </span>
         )}
         <div style={{ flex: 1 }} />
+        <ReviewClientButton onPick={(e) => setRepriceFor({ id: e.id, name: e.name })} />
         <button onClick={() => setAddOpen({})} disabled={saving} style={btnAction}>
           <Plus size={13} /> Add service
         </button>
@@ -771,6 +775,7 @@ export default function BillingReviewAndChangePage() {
           rows={rows}
           profile={profile}
           onSaveRow={saveRepricedRow}
+          onRowCreated={(row) => setRows((prev) => (prev.some((r) => r.id === row.id) ? prev : [...prev, { ...row, entity: { id: repriceFor.id, name: repriceFor.name } }]))}
           onClose={() => setRepriceFor(null)}
           onOpenClient={() => navigate(`/clients/${repriceFor.id}`)}
         />
@@ -1095,6 +1100,23 @@ function AddServiceModal({ entities, defaults, onClose, onApply, saving }) {
         </button>
       </div>
     </ModalShell>
+  );
+}
+
+// Open the fee review for any client — billed or not — by searching.
+function ReviewClientButton({ onPick }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  if (!open) {
+    return <button onClick={() => setOpen(true)} style={btnAction} title="Open the fee review for a client, including one with no recurring bill yet">Review a client…</button>;
+  }
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 280 }}>
+      <div style={{ flex: 1 }}>
+        <ClientNamePicker value={name} onChange={setName} onPick={(e) => { setOpen(false); setName(''); onPick(e); }} />
+      </div>
+      <button onClick={() => { setOpen(false); setName(''); }} style={btnAction}>Cancel</button>
+    </div>
   );
 }
 

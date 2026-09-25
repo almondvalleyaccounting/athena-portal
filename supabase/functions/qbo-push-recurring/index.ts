@@ -173,6 +173,22 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // The go-live date must have been approved (fee-proposal
+    // approve_go_live, sql/303), and every line going now must still carry
+    // that date — re-staging a line after approval voids it.
+    const approvedDate = billing.uplift_go_live_date ? String(billing.uplift_go_live_date).slice(0, 10) : "";
+    if (!billing.uplift_go_live_approved_at || !approvedDate) {
+      skipped++;
+      results.push({ billing_id: billing.id, entity: entityName, status: "skipped", reason: "go-live date not approved — approve it on Push uplifts" });
+      continue;
+    }
+    const offDate = pending.filter(({ s }) => String(s.pending_effective_at || "").slice(0, 10) !== approvedDate);
+    if (offDate.length) {
+      skipped++;
+      results.push({ billing_id: billing.id, entity: entityName, status: "skipped", reason: `${offDate.length} line${offDate.length === 1 ? "" : "s"} changed since the go-live date was approved — approve it again` });
+      continue;
+    }
+
     try {
       // 2. Fetch current template from QBO. The recurringtransaction
       //    endpoint can return either { Invoice: {...} } or
@@ -441,7 +457,10 @@ Deno.serve(async (req) => {
         annual_total: Math.round(rowAnnualTotal * 100) / 100,
         last_synced_qbo: new Date().toISOString(),
         qbo_sync_status: "synced",
-        ...(stillStaged ? {} : { uplift_review_status: null, uplift_reviewed_by: null, uplift_reviewed_at: null }),
+        ...(stillStaged ? {} : {
+          uplift_review_status: null, uplift_reviewed_by: null, uplift_reviewed_at: null,
+          uplift_go_live_date: null, uplift_go_live_approved_at: null, uplift_go_live_approved_by: null,
+        }),
       }).eq("id", billing.id);
 
       // A fee change is "pushed" once none of its lines is still staged on

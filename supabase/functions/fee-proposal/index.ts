@@ -30,6 +30,22 @@
 //       Closes it. clear_pending removes the staged amounts it tagged, so the
 //       client's current fees stand.
 //
+//   { action: "preview_go_live" | "approve_go_live", billing_id, go_live_date,
+//     catchup?: { reason: "approval_late"|"template_late"|"other", note? } }
+//       The go-live date must be approved before anything is pushed
+//       (sql/303). Approving writes the date onto every staged line of the
+//       row and records who and when. If the date is already past — the
+//       template has invoiced at the old fee since — preview says how much
+//       was missed, and approve can raise a draft one-off catch-up invoice
+//       for it (Billing module), which needs a reason.
+//
+//   { action: "mark_sent", proposal_id, sent_from }
+//       Records that the email went out from Athena, and from which inbox.
+//
+//   { action: "ensure_billing_row", entity_id }
+//       A client with no recurring bill yet gets an empty one (no QBO
+//       template) so the fee review can stage fees against it.
+//
 //   { action: "save_drivers", entity_id, drivers: { turnover, accounts_type,
 //     properties, directors, monthly_employees, weekly_employees } }
 //       Keeps the client's pricing drivers (sql/301) so the next fee review
@@ -84,6 +100,32 @@ Deno.serve(async (req) => {
     case "decline":
     case "withdraw": return await close(sb, body, userId, audit, body.action === "decline" ? "declined" : "withdrawn");
     case "save_drivers": return await saveDrivers(sb, body, userId);
+    case "preview_go_live": return await goLive(sb, body, userId, false);
+    case "approve_go_live": return await goLive(sb, body, userId, true);
+    case "mark_sent": {
+      const id = String(body.proposal_id || "");
+      if (!id) return json({ success: false, error: "proposal_id required" }, 400);
+      const { error } = await sb.from("fee_proposals").update({
+        sent_at: new Date().toISOString(), sent_by: userId, sent_from: body.sent_from ? String(body.sent_from) : null, updated_at: new Date().toISOString(),
+      }).eq("id", id);
+      if (error) return json({ success: false, error: error.message }, 500);
+      await audit("fee_proposal_sent", id, { sent_from: body.sent_from || null });
+      return json({ success: true });
+    }
+    case "ensure_billing_row": {
+      const entityId = String(body.entity_id || "");
+      if (!entityId) return json({ success: false, error: "entity_id required" }, 400);
+      const { data: existing } = await sb.from("live_billing").select("*").eq("entity_id", entityId).eq("status", "active").limit(1);
+      if (existing && existing.length) return json({ success: true, row: existing[0], created: false });
+      const { data: row, error } = await sb.from("live_billing").insert({
+        entity_id: entityId, billing_type: "recurring", status: "active", services: [],
+        monthly_net: 0, monthly_vat: 0, monthly_gross: 0, annual_total: 0,
+        review_reason: "Started from the fee review — no QuickBooks template yet",
+      }).select("*").single();
+      if (error) return json({ success: false, error: error.message }, 500);
+      await sb.from("audit_log").insert({ user_id: userId, action: "live_billing_started_from_fee_review", entity_type: "live_billing", entity_id: row.id, detail: { entity_id: entityId } });
+      return json({ success: true, row, created: true });
+    }
     case "set_draft": {
       const id = String(body.proposal_id || ""), draft = String(body.gmail_draft_id || "");
       if (!id || !draft) return json({ success: false, error: "proposal_id and gmail_draft_id required" }, 400);
@@ -274,4 +316,129 @@ async function saveDrivers(sb: Sb, b: Record<string, unknown>, userId: string | 
   const { error } = await sb.from("client_pricing_drivers").upsert(row, { onConflict: "entity_id" });
   if (error) return json({ success: false, error: error.message }, 500);
   return json({ success: true });
+}
+
+const CATCHUP_REASON_LABEL: Record<string, string> = {
+  approval_late: "client approval not received on time",
+  template_late: "invoice template not updated on time",
+  other: "other",
+};
+
+// Invoices the template has already raised on or after the go-live date:
+// step back a month at a time from its next run. Recurring templates here
+// are monthly (qbo-pull stores monthly amounts); a missing next run means
+// the template can't be read, so nothing is assumed missed.
+function missedInvoices(nextRun: string | null, goLiveDate: string): string[] {
+  if (!nextRun || !ISO_DATE.test(nextRun)) return [];
+  const out: string[] = [];
+  const d = new Date(`${nextRun}T00:00:00Z`);
+  for (let i = 0; i < 36; i++) {
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    const iso = d.toISOString().slice(0, 10);
+    if (iso < goLiveDate) break;
+    out.unshift(iso);
+  }
+  return out;
+}
+
+async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null, commit: boolean) {
+  const billingId = String(b.billing_id || "");
+  const date = String(b.go_live_date || "");
+  if (!billingId) return json({ success: false, error: "billing_id required" }, 400);
+  if (!ISO_DATE.test(date)) return json({ success: false, error: "go_live_date must be YYYY-MM-DD" }, 400);
+
+  const { data: row } = await sb.from("live_billing")
+    .select("id, entity_id, services, qbo_next_run_date").eq("id", billingId).maybeSingle();
+  if (!row) return json({ success: false, error: "Billing row not found" }, 404);
+  const services = ((row.services as Service[]) || []);
+  const staged = services.filter((s) => s.pending_monthly_amount != null);
+  if (!staged.length) return json({ success: false, error: "Nothing is staged on this row" }, 400);
+
+  // Fee-review lines must have gone to the client, and new services must be
+  // accepted, before a date can be approved — so a catch-up covers the whole
+  // change and nothing approved is still waiting on the client.
+  const pids = [...new Set(staged.map((s) => s.pending_proposal_id).filter(Boolean).map(String))];
+  const { data: props } = pids.length ? await sb.from("fee_proposals").select("id, status").in("id", pids) : { data: [] };
+  const statusOf = Object.fromEntries(((props || []) as Service[]).map((p) => [String(p.id), String(p.status)]));
+  const waiting = staged.filter((s) => {
+    const st = s.pending_proposal_id ? statusOf[String(s.pending_proposal_id)] : null;
+    if (Array.isArray(s.pending_changes) && !(st === "issued" || st === "accepted")) return true;
+    return !!s.pending_needs_acceptance && st !== "accepted";
+  });
+  if (waiting.length) {
+    return json({ success: false, error: "Some changes are still with the client (not sent yet, or new services not accepted). Approve the go-live date once they are." }, 409);
+  }
+
+  // What was missed since the go-live date, line by line.
+  const nextRun = row.qbo_next_run_date ? String(row.qbo_next_run_date).slice(0, 10) : null;
+  const missed = missedInvoices(nextRun, date);
+  const { data: adhoc } = await sb.from("qbo_service_items").select("service_id, qbo_item_id").eq("is_adhoc", true);
+  const labelFor = (s: Service) => {
+    const hit = ((adhoc || []) as Service[]).find((a) => s.qbo_item_id && String(a.qbo_item_id) === String(s.qbo_item_id));
+    const name = String(s.service_id || "");
+    return hit ? String(hit.service_id) : (name.includes(":") ? name.slice(name.lastIndexOf(":") + 1) : name);
+  };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const fmtMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+  const period = missed.length ? (missed.length === 1 ? fmtMonth(missed[0]) : `${fmtMonth(missed[0])} to ${fmtMonth(missed[missed.length - 1])}`) : "";
+  const lines = missed.length ? staged.map((s) => {
+    const delta = r2((Number(s.pending_monthly_amount) || 0) - (Number(s.monthly_amount) || 0));
+    return { service: labelFor(s), delta, net: r2(delta * missed.length) };
+  }).filter((l) => l.net !== 0) : [];
+  const net = r2(lines.reduce((t, l) => t + l.net, 0));
+  const vat = r2(net * 0.2);
+  const catchup = { next_run: nextRun, missed_invoices: missed, period, lines, net, vat, gross: r2(net + vat) };
+
+  if (!commit) return json({ success: true, catchup });
+
+  // Approve: the date goes on every staged line, and the row is approved.
+  const now = new Date().toISOString();
+  const nextServices = services.map((s) => (s.pending_monthly_amount != null ? { ...s, pending_effective_at: date } : s));
+  const upd: Record<string, unknown> = {
+    services: nextServices,
+    uplift_review_status: "approved", uplift_reviewed_by: userId, uplift_reviewed_at: now,
+    uplift_go_live_date: date, uplift_go_live_approved_at: now, uplift_go_live_approved_by: userId,
+  };
+
+  let billingItemId: string | null = null;
+  const c = (b.catchup && typeof b.catchup === "object") ? b.catchup as Record<string, unknown> : null;
+  if (c) {
+    const reason = String(c.reason || "");
+    const note = c.note ? String(c.note).trim() : "";
+    if (!CATCHUP_REASON_LABEL[reason]) return json({ success: false, error: "Pick why the catch-up is needed" }, 400);
+    if (reason === "other" && note.length < 3) return json({ success: false, error: "Explain the reason when you pick Other" }, 400);
+    if (!(net > 0)) return json({ success: false, error: "Nothing was under-billed, so there is no catch-up to raise" }, 400);
+    const { data: ent } = await sb.from("entities").select("qbo_customer_id").eq("id", row.entity_id).maybeSingle();
+    const why = reason === "other" ? note : CATCHUP_REASON_LABEL[reason];
+    const itemLines = lines.filter((l) => l.net > 0).map((l) => {
+      const lv = r2(l.net * 0.2);
+      return {
+        service: l.service,
+        description: `${l.service}: new fee from ${period} (${missed.length} month${missed.length === 1 ? "" : "s"} at +£${l.delta.toFixed(2)}), not yet billed — ${why}`,
+        net: l.net, vat: lv, gross: r2(l.net + lv), qty: 1, rate: l.net,
+      };
+    });
+    const inet = r2(itemLines.reduce((t, l) => t + l.net, 0));
+    const ivat = r2(itemLines.reduce((t, l) => t + l.vat, 0));
+    const { data: bi, error: biErr } = await sb.from("billing_items").insert({
+      entity_id: row.entity_id,
+      service: itemLines.length > 1 ? `${itemLines[0].service} +${itemLines.length - 1} more` : itemLines[0].service,
+      description: `Catch-up: new fees from ${period}`,
+      net_amount: inet, vat_amount: ivat, gross_amount: r2(inet + ivat),
+      status: "draft", created_by: userId, lines: itemLines,
+      qbo_customer_id: ent?.qbo_customer_id || null,
+      catchup_reason: reason, catchup_note: note || null, catchup_for_billing_id: row.id,
+    }).select("id").single();
+    if (biErr) return json({ success: false, error: `Catch-up invoice: ${biErr.message}` }, 500);
+    billingItemId = bi.id as string;
+    upd.uplift_catchup_billing_item_id = billingItemId;
+  }
+
+  const { error } = await sb.from("live_billing").update(upd).eq("id", row.id);
+  if (error) return json({ success: false, error: error.message }, 500);
+  await sb.from("audit_log").insert({
+    user_id: userId, action: "uplift_go_live_approved", entity_type: "live_billing", entity_id: row.id,
+    detail: { go_live_date: date, next_run: nextRun, missed_invoices: missed.length, catchup_billing_item_id: billingItemId, catchup_net: billingItemId ? net : 0 },
+  });
+  return json({ success: true, catchup, billing_item_id: billingItemId });
 }

@@ -32,7 +32,7 @@ const serif = "'Playfair Display', serif";
 // summary table, the letter as a PDF with the waterfall, and a Gmail
 // draft with the PDF attached. Nothing is sent from here — the draft
 // is finished and sent in Gmail, as on Push uplifts.
-export default function RepriceClientModal({ entity, rows, profile, onSaveRow, onClose, onOpenClient }) {
+export default function RepriceClientModal({ entity, rows, profile, onSaveRow, onRowCreated, onClose, onOpenClient }) {
   const clientRows = useMemo(() => rows.filter((r) => r.entity_id === entity.id), [rows, entity.id]);
 
   const [step, setStep] = useState('price'); // price | email
@@ -164,7 +164,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
       if (st.monthly <= l.current) { kept += 1; return l; }
       raised += 1;
       const out = { ...l, next: String(st.monthly) };
-      if (!out.reasonTouched) out.reasonKey = suggestReason({ serviceId: l.serviceId, current: l.current, next: st.monthly });
+      if (!out.reasonTouched) out.reasonKey = suggestReason({ serviceId: l.serviceId, current: l.current, next: st.monthly, growth });
       return out;
     });
     setLines(next);
@@ -175,6 +175,8 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   };
 
   const summary = useMemo(() => summarise(lines.map(asNumbers)), [lines]);
+  // The template's next invoice (earliest across the client's rows).
+  const nextRun = clientRows.map((r) => r.qbo_next_run_date).filter(Boolean).sort()[0] || null;
   // The lines the letter and email describe: a new service still at £0
   // hasn't been priced, so it isn't on them.
   const letterLines = useMemo(() => lines.map(asNumbers).filter((l) => !(l.isNew && !(l.next > 0))), [lines]);
@@ -182,6 +184,17 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   // Notice or proposal follows from the changes (repriceReasons: only a
   // new service needs the client's agreement).
   const kind = kindOf(summary);
+  // What moved in the drivers since they were last saved (or first loaded):
+  // lets a reason say "more employees" only when there are more employees.
+  const growth = useMemo(() => {
+    const base = driversSaved ? JSON.parse(driversSaved) : (driversInitial.current ? driverRecord(driversInitial.current) : null);
+    if (!base) return null;
+    const now = driverRecord(drivers);
+    const dir = (a, b) => (a == null || b == null ? null : b > a ? 'up' : b < a ? 'down' : 'same');
+    const staff = (r) => (r.monthly_employees == null && r.weekly_employees == null ? null : (r.monthly_employees || 0) + (r.weekly_employees || 0));
+    return { employees: dir(staff(base), staff(now)), turnover: dir(base.turnover, now.turnover) };
+  }, [drivers, driversSaved]);
+
   // Drivers count as unsaved once staff have entered or changed any.
   const driversDirty = feeDefaults != null && JSON.stringify(driverRecord(drivers)) !== (driversSaved ?? JSON.stringify(driverRecord(driversInitial.current || drivers)));
   const dirty = useMemo(() => lines.some((l) => lineDirty(l)) || effectiveAt !== initialEffective(clientRows) || driversDirty,
@@ -193,7 +206,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
     const next = { ...l, ...patch };
     // Re-suggest while the reason is still ours; once staff pick one it stays.
     if ('next' in patch && !next.reasonTouched) {
-      next.reasonKey = suggestReason({ serviceId: next.serviceId, current: next.current, next: Number(next.next) || 0 });
+      next.reasonKey = suggestReason({ serviceId: next.serviceId, current: next.current, next: Number(next.next) || 0, growth });
     }
     return next;
   }));
@@ -234,7 +247,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
         next = [...next, {
           key: `new-${Date.now()}`, rowId: row.id, idx: null, isNew: true,
           serviceId: service.lineServiceId, qboItemId: service.qboItemId, feeEngineServiceId: service.id,
-          description: service.defaultDescription || service.label, build: null,
+          description: service.defaultDescription || service.plainLabel || service.label, build: null,
           cadence: 'monthly', current: 0, next: String(amt), original: 0,
           reasonKey: 'split', reasonTouched: true, otherText: '', extra: [], originalReason: '',
           splitId, splitFrom: sourceName,
@@ -270,15 +283,25 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
         const when = `saved ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
         setDriverSources((prev) => ({ ...prev, turnover: when, accountsType: when, directors: when, employees: when }));
       }
+      // A client with no recurring bill yet: make an empty one to stage on.
+      let rowsNow = clientRows;
+      let working = lines;
+      if (lines.some((l) => l.rowId === NEW_ROW)) {
+        const { data, error: fnErr } = await supabase.functions.invoke('fee-proposal', { body: { action: 'ensure_billing_row', entity_id: entity.id } });
+        if (fnErr || !data?.success) throw new Error(`Couldn't start a recurring bill: ${data?.error || fnErr?.message || 'unknown error'}`);
+        rowsNow = [...clientRows.filter((r) => r.id !== data.row.id), data.row];
+        working = lines.map((l) => (l.rowId === NEW_ROW ? { ...l, rowId: data.row.id } : l));
+        onRowCreated?.(data.row);
+      }
       const byRow = new Map();
-      for (const l of lines) {
+      for (const l of working) {
         if (!byRow.has(l.rowId)) byRow.set(l.rowId, []);
         byRow.get(l.rowId).push(l);
       }
       const stamp = new Date().toISOString();
       const saved = new Map(); // rowId → services as written
       for (const [rowId, rowLines] of byRow) {
-        const row = clientRows.find((r) => r.id === rowId);
+        const row = rowsNow.find((r) => r.id === rowId);
         if (!row) continue;
         const services = [...(row.services || [])];
         let touched = false;
@@ -326,7 +349,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
       // Re-read the lines from what was written, so a new service is now
       // an existing line (a second Save must not add it twice) and the
       // dirty check starts again from the saved state.
-      setLines(initialLines(clientRows.map((r) => (saved.has(r.id) ? { ...r, services: saved.get(r.id) } : r))));
+      setLines(initialLines(rowsNow.map((r) => (saved.has(r.id) ? { ...r, services: saved.get(r.id) } : r))));
       return true;
     } catch (e) {
       setError(e.message || String(e));
@@ -391,6 +414,10 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             setEffectiveAt={setEffectiveAt}
             setLine={setLine}
             standards={standards}
+            nextRun={nextRun}
+            noBill={clientRows.length === 0}
+            entityId={entity.id}
+            onStartFromQuote={(newLines) => setLines((prev) => [...prev, ...newLines])}
             drivers={drivers}
             setDrivers={(patch) => { setDrivers((d) => ({ ...d, ...patch })); setSeedNote(null); }}
             driverSources={driverSources}
@@ -413,12 +440,11 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             priceFor={(svc) => (feeDefaults ? standardFor(svc.id, drivers, feeDefaults) : null)}
             feeDefaults={feeDefaults}
             onAdd={(svc, amount, build) => {
-              const target = clientRows.find((r) => r.qbo_recurring_txn_id) || clientRows[0];
-              if (!target) return;
+              const target = clientRows.find((r) => r.qbo_recurring_txn_id) || clientRows[0] || { id: NEW_ROW };
               setLines((prev) => [...prev, {
                 key: `new-${Date.now()}`, rowId: target.id, idx: null, isNew: true,
                 serviceId: svc.lineServiceId, qboItemId: svc.qboItemId, feeEngineServiceId: svc.id,
-                description: svc.defaultDescription || svc.label,
+                description: svc.defaultDescription || svc.plainLabel || svc.label,
                 build: build ? { serviceId: svc.id, values: build.values, description: build.description } : null,
                 cadence: 'monthly', current: 0, next: String(amount), original: 0,
                 reasonKey: 'new_service', reasonTouched: false,
@@ -431,6 +457,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
           <EmailStep
             entity={entity}
             kind={kind}
+            profile={profile}
             info={recipient}
             clientRows={clientRows}
             lines={letterLines}
@@ -482,7 +509,8 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
 
 function PriceStep({
   lines, summary, effectiveAt, setEffectiveAt, setLine,
-  standards, drivers, setDrivers, driverSources, relevant, standardsReady, onSeedStandard, seedNote,
+  standards, drivers, setDrivers, driverSources, relevant, standardsReady, onSeedStandard, seedNote, nextRun,
+  noBill, entityId, onStartFromQuote,
   onRemoveNew, adding, setAdding, feServices, priceFor, feeDefaults, onAdd,
   splitting, setSplitting, onSplit, onRemoveSplit,
 }) {
@@ -490,6 +518,7 @@ function PriceStep({
     <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px' }}>
       {/* Old vs new */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {noBill && <NoBillBanner entityId={entityId} services={feServices} onStart={onStartFromQuote} />}
         <PriceCard title="Current" monthly={summary.current} />
         <PriceCard title="New" monthly={summary.next} delta={summary.delta} emphasis />
       </div>
@@ -504,7 +533,7 @@ function PriceStep({
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '999 1 560px', minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 13 }}>
+          <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ ...th, textAlign: 'left' }}>Service</th>
@@ -513,7 +542,6 @@ function PriceStep({
                 <th style={th}>New / mo</th>
                 <th style={th}>Change</th>
                 <th style={{ ...th, textAlign: 'left', width: 230 }}>Reason</th>
-                <th style={{ ...th, width: 34 }} />
               </tr>
             </thead>
             <tbody>
@@ -529,6 +557,21 @@ function PriceStep({
                       <div style={{ fontWeight: 500, color: '#0f172a' }}>{serviceName(l.serviceId)}</div>
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>
                         {l.isNew ? 'New service' : l.cadence === 'annual' ? 'Annual service · shown per month' : l.serviceId.includes(':') ? l.serviceId.split(':')[0] : ''}
+                      </div>
+                      <div style={{ display: 'flex', gap: 2, marginTop: 3, marginLeft: -4 }}>
+                        {!l.isNew && n.current > 0 && (
+                          <IconBtn title="Split part of this fee out into another service" onClick={() => setSplitting(splitting === l.key ? null : l.key)}><Scissors size={13} /></IconBtn>
+                        )}
+                        {l.isNew ? (
+                          <IconBtn title={l.splitId ? 'Undo this split' : 'Drop this new service'} onClick={() => onRemoveNew(l.key)}><X size={13} /></IconBtn>
+                        ) : changed ? (
+                          <IconBtn title="Back to the current fee" onClick={() => {
+                            (l.extra || []).filter((e) => e.splitId).forEach((e) => onRemoveSplit(e.splitId));
+                            setLine(l.key, { next: String(l.current), reasonTouched: false, extra: [] });
+                          }}><RotateCcw size={13} /></IconBtn>
+                        ) : (
+                          <IconBtn title="Remove this service (fee to £0)" onClick={() => setLine(l.key, { next: '0' })}><Trash2 size={13} /></IconBtn>
+                        )}
                       </div>
                       {l.build && (
                         <>
@@ -602,25 +645,10 @@ function PriceStep({
                         </>
                       ) : <span style={{ fontSize: 12, color: '#cbd5e1' }}>No change</span>}
                     </td>
-                    <td style={{ ...td, padding: '4px 6px', whiteSpace: 'nowrap' }}>
-                      {!l.isNew && n.current > 0 && (
-                        <IconBtn title="Split part of this fee out into another service" onClick={() => setSplitting(splitting === l.key ? null : l.key)}><Scissors size={13} /></IconBtn>
-                      )}
-                      {l.isNew ? (
-                        <IconBtn title={l.splitId ? 'Undo this split' : 'Drop this new service'} onClick={() => onRemoveNew(l.key)}><X size={13} /></IconBtn>
-                      ) : changed ? (
-                        <IconBtn title="Back to the current fee" onClick={() => {
-                          (l.extra || []).filter((e) => e.splitId).forEach((e) => onRemoveSplit(e.splitId));
-                          setLine(l.key, { next: String(l.current), reasonTouched: false, extra: [] });
-                        }}><RotateCcw size={13} /></IconBtn>
-                      ) : (
-                        <IconBtn title="Remove this service (fee to £0)" onClick={() => setLine(l.key, { next: '0' })}><Trash2 size={13} /></IconBtn>
-                      )}
-                    </td>
                   </tr>
                   {splitting === l.key && (
                     <tr style={{ background: '#f8fafc' }}>
-                      <td colSpan={7} style={{ padding: '10px 12px', borderTop: '1px dashed #e2e8f0' }}>
+                      <td colSpan={6} style={{ padding: '10px 12px', borderTop: '1px dashed #e2e8f0' }}>
                         <SplitForm
                           source={l}
                           others={lines.filter((o) => o.key !== l.key)}
@@ -658,6 +686,15 @@ function PriceStep({
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 5 }}>New fees apply from</div>
             <input type="date" value={effectiveAt} onChange={(e) => setEffectiveAt(e.target.value)} style={{ ...input, width: '100%' }} />
+            {nextRun && effectiveAt < nextRun && (
+              <div style={{ fontSize: 11.5, color: '#92400e', marginTop: 6, lineHeight: 1.45 }}>
+                Invoices from this date have already gone out at the current fee (the next is {longDate(nextRun)}).
+                When you approve the go-live date you can raise a one-off catch-up invoice for the difference.
+              </div>
+            )}
+            {nextRun && effectiveAt >= nextRun && (
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Next invoice {longDate(nextRun)}.</div>
+            )}
           </div>
         </div>
       </div>
@@ -841,7 +878,7 @@ function MiniWaterfall({ summary }) {
 // refuse a second line on the same product. The amount starts at the
 // standard price when the drivers allow one.
 function AddLine({ services, priceFor, feeDefaults, takenItems, onCancel, onAdd }) {
-  const options = (services || []).filter((s) => !takenItems.has(s.qboItemId));
+  const options = withQboNames((services || []).filter((s) => !takenItems.has(s.qboItemId)));
   const hidden = (services || []).length - options.length;
   const [id, setId] = useState('');
   const svc = options.find((s) => s.id === id) || null;
@@ -924,7 +961,20 @@ function BuildFields({ serviceId, values, feeDefaults, onChange, compact }) {
 
 // ─── Step 2 ──────────────────────────────────────────────────────────
 
-function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt, onBack }) {
+function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, effectiveAt, onBack }) {
+  // Which inbox it goes from: the shared inboxes and your own.
+  const [mailboxes, setMailboxes] = useState([]);
+  const [mailbox, setMailbox] = useState('');
+  const [sentFrom, setSentFrom] = useState(null);
+  useEffect(() => {
+    supabase.from('gmail_connections').select('account_email, kind, owner_staff_id, is_practice_default').eq('status', 'active')
+      .then(({ data }) => {
+        const mine = (data || []).filter((m) => m.kind === 'shared' || m.owner_staff_id === profile?.id);
+        setMailboxes(mine);
+        const def = mine.find((m) => /^accounts@/i.test(m.account_email)) || mine.find((m) => m.is_practice_default) || mine[0];
+        if (def) setMailbox(def.account_email);
+      });
+  }, [profile?.id]);
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [covering, setCovering] = useState('');
@@ -1017,9 +1067,10 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
     finally { setBusy(null); }
   };
 
-  const draft = async () => {
+  const draft = async (send = false) => {
     if (!to) { setError('Pick or type a recipient first.'); return; }
-    setBusy('draft');
+    if (send && !window.confirm(`Send this to ${to} now, from ${mailbox}?\n\nIt goes straight to the client, with the letter attached.`)) return;
+    setBusy(send ? 'send' : 'draft');
     setError(null);
     let issuedNow = null;
     try {
@@ -1034,15 +1085,22 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
           body_text: mail.body,
           body_html: mail.bodyHtml,
           attachments: [{ filename: pdfFilename(entity.name), mime_type: 'application/pdf', content_base64: pdfBase64(doc) }],
+          mailbox: mailbox || undefined,
+          send,
         },
       });
       if (fnErr || !data?.success) {
         if (data?.code === 'no_gmail_connection') throw new Error('No active Gmail connection — connect one on Push uplifts first.');
-        throw new Error(data?.error || fnErr?.message || 'Draft creation failed');
+        throw new Error(data?.error || fnErr?.message || (send ? 'Sending failed' : 'Draft creation failed'));
       }
-      setDrafted(data.account_email || 'Gmail');
       if (data.draft_id) {
         await supabase.functions.invoke('fee-proposal', { body: { action: 'set_draft', proposal_id: issuedNow.id, gmail_draft_id: data.draft_id } });
+      }
+      if (data.sent) {
+        await supabase.functions.invoke('fee-proposal', { body: { action: 'mark_sent', proposal_id: issuedNow.id, sent_from: data.account_email } });
+        setSentFrom(data.account_email);
+      } else {
+        setDrafted(data.account_email || 'Gmail');
       }
     } catch (e) {
       // Recorded but no draft: nothing reached the client, so don't leave a
@@ -1081,6 +1139,11 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
                 {!info.contactName && (
                   <div style={{ fontSize: 11.5, color: '#b45309', marginTop: 4 }}>No primary contact name on file — check the greeting below.</div>
                 )}
+              </Field>
+              <Field label="From">
+                <select value={mailbox} onChange={(e) => setMailbox(e.target.value)} style={{ ...input, width: '100%' }}>
+                  {mailboxes.map((m) => <option key={m.account_email} value={m.account_email}>{m.account_email}{m.kind !== 'shared' ? ' (yours)' : ''}</option>)}
+                </select>
               </Field>
               <Field label="Subject">
                 <input value={subject} onChange={(e) => setSubject(e.target.value)} style={{ ...input, width: '100%' }} />
@@ -1131,12 +1194,12 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
 
       <div style={{ padding: '12px 22px', borderTop: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={onBack} disabled={!!busy} style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowLeft size={14} /> Back to prices</button>
-        <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : drafted ? '#15803d' : '#64748b' }}>
+        <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : (drafted || sentFrom) ? '#15803d' : '#64748b' }}>
           {error || (issued
-            ? (kind === 'proposal'
-              ? `${drafted ? `Draft created in ${drafted}. ` : ''}Proposal recorded — the client accepts with the link; you'll see it on Push uplifts.`
-              : `${drafted ? `Draft created in ${drafted}. ` : ''}Notice recorded — the new fees are ready to push from ${longDate(effectiveAt)}.`)
-            : `Nothing sends from here — the draft goes to Gmail with the letter attached.${kind === 'proposal' ? ' The new fees are held until the client accepts in writing.' : ''}`)}
+            ? `${sentFrom ? `Sent from ${sentFrom}. ` : drafted ? `Draft saved in ${drafted} — send it from Gmail. ` : ''}${kind === 'proposal'
+              ? "The client accepts with the link; you'll be notified."
+              : 'Approve the go-live date on Push uplifts when it is due.'}`
+            : `Send it now, or save a Gmail draft to finish there.${kind === 'proposal' ? ' New services wait for the client to accept.' : ''}`)}
         </span>
         <div style={{ flex: 1 }} />
         {!issued && (
@@ -1144,12 +1207,22 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
             {busy === 'issue' ? 'Recording…' : 'Issued without email'}
           </button>
         )}
+        {!sentFrom && (
+          <button
+            onClick={() => draft(false)}
+            disabled={!!busy || !info || !to || !billingId}
+            style={{ ...BTN.secondary.md, whiteSpace: 'nowrap', opacity: (!info || !to) ? 0.5 : 1 }}
+            title="Leave it as a draft in Gmail to finish and send there"
+          >
+            {busy === 'draft' ? 'Saving draft…' : drafted ? 'Save another draft' : 'Save Gmail draft'}
+          </button>
+        )}
         <button
-          onClick={draft}
-          disabled={!!busy || !info || !to || !billingId}
-          style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to) ? 0.5 : 1 }}
+          onClick={() => draft(true)}
+          disabled={!!busy || !info || !to || !billingId || !mailbox || !!sentFrom}
+          style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to || sentFrom) ? 0.5 : 1 }}
         >
-          <Mail size={14} /> {busy === 'draft' ? 'Creating draft…' : drafted ? 'Create another draft' : 'Create Gmail draft'}
+          <Mail size={14} /> {busy === 'send' ? 'Sending…' : sentFrom ? 'Sent' : 'Send now'}
         </button>
       </div>
     </>
@@ -1163,7 +1236,7 @@ function SplitForm({ source, others, services, takenItems, onCancel, onSplit }) 
   const [amount, setAmount] = useState('');
   const [target, setTarget] = useState(others[0]?.key || '__new');
   const [svcId, setSvcId] = useState('');
-  const options = (services || []).filter((s) => !takenItems.has(s.qboItemId));
+  const options = withQboNames((services || []).filter((s) => !takenItems.has(s.qboItemId)));
   const svc = options.find((s) => s.id === svcId) || null;
   const amt = Number(amount);
   const ok = amt > 0 && amt <= Number(source.next) && (target !== '__new' || svc);
@@ -1363,6 +1436,64 @@ function pendingFields(l, amount, effectiveAt, stagedAt, strategy) {
 }
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+const NEW_ROW = '__new_billing_row';
+
+// A client with no recurring bill yet. Offer their last quote as the
+// starting point: each quoted recurring service comes in as a line to
+// review (new services, so the client accepts them before they're billed).
+function NoBillBanner({ entityId, services, onStart }) {
+  const [quote, setQuote] = useState(undefined); // undefined loading, null none
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const { data: q } = await supabase.from('quotes').select('id, quote_ref, status, created_at, monthly_net')
+        .eq('entity_id', entityId).in('status', ['accepted', 'committed', 'sent', 'approved'])
+        .order('created_at', { ascending: false }).limit(1);
+      if (!q?.[0]) { setQuote(null); return; }
+      const { data: items } = await supabase.from('quote_line_items')
+        .select('service_id, description, monthly_amount, annual_amount, is_recurring').eq('quote_id', q[0].id);
+      setQuote({ ...q[0], items: (items || []).filter((i) => i.is_recurring !== false) });
+    })();
+  }, [entityId]);
+  const start = () => {
+    const byId = Object.fromEntries((services || []).map((s) => [s.id, s]));
+    const out = [];
+    for (const it of quote.items) {
+      const svc = byId[it.service_id];
+      const monthly = Math.round((Number(it.monthly_amount) || (Number(it.annual_amount) || 0) / 12) * 100) / 100;
+      if (!svc || !(monthly > 0)) continue;
+      out.push({
+        key: `quote-${it.service_id}-${out.length}`, rowId: NEW_ROW, idx: null, isNew: true,
+        serviceId: svc.lineServiceId, qboItemId: svc.qboItemId, feeEngineServiceId: svc.id,
+        description: it.description || svc.label, build: null,
+        cadence: 'monthly', current: 0, next: String(monthly), original: 0,
+        reasonKey: 'new_service', reasonTouched: false, otherText: '', extra: [], originalReason: '',
+      });
+    }
+    onStart(out);
+    setDone(true);
+  };
+  return (
+    <div style={{ gridColumn: '1 / -1', padding: '12px 14px', border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 10, fontSize: 13, color: '#1e3a8a' }}>
+      <strong>No recurring bill yet.</strong> Add services below, and the bill is started when you save.
+      {quote && !done && (
+        <> Or start from their last quote ({quote.quote_ref}, {fmtGbpDetailed(quote.monthly_net)}/mo).
+          <button onClick={start} style={{ ...BTN.secondary.sm, marginLeft: 8 }}>Start from quote</button></>
+      )}
+      <div style={{ fontSize: 11.5, color: '#475569', marginTop: 4 }}>
+        It has no QuickBooks template, so nothing can be pushed until one exists — commit the quote to create it.
+      </div>
+    </div>
+  );
+}
+
+// A fee-engine service's name with the QuickBooks product it bills as,
+// where they differ ("Directors' Tax Returns — Tax Returns - Individual"),
+// so the picker matches what the table and the invoice call it.
+function withQboNames(list) {
+  return list.map((o) => (o.qboItemName && o.qboItemName !== o.label ? { ...o, plainLabel: o.label, label: `${o.label} — ${o.qboItemName}` } : o));
+}
 
 // The drivers as stored in client_pricing_drivers (sql/301).
 function driverRecord(d) {

@@ -11,6 +11,9 @@
 //      while any remain).
 //   3. Mandatory training missing / due (≤60d) / overdue → that staff member
 //      (source_key mandatory:<training_id>:<iso-week> — weekly while open).
+//   4. Fee proposal issued 7+ days ago whose accept link hasn't been opened →
+//      can_view_client_fees staff (source_key fee_proposal_unopened:<id> —
+//      once per proposal), so someone chases the client.
 //
 // Digest: one email per staff member with UNREAD notifications created in the
 // last 25 hours (so nothing nags forever, and yesterday's read items don't
@@ -155,6 +158,26 @@ Deno.serve(async (req) => {
           recipient_id: s.id as string, kind: "mandatory_training",
           title: `Mandatory training ${status}: ${t.name}`,
           link_path: "/team/pd/mandatory", source_key: `mandatory:${t.id}:${week}`,
+        });
+      }
+    }
+  }
+
+  if (cfg.sweep_enabled) {
+    // 4. Fee proposals whose link hasn't been opened in 7+ days
+    const cutoff7 = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: unopened } = await service.from("fee_proposals")
+      .select("id, issued_at, entity:entities(name)")
+      .eq("kind", "proposal").eq("status", "issued").is("link_opened_at", null).lt("issued_at", cutoff7);
+    for (const p of (unopened || []) as Row[]) {
+      const days = Math.floor((Date.now() - new Date(p.issued_at as string).getTime()) / 86400000);
+      const clientName = (p.entity as Row | null)?.name || "A client";
+      for (const s of activeStaff.filter((x) => x.can_view_client_fees)) {
+        pending.push({
+          recipient_id: s.id as string, kind: "fee_proposal_unopened",
+          title: `${clientName} hasn't opened their fee proposal (sent ${days} days ago)`,
+          body: "Worth a chase — the new services wait for their acceptance.",
+          link_path: "/manage/billing/uplifts", source_key: `fee_proposal_unopened:${p.id}`,
         });
       }
     }

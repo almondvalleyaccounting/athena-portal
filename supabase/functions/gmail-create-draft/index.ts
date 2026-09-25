@@ -11,6 +11,11 @@
 //     body_html    : string          required  — HTML body shown in Gmail
 //     initiated_by : string (uuid)   optional
 //     attachments  : [{ filename, mime_type, content_base64 }]  optional
+//     mailbox      : string (email)  optional — which connected inbox to use
+//                    (default: the practice default). A shared inbox, or the
+//                    caller's own personal one; never someone else's.
+//     send         : boolean         optional — send it now instead of leaving
+//                    a draft (the fee review's "Send now")
 //                    — PDFs only (the single-client fee-review letter),
 //                    at most 3, 5 MB decoded in total
 //   }
@@ -120,11 +125,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
 
-  // Creates a draft on the practice-default mailbox from caller-supplied recipient and HTML.
-  try { await requireStaffOrService(req); }
+  // Creates a draft (or sends) from caller-supplied recipient and HTML.
+  let caller;
+  try { caller = await requireStaffOrService(req); }
   catch (err) { return authErrorResponse(err, corsHeaders); }
 
-  let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; body_html?: string; initiated_by?: string; attachments?: Attachment[] };
+  let body: { billing_id?: string; to?: string; subject?: string; body_text?: string; body_html?: string; initiated_by?: string; attachments?: Attachment[]; mailbox?: string; send?: boolean };
   try { body = await req.json(); } catch { return jsonResponse({ success: false, error: "Invalid JSON" }, 400); }
 
   if (!body.billing_id || !body.to || !body.subject || !body.body_text || !body.body_html) {
@@ -138,7 +144,11 @@ Deno.serve(async (req) => {
   let accountEmail: string;
   let senderName: string | null = null;
   try {
-    const tok = await getValidGmailToken();
+    const tok = await getValidGmailToken(body.mailbox ? String(body.mailbox) : undefined);
+    // A personal inbox is its owner's alone.
+    if (tok.kind !== "shared" && caller.kind === "staff" && tok.ownerStaffId && tok.ownerStaffId !== caller.userId) {
+      return jsonResponse({ success: false, error: `${tok.accountEmail} is someone else's personal inbox` }, 403);
+    }
     accessToken = tok.accessToken;
     accountEmail = tok.accountEmail;
     senderName = tok.displayName;
@@ -174,26 +184,43 @@ Deno.serve(async (req) => {
   }
   const created = await apiResp.json();
   const draftId = created.id as string;
+  const who = caller.userId || body.initiated_by || null;
 
-  // Stamp the draft id onto live_billing. Keep uplift_email_sent_at
-  // untouched — a draft is not a send.
+  // Send now: send the draft just made, so the message is the one Gmail
+  // shows in Sent, attachment and all.
+  let messageId: string | null = null;
+  if (body.send === true) {
+    const sendResp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts/send", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: draftId }),
+    });
+    if (!sendResp.ok) {
+      const txt = await sendResp.text();
+      return jsonResponse({ success: false, error: `Draft created but sending failed — Gmail ${sendResp.status}: ${txt}`, draft_id: draftId, account_email: accountEmail }, 500);
+    }
+    messageId = ((await sendResp.json()) as { id?: string }).id || null;
+  }
+
+  // Stamp the draft (or the send) onto live_billing.
   await sb.from("live_billing").update({
     uplift_gmail_draft_id: draftId,
     uplift_gmail_draft_created_at: new Date().toISOString(),
-    uplift_gmail_draft_created_by: body.initiated_by || null,
+    uplift_gmail_draft_created_by: who,
     uplift_email_to: body.to,
+    ...(messageId ? { uplift_email_sent_at: new Date().toISOString(), uplift_email_sent_by: who } : {}),
   }).eq("id", body.billing_id);
 
   await sb.from("audit_log").insert({
-    user_id: body.initiated_by || null,
-    action: "uplift_gmail_draft_created",
+    user_id: who,
+    action: messageId ? "uplift_email_sent" : "uplift_gmail_draft_created",
     entity_type: "live_billing",
     entity_id: body.billing_id,
     detail: {
-      to: body.to, subject: body.subject, draft_id: draftId, client: row.entity?.name || null, account_email: accountEmail,
+      to: body.to, subject: body.subject, draft_id: draftId, message_id: messageId, client: row.entity?.name || null, account_email: accountEmail,
       attachments: attachments.map((a) => a.filename),
     },
   });
 
-  return jsonResponse({ success: true, draft_id: draftId, account_email: accountEmail });
+  return jsonResponse({ success: true, draft_id: draftId, message_id: messageId, sent: !!messageId, account_email: accountEmail });
 });
