@@ -193,9 +193,14 @@ export default function BillingUpliftReviewPage() {
     //     (pending_needs_acceptance); the rest of the row can still go
     //   - new fees that start after the template's next invoice wait until
     //     that invoice has gone out at the old price
-    const heldLines = pending.filter((s) => s.pending_needs_acceptance
-      && !(proposals[s.pending_proposal_id]?.status === 'accepted'));
-    const notIssued = heldLines.some((s) => !s.pending_proposal_id);
+    //   - a fee-review line (pending_changes) that hasn't been issued to the
+    //     client yet waits for the letter to go out, acceptance or not
+    const issued = (s) => ['issued', 'accepted'].includes(proposals[s.pending_proposal_id]?.status);
+    const unissued = pending.filter((s) => Array.isArray(s.pending_changes) && !issued(s));
+    const awaiting = pending.filter((s) => !unissued.includes(s) && s.pending_needs_acceptance
+      && proposals[s.pending_proposal_id]?.status !== 'accepted');
+    const heldLines = [...unissued, ...awaiting];
+    const notIssued = unissued.length > 0;
     const allHeld = heldLines.length > 0 && heldLines.length === pending.length;
     const nextRunKnown = r.qbo_next_run_date && r.qbo_next_run_date >= new Date().toISOString().slice(0, 10);
     const notDue = !!(goLive && nextRunKnown && r.qbo_next_run_date < goLive);
@@ -211,6 +216,8 @@ export default function BillingUpliftReviewPage() {
       _proposal: proposal,
       _hold: hold,
       _held: heldLines.length,
+      _unissued: unissued.length,
+      _awaiting: awaiting.length,
       _notIssued: notIssued,
     };
   }), [rows, proposals]);
@@ -414,13 +421,17 @@ export default function BillingUpliftReviewPage() {
                 >✎ Draft</span>
               )}
               {r._proposal && <ProposalChip p={r._proposal} />}
-              {r._held > 0 && (
+              {r._unissued > 0 && (
+                <span
+                  style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}
+                  title="Staged in the fee review but not yet sent to the client. Nothing can be approved or pushed until the letter has gone."
+                >Not sent to client</span>
+              )}
+              {r._awaiting > 0 && (
                 <span
                   style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}
-                  title={r._notIssued
-                    ? 'A new service was added but the proposal hasn’t been issued to the client yet — issue it from the fee review'
-                    : 'New services wait for the client’s written acceptance; everything else on this row can be pushed'}
-                >{r._held} new service{r._held === 1 ? '' : 's'} · {r._notIssued ? 'not issued' : 'awaiting acceptance'}</span>
+                  title="New services wait for the client's written acceptance; everything else on this row can be pushed"
+                >{r._awaiting} new service{r._awaiting === 1 ? '' : 's'} · awaiting acceptance</span>
               )}
               {r.uplift_email_skipped && !r.uplift_email_sent_at && (
                 <span
@@ -500,15 +511,16 @@ export default function BillingUpliftReviewPage() {
         let items;
         const p = r._proposal;
         const openProposal = p && p.kind === 'proposal' && (p.status === 'issued' || p.status === 'accepted');
-        const canAccept = p && p.kind === 'proposal' && p.status === 'issued' && r._held > 0 && !r._notIssued;
+        const canAccept = p && p.kind === 'proposal' && p.status === 'issued' && r._awaiting > 0;
         const signOffItems = openProposal ? [
           canAccept && r._hold !== 'acceptance' && { label: 'Record acceptance…', icon: Check, onClick: guard(() => setSignOff({ mode: 'accept', proposal: p, clientName: r.entity?.name })) },
           p.status === 'issued' && { label: 'Client declined…', icon: X, onClick: guard(() => setSignOff({ mode: 'decline', proposal: p, clientName: r.entity?.name })) },
           { label: 'Withdraw proposal…', icon: X, onClick: guard(() => setSignOff({ mode: 'withdraw', proposal: p, clientName: r.entity?.name })) },
         ] : [];
-        if (r._hold === 'acceptance' && !canAccept) {
-          main = <span style={{ fontSize: 12.5, color: '#92400e', whiteSpace: 'nowrap' }} title="Issue it to the client from the fee review first">Not issued</span>;
-          items = [status === 'approved' ? restage : approve, preview, discard];
+        if (r._hold === 'acceptance' && r._notIssued) {
+          // Not sent to the client yet: the only way on is the fee review.
+          main = <button onClick={() => navigate(`/manage/billing/change?client=${encodeURIComponent(r.entity?.name || '')}&reprice=${r.entity_id}`)} style={quiet} title="Send the letter from the fee review — nothing here can be approved until it has gone">Open fee review</button>;
+          items = [discard];
           return (
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
               {main}

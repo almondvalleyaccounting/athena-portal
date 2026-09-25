@@ -409,7 +409,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : '#64748b' }}>
               {error ? `Save failed: ${error}` : missingReason
                 ? 'Give the "Other" reason some words — the client reads it.'
-                : `${changedCount} change${changedCount === 1 ? '' : 's'} · saving stages them for Push uplifts; nothing reaches QBO until pushed.`}
+                : `${changedCount} change${changedCount === 1 ? '' : 's'} · nothing can be approved or pushed until the letter has been sent to the client${kind === 'proposal' ? ', and new services wait for their written acceptance' : ''}.`}
             </span>
             <div style={{ flex: 1 }} />
             <button

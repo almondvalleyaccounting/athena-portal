@@ -129,20 +129,28 @@ Deno.serve(async (req) => {
       .map((s, i) => ({ s, i }))
       .filter(({ s }) => s.pending_monthly_amount != null);
 
-    // A line that adds a service needs the client's written acceptance
-    // (pending_needs_acceptance, set by the single-client fee review). Until
-    // staff record it on the line's proposal, the line stays staged and is
-    // left out of this push; the rest of the row — fee changes, splits,
-    // removals — goes ahead.
-    const held = staged.filter(({ s }) => {
-      if (!s.pending_needs_acceptance) return false;
+    // Lines from the single-client fee review (they carry pending_changes)
+    // are a fee change the client must be told about. Held back from this
+    // push, while the rest of the row goes ahead:
+    //   - any such line not yet issued to the client (no open fee change) —
+    //     nothing reaches QuickBooks before the client has had the letter
+    //   - a line that adds a service (pending_needs_acceptance) until staff
+    //     record the client's written acceptance
+    const heldWhy = new Map<number, string>();
+    for (const { s, i } of staged) {
       const p = s.pending_proposal_id ? proposals[String(s.pending_proposal_id)] : null;
-      return !(p && p.status === "accepted");
-    });
-    const heldIdx = new Set(held.map(({ i }) => i));
-    const pending = staged.filter(({ i }) => !heldIdx.has(i));
-    const heldNote = held.length
-      ? `${held.length} new service${held.length === 1 ? "" : "s"} held back until the client's written acceptance is recorded${held.some(({ s }) => !s.pending_proposal_id) ? " (not yet issued to the client)" : ""}`
+      const live = p && (p.status === "issued" || p.status === "accepted");
+      if (Array.isArray(s.pending_changes) && !live) heldWhy.set(i, "not issued");
+      else if (s.pending_needs_acceptance && !(p && p.status === "accepted")) heldWhy.set(i, "awaiting acceptance");
+    }
+    const pending = staged.filter(({ i }) => !heldWhy.has(i));
+    const notIssued = [...heldWhy.values()].filter((w) => w === "not issued").length;
+    const awaiting = heldWhy.size - notIssued;
+    const heldNote = heldWhy.size
+      ? [
+        notIssued && `${notIssued} line${notIssued === 1 ? "" : "s"} not yet issued to the client — send the letter from the fee review first`,
+        awaiting && `${awaiting} new service${awaiting === 1 ? "" : "s"} awaiting the client's written acceptance`,
+      ].filter(Boolean).join("; ")
       : null;
     if (staged.length === 0) {
       skipped++;
