@@ -4,6 +4,7 @@ import { CheckSquare, Square, Play, ExternalLink, CheckCircle, AlertCircle, Load
 import { supabase } from '../../lib/supabase';
 import { getReportsAuthUrl } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Full 15-report list matching ControlPanel.gs REPORTS array.
@@ -308,18 +309,11 @@ export default function ReportsPage() {
             onClick={handleConnect}
             title="Connect a QBO client"
             style={{
+              ...BTN.secondary.md,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '0 16px',
-              border: '1px solid #e5e7eb',
-              borderRadius: '10px',
-              backgroundColor: '#ffffff',
               cursor: 'pointer',
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
-              fontWeight: 600,
-              color: '#38bdf8',
               transition: 'all 0.2s ease',
               flexShrink: 0,
               whiteSpace: 'nowrap',
@@ -559,14 +553,8 @@ export default function ReportsPage() {
               justifyContent: 'center',
               gap: '8px',
               width: '100%',
-              backgroundColor: canRun ? '#38bdf8' : '#e5e7eb',
-              color: canRun ? '#ffffff' : '#94a3b8',
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '14.5px',
-              fontWeight: 600,
-              borderRadius: '10px',
-              padding: '14px',
-              border: 'none',
+              ...BTN.primary.md,
+              ...(!canRun && { opacity: 0.45 }),
               cursor: canRun ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s ease',
             }}

@@ -499,13 +499,12 @@ function GrantModal({ clients, existing, onClose, onDone, onError }) {
         </div>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 22px', borderTop: '1px solid #e5e7eb' }}>
-          <button onClick={onClose} style={linkishBtn}>Cancel</button>
+          <button onClick={onClose} style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 5 }}>Cancel</button>
           <button
             onClick={submit} disabled={!valid || saving}
             style={{
-              padding: '10px 20px', border: 'none', borderRadius: 10,
-              backgroundColor: valid && !saving ? '#1E4560' : '#cbd5e1', color: '#fff',
-              fontFamily: font, fontSize: 14.5, fontWeight: 700,
+              ...BTN.primary.md,
+              opacity: valid && !saving ? 1 : 0.45,
               cursor: valid && !saving ? 'pointer' : 'not-allowed',
             }}
           >
@@ -531,11 +530,7 @@ const input = {
   fontSize: 14.5, fontFamily: font, outline: 'none', boxSizing: 'border-box', width: '100%',
 };
 const dangerBtn = { ...BTN.danger.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
-const linkishBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb',
-  borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#475569',
-  fontFamily: font, fontSize: 13.5, fontWeight: 600, cursor: 'pointer',
-};
+const linkishBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
 // Nudged, not shouted: the one row action that is outstanding work rather than
 // something you might want. Reverts to the plain style once they have been told.
 const primaryLinkBtn = { ...linkishBtn, color: '#1E4560', borderColor: '#bfdbfe', background: '#eff6ff' };

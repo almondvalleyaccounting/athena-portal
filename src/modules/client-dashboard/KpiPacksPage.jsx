@@ -518,7 +518,7 @@ function DefinitionModal({ draft, setDraft, dimensions, knownKeys, definitions, 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 22px', borderTop: '1px solid #e5e7eb' }}>
           <button onClick={onClose} style={smallBtn}>Cancel</button>
           <button onClick={() => onSave(draft)} disabled={!valid || busy}
-            style={{ ...primaryBtn, backgroundColor: valid && !busy ? '#1E4560' : '#cbd5e1' }}>
+            style={{ ...primaryBtn, ...((!valid || busy) && { opacity: 0.45, cursor: 'not-allowed' }) }}>
             <Check size={14} /> {busy ? 'Saving…' : 'Save'}
           </button>
         </div>

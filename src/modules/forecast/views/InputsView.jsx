@@ -12,7 +12,7 @@ import {
 import { modulesFor } from '../lib/packs';
 import { curveForBand, ACQUIRED_TYPES } from '../lib/occupancy.js';
 import { AGE_BANDS, AGE_BAND_LABELS } from '../lib/modules/locations.js';
-import { btnDark, btnGhost, btnOutline, colors, fontStack, H2, inputStyle, Pill, Section, selectStyle, serifStack } from '../components/ui';
+import { btnDanger, btnDark, btnGhost, btnOutline, colors, fontStack, H2, inputStyle, Pill, Section, selectStyle, serifStack } from '../components/ui';
 import LoansPanel from './LoansPanel';
 
 // Display label override for module-driver tabs. The module's `key` is used
@@ -407,14 +407,14 @@ export default function InputsView({
                   <button
                     onClick={onClearNurseryDefaults}
                     disabled={busy}
-                    style={{ ...btnGhost, color: colors.muted }}
+                    style={btnGhost}
                     title="Forget the saved nursery defaults."
                   >
                     Clear defaults
                   </button>
                 )}
                 {entities.length > 0 && (
-                  <button onClick={onResetDefaults} disabled={busy} style={{ ...btnOutline, color: colors.red, borderColor: '#fecaca' }} title="Destructive: overwrites every driver value with the pack default.">
+                  <button onClick={onResetDefaults} disabled={busy} style={btnDanger} title="Destructive: overwrites every driver value with the pack default.">
                     Reset all
                   </button>
                 )}
@@ -1546,7 +1546,7 @@ function DriverFilters({ entities, unitOptions, filterEntity, setFilterEntity, f
       {anyFilterActive && (
         <button
           onClick={() => { setFilterEntity('all'); setFilterUnit('all'); setFilterSearch(''); }}
-          style={{ ...btnGhost, color: colors.muted }}
+          style={btnGhost}
         >clear</button>
       )}
     </div>

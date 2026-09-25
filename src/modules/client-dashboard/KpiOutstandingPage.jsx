@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ClipboardList, ArrowRight, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { OUTFIT, cardStyle, inputStyle } from './dashboardData';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   KPI entry outstanding — /kpis/outstanding.
@@ -137,7 +138,7 @@ export default function KpiOutstandingPage() {
                   {c.sector && <span style={chip}>{c.sector}</span>}
                   <button
                     onClick={() => navigate(`/client-dashboard?entity=${c.entity_id}&tab=kpis`)}
-                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', background: '#fff', color: '#0369a1', fontFamily: OUTFIT, fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ ...BTN.secondary.sm, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
                   >
                     Enter them <ArrowRight size={13} />
                   </button>

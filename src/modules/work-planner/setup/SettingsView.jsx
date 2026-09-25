@@ -10,6 +10,7 @@ import {
 } from './queries';
 import { useAuth } from '../../../shell/AppShell';
 import ClientTypeAhead from '../components/ClientTypeAhead';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -233,7 +234,7 @@ function DangerZone({ canEdit }) {
             <button
               onClick={() => openConfirm('all', {}, 'all scheduled tasks')}
               disabled={!canEdit || busy}
-              style={dangerBtn(!canEdit || busy)}
+              style={dangerOutlineBtn(!canEdit || busy)}
             >
               <Trash2 size={12} /> Clear all
             </button>
@@ -269,7 +270,7 @@ function DangerZone({ canEdit }) {
                   );
                 }}
                 disabled={!canEdit || busy || !selectedTaskPrefix}
-                style={dangerBtn(!canEdit || busy || !selectedTaskPrefix)}
+                style={dangerOutlineBtn(!canEdit || busy || !selectedTaskPrefix)}
               >
                 <Trash2 size={12} /> Clear
               </button>
@@ -297,7 +298,7 @@ function DangerZone({ canEdit }) {
                   `client "${selectedEntityName || selectedEntityId}"`,
                 )}
                 disabled={!canEdit || busy || !selectedEntityId}
-                style={dangerBtn(!canEdit || busy || !selectedEntityId)}
+                style={dangerOutlineBtn(!canEdit || busy || !selectedEntityId)}
               >
                 <Trash2 size={12} /> Clear
               </button>
@@ -410,11 +411,19 @@ function dangerBtn(disabled) {
   };
 }
 
+// Row-level destructive actions: the shared danger button (white, red text).
+function dangerOutlineBtn(disabled) {
+  return {
+    ...BTN.danger.sm,
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.45 : 1,
+  };
+}
+
 function neutralBtn(disabled) {
   return {
-    padding: '6px 12px', fontSize: 13, fontWeight: 500,
-    fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 6,
-    background: '#fff', color: '#0f172a',
+    ...BTN.secondary.sm,
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1,
   };
 }

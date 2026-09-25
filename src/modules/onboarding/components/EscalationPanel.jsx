@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PhoneCall, PauseCircle, Archive, RotateCcw } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import { updateOnboarding, sendOnboardingEmail, addNote } from '../api';
 
@@ -32,6 +33,8 @@ export default function EscalationPanel({ ob, onChanged }) {
     setBusy(false);
   }
 
+  // Amber "pause" keeps its warning colour; the rest use the shared buttons.
+  const iconRow = { display: 'inline-flex', alignItems: 'center', gap: 5 };
   const btn = (bg, fg, border) => ({
     display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px',
     fontSize: 13, fontWeight: 600, fontFamily: font, background: bg, color: fg,
@@ -51,7 +54,7 @@ export default function EscalationPanel({ ob, onChanged }) {
       {msg && <div style={{ fontSize: 13, color: tones[msg.tone].fg, marginBottom: 8 }}>{msg.text}</div>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {ob.escalation_status === 'call_needed' && (
-          <button disabled={busy} style={btn(tones.info.bg, tones.info.fg, tones.info.border)} onClick={() => act(async () => {
+          <button disabled={busy} style={{ ...BTN.secondary.sm, ...iconRow }} onClick={() => act(async () => {
             const note = window.prompt('Call outcome (goes on the timeline):', 'No answer, left a voicemail');
             if (note === null) throw new Error('Cancelled');
             await addNote(ob.id, `📞 Call made: ${note}`, { actorId: profile?.id });
@@ -69,7 +72,7 @@ export default function EscalationPanel({ ob, onChanged }) {
           </button>
         )}
         {ob.escalation_status === 'offboard_due' && (
-          <button disabled={busy} style={btn(tones.danger.solid, '#fff')} onClick={() => act(async () => {
+          <button disabled={busy} style={{ ...BTN.danger.sm, ...iconRow }} onClick={() => act(async () => {
             if (!window.confirm('Offboard this client? The onboarding will be archived (cancelled). This is recorded on the timeline.')) throw new Error('Cancelled');
             await updateOnboarding(ob.id, { status: 'cancelled' }, {
               actorId: profile?.id,
@@ -79,7 +82,7 @@ export default function EscalationPanel({ ob, onChanged }) {
             <Archive size={13} /> Offboard & archive
           </button>
         )}
-        <button disabled={busy} style={btn('#fff', '#64748b', '#cbd5e1')} onClick={() => act(async () => {
+        <button disabled={busy} style={{ ...BTN.secondary.sm, ...iconRow }} onClick={() => act(async () => {
           await updateOnboarding(ob.id, { escalation_status: 'none', paused_at: null }, {
             actorId: profile?.id, logBody: 'Escalation reset — chasing resumes.',
           });

@@ -5,6 +5,7 @@ import { listPortalClients, revokePortalAccess, reinvitePortalUser } from './por
 import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
 import { Btn } from '../components/ui';
+import { BTN } from '../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -261,10 +262,9 @@ export default function PortalClientsPage() {
                   onClick={() => reinvite(row)}
                   disabled={busy === row.invite_id}
                   style={{
+                    ...BTN.secondary.sm,
                     display: 'flex', alignItems: 'center', gap: 6,
-                    fontFamily: font, fontSize: 13, fontWeight: 600, color: '#0e7fe0',
-                    background: 'none', border: '1px solid #bae6fd', borderRadius: 8,
-                    padding: '5px 12px', cursor: busy === row.invite_id ? 'wait' : 'pointer',
+                    cursor: busy === row.invite_id ? 'wait' : 'pointer',
                   }}
                 >
                   <RotateCcw size={12} />

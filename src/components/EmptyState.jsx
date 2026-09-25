@@ -1,4 +1,5 @@
 import React from 'react';
+import { BTN } from '../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -30,13 +31,7 @@ export default function EmptyState({ icon, title, body, actions = [] }) {
             <button
               key={i}
               onClick={a.onClick}
-              style={{
-                padding: '7px 14px', fontSize: 14, fontWeight: a.primary ? 600 : 500,
-                background: a.primary ? '#1E4560' : '#fff',
-                color: a.primary ? '#fff' : '#0f172a',
-                border: a.primary ? 'none' : '1px solid #e5e7eb',
-                borderRadius: 6, cursor: 'pointer', fontFamily: font,
-              }}
+              style={{ ...(a.primary ? BTN.primary.md : BTN.secondary.md) }}
             >{a.label}</button>
           ))}
         </div>

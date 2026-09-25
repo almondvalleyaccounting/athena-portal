@@ -749,7 +749,7 @@ function TriageControls({ bug, suggested, staffList, entityName, onPatch, onDele
       <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
         <CopyButton label="Copy Claude brief" getText={() => buildBrief(bug, entityName)} />
         <div style={{ flex: 1 }} />
-        <button onClick={() => onDelete(bug)} style={{ ...btnSmall, borderColor: '#fecaca', color: '#dc2626' }}>Delete</button>
+        <button onClick={() => onDelete(bug)} style={{ ...BTN.danger.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}>Delete</button>
       </div>
     </div>
   );
@@ -757,7 +757,7 @@ function TriageControls({ bug, suggested, staffList, entityName, onPatch, onDele
 
 function RejectControl({ bug, onPatch }) {
   const [open, setOpen] = useState(false);
-  if (!open) return <button onClick={() => setOpen(true)} style={{ ...btnSmall, borderColor: '#e2e8f0', color: '#64748b' }}>✕ Reject</button>;
+  if (!open) return <button onClick={() => setOpen(true)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}>✕ Reject</button>;
   return (
     <select autoFocus defaultValue="" onChange={(e) => { if (e.target.value) { onPatch(bug.id, { status: 'rejected', reject_reason: e.target.value }); setOpen(false); } }}
       onBlur={() => setOpen(false)} style={{ ...miniSelect, borderColor: '#fecaca' }}>
@@ -817,12 +817,12 @@ function CopyButton({ getText, label, dark }) {
     try { await navigator.clipboard.writeText(getText()); setDone(true); setTimeout(() => setDone(false), 1600); } catch (e) { console.error(e); }
   };
   return (
-    <button onClick={copy} style={{
+    <button onClick={copy} style={dark ? {
       display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 13px', fontSize: 13, fontWeight: 600,
       borderRadius: 9, cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-      background: dark ? 'rgba(255,255,255,0.12)' : '#fff', color: dark ? '#fff' : '#0f172a',
-      border: dark ? '1px solid rgba(255,255,255,0.25)' : '1px solid #e5e7eb',
-    }}>
+      background: 'rgba(255,255,255,0.12)', color: '#fff',
+      border: '1px solid rgba(255,255,255,0.25)',
+    } : { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
       {done ? <Check size={14} /> : <Copy size={14} />} {done ? 'Copied' : label}
     </button>
   );

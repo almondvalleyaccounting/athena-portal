@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { BTN } from '../../../lib/buttonStyles';
 
 const labelStyle = {
   display: 'block', fontSize: 10, fontWeight: 600, color: '#94a3b8',
@@ -6,8 +7,7 @@ const labelStyle = {
   fontFamily: "'Outfit', sans-serif",
 };
 const btnBase = {
-  padding: '5px 12px', fontSize: 12, fontWeight: 500,
-  fontFamily: "'Outfit', sans-serif", borderRadius: 8, cursor: 'pointer',
+  cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
 
@@ -107,17 +107,17 @@ export default function CompleteModal({ task, mode, onConfirm, onClose }) {
         </div>
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ ...btnBase, border: '1px solid #e5e7eb', background: '#fff', color: '#1e293b' }}>
+          <button onClick={onClose} style={{ ...BTN.secondary.sm, ...btnBase }}>
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={saving}
             style={{
+              ...BTN.primary.sm,
+              // "Not required" keeps its slate fill: it marks the outcome, not a main action.
+              ...(isNotReq ? { background: '#64748b', border: '1px solid #64748b' } : {}),
               ...btnBase,
-              background: isNotReq ? '#64748b' : '#1E4560',
-              color: '#fff',
-              border: `1px solid ${isNotReq ? '#64748b' : '#0f172a'}`,
               opacity: saving ? 0.6 : 1,
             }}
           >

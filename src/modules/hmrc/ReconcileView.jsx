@@ -3,6 +3,7 @@ import { Check, ExternalLink, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import DataTable from '../../components/DataTable';
+import { BTN } from '../../lib/buttonStyles';
 import { setExceptionResolved, setExceptionNote } from './hmrcApi';
 import {
   font, EXCEPTION_KINDS, Pill, Chip, BlurInput, ErrorBar,
@@ -175,13 +176,13 @@ export default function ReconcileView() {
         <button
           onClick={() => toggleResolved(r)}
           title={r.resolved ? 'Put this back on the outstanding list' : 'Mark as dealt with'}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
-            fontSize: 13, fontFamily: font, borderRadius: 7, cursor: 'pointer',
-            color: r.resolved ? '#64748b' : '#059669',
-            background: r.resolved ? '#f8fafc' : '#f0fdf4',
-            border: `1px solid ${r.resolved ? '#e5e7eb' : '#05966933'}`,
-          }}
+          style={r.resolved
+            ? { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5 }
+            : {
+              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px',
+              fontSize: 13, fontFamily: font, borderRadius: 7, cursor: 'pointer',
+              color: '#059669', background: '#f0fdf4', border: '1px solid #05966933',
+            }}
         >
           {r.resolved ? <><RotateCcw size={12} /> Reopen</> : <><Check size={12} /> Clear</>}
         </button>

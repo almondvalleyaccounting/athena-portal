@@ -87,7 +87,7 @@ export default function ActionPlanSection({ c, actions, staffList, staffMap, tem
           <span style={{ fontSize: 12, color: '#94a3b8' }}>{doneCount}/{activeCount} done</span>
         )}
         <div style={{ marginLeft: 'auto', position: 'relative' }}>
-          <button onClick={() => setMenuOpen((v) => !v)} style={{ ...btn('ghost'), padding: '5px 9px', fontSize: 13 }}>
+          <button onClick={() => setMenuOpen((v) => !v)} style={btn('ghost', 'sm')}>
             <Wand2 size={12} color="#0e7fe0" /> Apply template <ChevronDown size={12} />
           </button>
           {menuOpen && (
@@ -225,7 +225,7 @@ export default function ActionPlanSection({ c, actions, staffList, staffMap, tem
           </select>
           <input type="date" value={dDate} onChange={(e) => setDDate(e.target.value)} style={{ ...smallInput, width: 128 }} />
           <button onClick={addManual} disabled={!dTitle.trim()}
-            style={{ ...btn('primary'), padding: '5px 10px', fontSize: 13, marginLeft: 'auto', opacity: dTitle.trim() ? 1 : 0.5 }}>
+            style={{ ...btn('primary', 'sm'), marginLeft: 'auto', opacity: dTitle.trim() ? 1 : 0.5 }}>
             <Plus size={12} /> Add
           </button>
         </div>

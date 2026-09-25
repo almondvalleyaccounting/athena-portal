@@ -418,14 +418,8 @@ export default function AdminPage() {
               onClick={handleInvite}
               disabled={inviting}
               style={{
-                fontFamily: "'Outfit', sans-serif",
-                fontSize: '14px',
-                fontWeight: 600,
-                color: '#ffffff',
-                backgroundColor: inviting ? '#94a3b8' : '#38bdf8',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '10px 24px',
+                ...BTN.primary.md,
+                opacity: inviting ? 0.45 : 1,
                 cursor: inviting ? 'wait' : 'pointer',
                 transition: 'all 0.2s ease',
               }}
@@ -515,9 +509,8 @@ export default function AdminPage() {
                       onClick={() => handleCreateProfile(authUser)}
                       disabled={!createForm.full_name.trim() || saving === 'create'}
                       style={{
-                        fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#fff',
-                        backgroundColor: !createForm.full_name.trim() ? '#94a3b8' : '#1E4560',
-                        border: 'none', borderRadius: '8px', padding: '8px 14px',
+                        ...BTN.primary.sm,
+                        opacity: !createForm.full_name.trim() ? 0.45 : 1,
                         cursor: !createForm.full_name.trim() ? 'not-allowed' : 'pointer',
                       }}
                     >
@@ -525,11 +518,7 @@ export default function AdminPage() {
                     </button>
                     <button
                       onClick={() => { setShowCreateFor(null); setCreateForm({ full_name: '' }); }}
-                      style={{
-                        fontFamily: font, fontSize: '13px', color: '#64748b',
-                        background: 'none', border: '1px solid #e5e7eb', borderRadius: '8px',
-                        padding: '8px 12px', cursor: 'pointer',
-                      }}
+                      style={{ ...BTN.secondary.sm }}
                     >
                       Cancel
                     </button>
@@ -538,9 +527,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => setShowCreateFor(authUser.id)}
                     style={{
-                      fontFamily: font, fontSize: '13px', fontWeight: 600, color: '#fff',
-                      backgroundColor: '#38bdf8', border: 'none', borderRadius: '8px',
-                      padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                      ...BTN.primary.sm, display: 'flex', alignItems: 'center', gap: '4px',
                     }}
                   >
                     <UserPlus size={14} />

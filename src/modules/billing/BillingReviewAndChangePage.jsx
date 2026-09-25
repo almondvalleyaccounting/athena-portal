@@ -1104,7 +1104,7 @@ const stickyTd = { position: 'sticky', padding: '6px 8px', borderRight: '1px sol
 const cellTd = { padding: '6px 8px', textAlign: 'right', verticalAlign: 'middle', borderRight: '1px solid #f1f5f9', fontSize: 14, minWidth: 60 };
 
 const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 500, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 12, padding: 0, fontFamily: font };
-const btnAction = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', fontSize: 13, fontWeight: 500, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', borderRadius: 6, cursor: 'pointer', fontFamily: font };
+const btnAction = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
 const btnGhost = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' };
 const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
 const clearBtnStyle = { width: 16, height: 16, padding: 0, fontSize: 14.5, lineHeight: 1, background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' };

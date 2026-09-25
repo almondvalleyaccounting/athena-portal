@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { BTN } from '../lib/buttonStyles';
 
 export default function ChangePasswordScreen({ onComplete, onLogout }) {
   const [password, setPassword] = useState('');
@@ -121,15 +122,9 @@ export default function ChangePasswordScreen({ onComplete, onLogout }) {
           onClick={handleSubmit}
           disabled={saving || !password || !confirm}
           style={{
+            ...BTN.primary.md,
             width: '100%',
-            backgroundColor: saving || !password || !confirm ? '#94a3b8' : '#1E4560',
-            color: '#ffffff',
-            fontFamily: "'Outfit', sans-serif",
-            fontWeight: 600,
-            fontSize: '14.5px',
-            borderRadius: '10px',
-            padding: '14px',
-            border: 'none',
+            opacity: saving || !password || !confirm ? 0.45 : 1,
             cursor: saving || !password || !confirm ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s ease',
           }}

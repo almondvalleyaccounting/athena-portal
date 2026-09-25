@@ -610,7 +610,7 @@ function CaseDrawer({ c, notes, actions, staffMap, staffList, templates, onClose
                 onKeyDown={(e) => { if (e.key === 'Enter') submitNote(); }}
                 placeholder="Add a timestamped note…"
                 style={{ ...input, flex: 1 }} />
-              <button onClick={submitNote} disabled={!noteDraft.trim()} style={{ ...btn('primary'), padding: '7px 12px' }}>
+              <button onClick={submitNote} disabled={!noteDraft.trim()} style={btn('primary')}>
                 <Send size={12} />
               </button>
             </div>

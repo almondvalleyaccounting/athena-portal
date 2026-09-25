@@ -466,7 +466,7 @@ export default function BillingUpliftReviewPage() {
         const discard = { label: 'Discard uplift…', icon: Trash2, onClick: guard(() => unstage(r.id)), danger: true, title: 'The current monthly amount stays as-is' };
 
         const solid = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: saving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' };
-        const quiet = { ...solid, background: '#fff', color: '#334155', border: '1px solid #cbd5e1' };
+        const quiet = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: saving ? 'wait' : 'pointer', whiteSpace: 'nowrap' };
 
         let main = null;
         let items;
@@ -998,7 +998,7 @@ function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
           >Open in mail app</a>
           <div style={{ flex: 1 }} />
           {drafts.length > 1 && (
-            <button onClick={sendAll} disabled={sending} style={{ ...modalBtnGhost, color: '#0e7fe0', borderColor: '#bfdbfe' }}>
+            <button onClick={sendAll} disabled={sending} style={modalBtnGhost}>
               {sending ? 'Drafting…' : `Draft all (${drafts.length})`}
             </button>
           )}

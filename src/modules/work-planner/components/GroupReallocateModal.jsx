@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ALLOCATION_SERVICES, fetchEntityPeople, fetchPeople, mergePeople } from '../lib/allocationsQueries';
 import { teamColour } from '../lib/helpers';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -437,13 +438,9 @@ const selectStyle = {
 };
 
 function smallBtn(variant) {
-  const base = {
-    padding: '6px 14px', fontSize: 13, fontWeight: 500,
-    fontFamily: font, borderRadius: 6, cursor: 'pointer',
-  };
-  if (variant === 'primary') return { ...base, background: '#1E4560', color: '#fff', border: '1px solid #0f172a' };
-  if (variant === 'disabled') return { ...base, background: '#e2e8f0', color: '#94a3b8', border: '1px solid #e2e8f0', cursor: 'not-allowed' };
-  return { ...base, background: '#fff', color: '#64748b', border: '1px solid #cbd5e1' };
+  if (variant === 'primary') return { ...BTN.primary.sm, cursor: 'pointer' };
+  if (variant === 'disabled') return { ...BTN.primary.sm, opacity: 0.45, cursor: 'not-allowed' };
+  return { ...BTN.secondary.sm, cursor: 'pointer' };
 }
 
 function iconBtnStyle() {

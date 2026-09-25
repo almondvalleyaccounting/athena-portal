@@ -213,14 +213,8 @@ function AttentionRow({ accent, icon: Icon, title, subtitle, onClick, action }) 
           disabled={action.state !== 'idle'}
           title="Create a chase task in the Work Planner, assigned to the job owner"
           style={{
-            fontFamily: FONT,
-            fontSize: '12px',
-            fontWeight: 600,
-            padding: '3px 9px',
-            borderRadius: '6px',
-            border: action.state === 'done' ? '1px solid #bbf7d0' : '1px solid #e5e7eb',
-            background: action.state === 'done' ? '#f0fdf4' : '#ffffff',
-            color: action.state === 'done' ? '#059669' : '#0f172a',
+            ...BTN.secondary.sm,
+            ...(action.state === 'done' ? { border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#059669' } : {}),
             cursor: action.state === 'idle' ? 'pointer' : 'default',
             whiteSpace: 'nowrap',
             flexShrink: 0,

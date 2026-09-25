@@ -492,19 +492,9 @@ function headerCellStyle(width, align = 'center') {
 
 function btnStyle(variant) {
   if (variant === 'primary') {
-    return {
-      padding: '5px 12px', fontSize: 13, fontWeight: 500,
-      border: '1px solid #0f172a', borderRadius: 6,
-      background: '#1E4560', color: '#fff', cursor: 'pointer',
-      fontFamily: "'Outfit', sans-serif",
-    };
+    return { ...BTN.primary.sm, cursor: 'pointer' };
   }
-  return {
-    padding: '5px 12px', fontSize: 13, fontWeight: 500,
-    border: '1px solid #cbd5e1', borderRadius: 6,
-    background: '#fff', color: '#64748b', cursor: 'pointer',
-    fontFamily: "'Outfit', sans-serif",
-  };
+  return { ...BTN.secondary.sm, cursor: 'pointer' };
 }
 
 function miniBtn(kind) {

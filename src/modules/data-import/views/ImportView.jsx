@@ -630,7 +630,7 @@ function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, 
             <X size={14} style={{ color: '#94a3b8' }} />
           </button>
         </div>
-        <button disabled={disabled} onClick={onValidate} style={{ ...btnPrimary, opacity: disabled ? 0.5 : 1 }}>
+        <button disabled={disabled} onClick={onValidate} style={{ ...BTN.primary.md, ...btnIcon, opacity: disabled ? 0.45 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
           Run validation →
         </button>
       </div>
@@ -991,7 +991,7 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
         </div>
         <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
-          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
+          <button onClick={() => setOpen(!open)} style={{ ...BTN.secondary.sm }}>
             {open ? 'Cancel' : 'Map to staff member →'}
           </button>
         )}
@@ -1006,7 +1006,7 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
             <option disabled>──────────</option>
             <option value="alias-only">Record alias only (not yet in Athena)</option>
           </select>
-          <button onClick={save} disabled={!pick || saving} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
+          <button onClick={save} disabled={!pick || saving} style={{ ...BTN.primary.sm, ...btnIcon }}>
             {saving ? 'Saving…' : 'Save mapping'}
           </button>
           <span style={{ fontSize: 12, color: '#64748b' }}>Then hit <b>Re-check after fixes</b>.</span>
@@ -1166,7 +1166,7 @@ function RuleRow({ group, isResolved, onResolved }) {
         </span>
         <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
-          <button onClick={() => setOpen(!open)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
+          <button onClick={() => setOpen(!open)} style={{ ...BTN.secondary.sm }}>
             {open ? 'Cancel' : 'Add scheduling rule →'}
           </button>
         )}
@@ -1194,7 +1194,7 @@ function RuleRow({ group, isResolved, onResolved }) {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={save} disabled={saving || !prefix.trim()} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
+            <button onClick={save} disabled={saving || !prefix.trim()} style={{ ...BTN.primary.sm, ...btnIcon }}>
               {saving ? 'Saving…' : 'Save rule'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -1332,10 +1332,10 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
           <span style={{ fontSize: 12, color: '#065f46', fontWeight: 600 }}>{resolvedLabel}</span>
         ) : (
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setMode(mode === 'create' ? null : 'create')} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
+            <button onClick={() => setMode(mode === 'create' ? null : 'create')} style={{ ...BTN.secondary.sm }}>
               {mode === 'create' ? 'Cancel' : 'Create prospect'}
             </button>
-            <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
+            <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...BTN.secondary.sm }}>
               {mode === 'map' ? 'Cancel' : 'Map to client'}
             </button>
             <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
@@ -1360,7 +1360,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={submit} disabled={saving || !name.trim()} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving || !name.trim()} style={{ ...BTN.primary.sm, ...btnIcon }}>
               {saving ? 'Creating…' : 'Create prospect'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -1375,7 +1375,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
         <div style={{ padding: '10px 14px', borderTop: '1px dashed #e5e7eb', background: '#fff' }}>
           <EntityPicker value={picked} onChange={setPicked} initialQuery={sampleName} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={submit} disabled={saving || !picked} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving || !picked} style={{ ...BTN.primary.sm, ...btnIcon }}>
               {saving ? 'Mapping…' : picked ? `Map to "${picked.name}"` : 'Pick a client'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -1393,7 +1393,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
             <input value={reason} onChange={(e) => setReason(e.target.value)} style={selectStyle} placeholder="e.g. dormant in BM, never engaged" />
           </label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <button onClick={submit} disabled={saving} style={{ ...btnPrimary, fontSize: 12, padding: '6px 10px' }}>
+            <button onClick={submit} disabled={saving} style={{ ...BTN.primary.sm, ...btnIcon }}>
               {saving ? 'Saving…' : 'Ignore this reference'}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -1624,7 +1624,7 @@ function DuplicateCompanyRow({ row }) {
         )}
         {!resolved && (
           <>
-            <button onClick={clearCompany} disabled={saving || !existing} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>
+            <button onClick={clearCompany} disabled={saving || !existing} style={{ ...BTN.secondary.sm }}>
               {saving ? 'Working…' : `Clear ${row.company_number} from existing`}
             </button>
             <button onClick={ignoreRef} disabled={saving} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
@@ -2136,7 +2136,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                 {!decided && preConfirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert (pre-confirmed)</span>}
                 {!decided && !preConfirmed && (
                   <>
-                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={{ ...btnSecondary, fontSize: 12, padding: '4px 10px' }}>Confirm</button>
+                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={{ ...BTN.secondary.sm }}>Confirm</button>
                     <button onClick={() => setOne(m.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 12 }}>Skip</button>
                   </>
                 )}
@@ -2286,13 +2286,13 @@ function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCo
           onClick={onApprove}
           disabled={blocked}
           title={blockReason}
-          style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: 14, fontSize: 14.5, opacity: blocked ? 0.5 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
+          style={{ ...BTN.primary.md, ...btnIcon, flex: 1, justifyContent: 'center', opacity: blocked ? 0.45 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
         >
           Approve and import to Supabase
         </button>
         <button
           onClick={onCancel}
-          style={{ ...btnSecondary, padding: 14, fontSize: 14.5, color: '#991b1b', borderColor: '#fca5a5' }}
+          style={BTN.danger.md}
         >
           Cancel import
         </button>
@@ -2313,8 +2313,8 @@ function ConfirmPrompt({ archiveCount = 0, onCancel, onConfirm }) {
         This can't be undone.
         {archiveCount > 0 && <> <strong>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</strong></>}
       </span>
-      <button onClick={onCancel} style={btnSecondary}>Cancel</button>
-      <button onClick={onConfirm} style={btnPrimary}>Confirm import</button>
+      <button onClick={onCancel} style={BTN.secondary.md}>Cancel</button>
+      <button onClick={onConfirm} style={{ ...BTN.primary.md, ...btnIcon }}>Confirm import</button>
     </div>
   );
 }
@@ -2453,12 +2453,12 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
         ))
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-        <button onClick={onGoStatus} style={btnPrimary}>Back to Status</button>
-        <button onClick={onPickAnother} style={btnSecondary}>Pick another source</button>
+        <button onClick={onGoStatus} style={{ ...BTN.primary.md, ...btnIcon }}>Back to Status</button>
+        <button onClick={onPickAnother} style={BTN.secondary.md}>Pick another source</button>
         {touchesEntities && hasRealWrite && wr.entities_written > 0 && (
-          <button onClick={onViewClients} style={btnSecondary}>View clients</button>
+          <button onClick={onViewClients} style={BTN.secondary.md}>View clients</button>
         )}
-        <button onClick={onGoHistory} style={btnSecondary}>View in History</button>
+        <button onClick={onGoHistory} style={BTN.secondary.md}>View in History</button>
       </div>
     </div>
   );
@@ -2521,8 +2521,8 @@ const pillBig = {
   fontSize: 13, padding: '4px 10px', borderRadius: 999,
   background: '#f0f9ff', color: '#0e7fe0', fontWeight: 500,
 };
-const btnPrimary = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
-const btnSecondary = { ...BTN.secondary.md, cursor: 'pointer' };
+// Layout only; the look comes from BTN.
+const btnIcon = { display: 'inline-flex', alignItems: 'center', gap: 4 };
 const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
   fontSize: 13, padding: '6px 10px',

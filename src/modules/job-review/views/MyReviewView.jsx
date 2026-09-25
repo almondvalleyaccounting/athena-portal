@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { fetchOpenCycle, fetchMyItems, fetchReasons, fetchNextActions, submitItemResponse } from '../api';
+import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -285,11 +286,10 @@ function ItemCard({ item, reasons, nextActions, responder, onSaved, onLocalChang
               onClick={save}
               disabled={saving || !dirty}
               style={{
-                fontSize: 13, fontWeight: 600, fontFamily: font,
-                cursor: saving || !dirty ? 'default' : 'pointer',
-                padding: '8px 18px', borderRadius: 8, border: '1px solid #0f172a',
-                background: !dirty ? '#94a3b8' : '#1E4560', borderColor: !dirty ? '#94a3b8' : '#0f172a',
-                color: '#fff', whiteSpace: 'nowrap',
+                ...BTN.primary.md,
+                cursor: saving || !dirty ? 'not-allowed' : 'pointer',
+                opacity: saving || !dirty ? 0.45 : 1,
+                whiteSpace: 'nowrap',
               }}
             >{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}</button>
           </div>

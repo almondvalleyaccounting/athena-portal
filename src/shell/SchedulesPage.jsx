@@ -4,6 +4,7 @@ import {
   Cpu, UserCheck, AlertTriangle, Pause, Play, Pencil, Check, X, Bot, History,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { BTN } from '../lib/buttonStyles';
 import { useAuth } from './AppShell';
 import {
   describeCron, nextRun, formatLondon, formatUtcTime, relativeTo, parseCron,
@@ -104,12 +105,8 @@ function Field({ icon: Icon, label, children }) {
 }
 
 const btn = (primary) => ({
+  ...(primary ? BTN.primary.sm : BTN.secondary.sm),
   display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '5px 11px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  color: primary ? '#fff' : '#0f172a',
-  background: primary ? '#1E4560' : '#fff',
-  border: `1px solid ${primary ? '#1E4560' : '#e2e8f0'}`,
-  borderRadius: 7, cursor: 'pointer',
 });
 
 const inputStyle = {
@@ -523,7 +520,7 @@ export default function SchedulesPage() {
             {' '}<strong>UTC</strong> (08:00 = 09:00 in summer).
           </p>
         </div>
-        <button onClick={load} style={{ ...btn(false), padding: '8px 14px', fontSize: 14, flexShrink: 0 }}>
+        <button onClick={load} style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
           <RefreshCw size={14} /> Refresh
         </button>
       </div>

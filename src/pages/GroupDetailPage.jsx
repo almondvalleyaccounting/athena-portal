@@ -386,12 +386,12 @@ export default function GroupDetailPage() {
                       <>
                         <span className="text-sm font-mono text-ocean-600">{fmt(primary.monthly_gross)}/mo</span>
                         <StatusBadge status={primary.status} />
-                        <button
+                        <Btn
+                          variant="secondary" size="sm"
                           onClick={(ev) => { ev.stopPropagation(); navigate(`/manage/quotes/${primary.id}/edit`); }}
-                          className="text-xs text-ocean-600 hover:text-ocean-700 font-medium px-2 py-1 border border-ocean-200 rounded hover:bg-ocean-50 transition-all"
                         >
                           Edit
-                        </button>
+                        </Btn>
                       </>
                     ) : (
                       <span className="text-xs text-gray-300">No quote yet</span>

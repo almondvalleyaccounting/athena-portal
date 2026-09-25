@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Send, Trash2, ChevronDown, ChevronRight, Check, AlertTriangle } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import { chipStyle, tones } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import ChSubNav from '../components/ChSubNav';
 import { listQueue, cancelQueued, sendQueue, QUEUE_KINDS } from '../api';
 
@@ -73,7 +74,7 @@ export default function QueueView() {
               onClick={() => remove(item.id)}
               disabled={busyId === item.id}
               title="Remove from queue"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff', border: `1px solid ${tones.danger.border}`, color: tones.danger.fg, borderRadius: 8, padding: '5px 9px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+              style={{ ...BTN.danger.sm, display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               <Trash2 size={12} /> Remove
             </button>

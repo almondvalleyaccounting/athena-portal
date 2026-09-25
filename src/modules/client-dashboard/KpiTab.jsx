@@ -579,9 +579,5 @@ const rowStyle = {
   padding: '7px 0', borderBottom: '1px solid #f1f5f9',
 };
 const iconBtn = { border: 'none', background: 'none', cursor: 'pointer', padding: '2px', display: 'flex' };
-const addBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: '5px', border: '1px solid #e5e7eb',
-  borderRadius: '10px', padding: '8px 14px', background: '#fff', color: '#0369a1',
-  fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-};
+const addBtn = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer' };
 const primaryBtn = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: '7px', cursor: 'pointer' };

@@ -588,10 +588,10 @@ export default function QboMappingPage() {
           <button onClick={() => bulkAcceptTop(selectedIds, 0)} disabled={bulkRunning} style={btnSecondary}>
             Accept top suggestion
           </button>
-          <button onClick={() => bulkIgnore(selectedIds)} disabled={bulkRunning} style={{ ...btnSecondary, color: '#991b1b', borderColor: '#fca5a5' }}>
+          <button onClick={() => bulkIgnore(selectedIds)} disabled={bulkRunning} style={{ ...BTN.danger.sm, cursor: 'pointer' }}>
             Ignore selected
           </button>
-          <button onClick={() => bulkDelete(selectedIds)} disabled={bulkRunning} style={{ ...btnSecondary, color: '#991b1b', borderColor: '#fca5a5' }}>
+          <button onClick={() => bulkDelete(selectedIds)} disabled={bulkRunning} style={{ ...BTN.danger.sm, cursor: 'pointer' }}>
             Delete selected
           </button>
           <button onClick={clearSel} disabled={bulkRunning} style={btnGhost}>Clear</button>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Save, Check } from 'lucide-react';
 import { tones } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import ChSubNav from '../components/ChSubNav';
 import { useAuth } from '../../../shell/AppShell';
 import { listTemplates, saveTemplate, getEmailSignature, saveEmailSignature } from '../api';
@@ -16,9 +17,11 @@ function SaveBtn({ onClick, busy, saved, dirty }) {
   return (
     <button onClick={onClick} disabled={busy || !dirty}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: font, fontSize: 14, fontWeight: 600,
-        padding: '8px 16px', borderRadius: 10, border: 'none', cursor: (busy || !dirty) ? 'not-allowed' : 'pointer',
-        background: saved ? tones.success.solid : (dirty ? '#0f172a' : '#e5e7eb'), color: (saved || dirty) ? '#fff' : '#94a3b8',
+        // Saved keeps its green; otherwise the shared primary, faded while there is nothing to save.
+        ...(saved
+          ? { ...BTN.primary.md, background: tones.success.solid, border: `1px solid ${tones.success.solid}` }
+          : { ...BTN.primary.md, opacity: dirty ? 1 : 0.45 }),
+        display: 'inline-flex', alignItems: 'center', gap: 6, cursor: (busy || !dirty) ? 'not-allowed' : 'pointer',
       }}>
       {saved ? <><Check size={15} /> Saved</> : <><Save size={15} /> {busy ? 'Saving…' : 'Save'}</>}
     </button>

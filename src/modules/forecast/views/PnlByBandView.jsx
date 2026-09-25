@@ -15,7 +15,7 @@
 // exactly — the tie-out check at the foot proves it every render.
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { colors, fontStack, Section, Pill, selectStyle } from '../components/ui';
+import { btnGhost, colors, fontStack, Section, Pill, selectStyle } from '../components/ui';
 import LocationFilter, { resolveFilterToEntityIds } from '../components/LocationFilter';
 import { deriveInflationFactors } from '../lib/aggregator';
 import { buildOccupancyIndex, occKey } from '../lib/occupancy.js';
@@ -498,10 +498,7 @@ function AllocationPanel({
           {BASES.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
         </select>
         {overrides > 0 && (
-          <button onClick={resetOverrides} style={{
-            background: 'transparent', border: `1px solid ${colors.border}`, borderRadius: 6,
-            padding: '4px 10px', fontSize: 12, color: colors.muted, cursor: 'pointer', fontFamily: fontStack,
-          }}>reset {overrides} override{overrides !== 1 ? 's' : ''}</button>
+          <button onClick={resetOverrides} style={btnGhost}>reset {overrides} override{overrides !== 1 ? 's' : ''}</button>
         )}
       </div>
 

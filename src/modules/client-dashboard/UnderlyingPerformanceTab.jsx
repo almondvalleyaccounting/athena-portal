@@ -5,6 +5,7 @@ import {
   aggregate, bucketsInPeriod, combineBuckets, precedingSpan, MONTH_NAMES, yearEndMonthIndex,
 } from './overviewGrain';
 import { suggestOwnerCosts } from './ownerCostSuggestions';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Underlying Performance tab — custom analysis that normalises reported profit
@@ -651,7 +652,7 @@ function SuggestionCard({ suggestions, currency, busy, onConfirm, onDismiss }) {
           <button
             onClick={() => onDismiss(rest)} disabled={busy}
             style={{
-              ...addBtn, borderColor: '#e7e5e4', backgroundColor: '#ffffff', color: '#78716c',
+              ...addBtn,
               opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer',
             }}
           >
@@ -931,8 +932,4 @@ function AddOneoff({ accounts, onAdd }) {
   );
 }
 
-const addBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
-  border: '1px solid #7dd3fc', borderRadius: '10px', backgroundColor: '#f0f9ff',
-  fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0369a1',
-};
+const addBtn = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: '6px' };

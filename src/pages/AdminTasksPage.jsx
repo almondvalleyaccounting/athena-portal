@@ -15,6 +15,7 @@ import ServicePicker from '../modules/billing/ServicePicker';
 import { fetchAdhocServices } from '../modules/billing/billingServices';
 import { stageMeta } from '../modules/ch-codes/api';
 import { AdminTaskDrawer } from '../components/AdminTaskDetail';
+import { BTN } from '../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
@@ -1210,7 +1211,7 @@ export default function AdminTasksPage() {
         {(clientFilter || serviceFilter || textFilter) && (
           <button
             onClick={() => { setClientFilter(''); setServiceFilter(''); setTextFilter(''); }}
-            style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 12.5 }}
+            style={btn('ghost', 'sm')}
           >
             <X size={11} /> Clear
           </button>
@@ -1266,7 +1267,7 @@ export default function AdminTasksPage() {
           </span>
           <button
             onClick={() => { clearAttention(); setServiceFilter(''); setTextFilter(''); }}
-            style={{ ...btn('ghost'), padding: '3px 9px', fontSize: 12.5, marginLeft: 'auto' }}>
+            style={{ ...btn('ghost', 'sm'), marginLeft: 'auto' }}>
             <X size={11} /> Show all
           </button>
         </div>
@@ -1352,12 +1353,12 @@ export default function AdminTasksPage() {
                 onClick={() => addManual(true)}
                 disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
                 title="Save as a draft — held off the live list until you publish it"
-                style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
+                style={{ ...btn('ghost'), opacity: (savingTask || !newTitle.trim()) ? 0.45 : 1 }}
               >Save as draft</button>
               <button
                 onClick={() => addManual(false)}
                 disabled={savingTask || !newTitle.trim() || (newBillable && (!newClient || !billAmountOk(newBillAmount)))}
-                style={{ ...btn('primary'), opacity: (savingTask || !newTitle.trim()) ? 0.6 : 1 }}
+                style={{ ...btn('primary'), opacity: (savingTask || !newTitle.trim()) ? 0.45 : 1 }}
               >{savingTask ? 'Adding…' : (newBillable ? 'Add & bill' : 'Add task')}</button>
             </div>
           </div>
@@ -1767,7 +1768,7 @@ function AddBillModal({ task, serviceOptions, standardNetFor, onClose, onConfirm
           <button
             onClick={() => submit(false)}
             title="Bill now, keep the task open"
-            style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd' }}
+            style={btn('ghost')}
           >
             <Receipt size={13} /> Bill and leave on To Do
           </button>
@@ -1823,7 +1824,7 @@ function CompleteModal({ task, staffList, defaultStaffId, onClose, onConfirm }) 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
           <button onClick={() => onConfirm(doneBy, effectiveMinutes)} disabled={!doneBy || !effectiveMinutes}
-            style={{ ...btn('primary'), opacity: (!doneBy || !effectiveMinutes) ? 0.6 : 1 }}>
+            style={{ ...btn('primary'), opacity: (!doneBy || !effectiveMinutes) ? 0.45 : 1 }}>
             <CheckCircle2 size={13} /> Complete
           </button>
         </div>
@@ -1895,19 +1896,19 @@ function TaskRow({
         {/* Copy chip is for values Sophie keys into BM (codes, UTRs) — internal
             bookkeeping values like the dedup pair ids stay hidden. */}
         {t.value && t.source !== 'person_dedup' && (
-          <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost'), fontFamily: 'monospace', fontSize: 13, flexShrink: 0 }}>
+          <button onClick={onCopy} title="Copy the value to paste into BM" style={{ ...btn('ghost', 'sm'), fontFamily: 'monospace', flexShrink: 0 }}>
             {copied ? '✓ copied' : <>{t.value} <Copy size={11} /></>}
           </button>
         )}
 
         {onReviewBill && (
-          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
+          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), flexShrink: 0 }}>
             <Receipt size={12} /> Review bill
           </button>
         )}
 
         {onAddBill && (
-          <button onClick={onAddBill} title="Create a draft bill for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', flexShrink: 0 }}>
+          <button onClick={onAddBill} title="Create a draft bill for this task" style={{ ...btn('ghost'), flexShrink: 0 }}>
             <Receipt size={12} /> Add bill
           </button>
         )}
@@ -2282,11 +2283,11 @@ function CompletedRow({
           <MessageSquare size={13} />{notes.length > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{notes.length}</span>}
         </button>
         {onReviewBill && (
-          <button onClick={onReviewBill} title="Open the bill raised for this task" style={{ ...btn('ghost'), color: '#0e7fe0', borderColor: '#bae6fd', padding: '5px 10px', fontSize: 13 }}>
+          <button onClick={onReviewBill} title="Open the bill raised for this task" style={btn('ghost', 'sm')}>
             <Receipt size={12} /> Review bill
           </button>
         )}
-        <button onClick={onReopen} title="Move back to open tasks" style={{ ...btn('ghost'), padding: '5px 10px', fontSize: 13 }}>
+        <button onClick={onReopen} title="Move back to open tasks" style={btn('ghost', 'sm')}>
           <RotateCcw size={12} /> Reopen
         </button>
       </div>
@@ -2608,7 +2609,7 @@ function EscalateModal({ task, staffList, onClose, onSend }) {
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
           <button onClick={onClose} style={btn('ghost')}>Cancel</button>
-          <button onClick={send} disabled={!toId || sending} style={{ ...btn('primary'), opacity: (!toId || sending) ? 0.6 : 1 }}>
+          <button onClick={send} disabled={!toId || sending} style={{ ...btn('primary'), opacity: (!toId || sending) ? 0.45 : 1 }}>
             <Send size={13} /> {sending ? 'Sending…' : 'Send & escalate'}
           </button>
         </div>
@@ -2696,25 +2697,22 @@ function GroupHeader({ children }) {
   );
 }
 
-function btn(kind) {
-  return {
-    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
-    fontFamily: font, borderRadius: 8, cursor: 'pointer',
-    background: kind === 'primary' ? '#1E4560' : '#fff',
-    color: kind === 'primary' ? '#fff' : '#475569',
-    border: kind === 'primary' ? 'none' : '1px solid #e5e7eb',
-  };
+function btn(kind, size = 'md') {
+  const look = kind === 'primary' ? BTN.primary[size] : BTN.secondary[size];
+  return { ...look, display: 'inline-flex', alignItems: 'center', gap: 5 };
 }
 const iconBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 3, padding: '4px 7px', fontFamily: font,
   borderRadius: 7, cursor: 'pointer', background: '#fff', border: '1px solid #e5e7eb', flexShrink: 0,
 };
 function completeBtn(active) {
+  const layout = { display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, whiteSpace: 'nowrap' };
+  if (!active) return { ...BTN.secondary.sm, ...layout };
   return {
-    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px', fontSize: 13, fontWeight: 600,
-    fontFamily: font, borderRadius: 7, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
-    background: active ? '#dcfce7' : '#fff', color: active ? '#166534' : '#475569',
-    border: `1px solid ${active ? '#bbf7d0' : '#e5e7eb'}`,
+    ...layout, padding: '5px 10px', fontSize: 13, fontWeight: 600,
+    fontFamily: font, borderRadius: 7, cursor: 'pointer',
+    background: '#dcfce7', color: '#166534',
+    border: '1px solid #bbf7d0',
   };
 }
 const modalBackdrop = {

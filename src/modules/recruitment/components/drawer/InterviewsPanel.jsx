@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CalendarPlus, CalendarDays, Trash2, Star, Download } from 'lucide-react';
 import { listInterviews, createInterview, updateInterview, deleteInterview } from '../../api';
+import { BTN } from '../../../../lib/buttonStyles';
 import {
   font, input, fieldLabel, btn, card,
   INTERVIEW_KINDS, INTERVIEW_STATUSES, INTERVIEW_STATUS_MAP,
@@ -82,7 +83,7 @@ export default function InterviewsPanel({ app, vacancyTitle, staffList, staffMap
                   ))}
                 </span>
                 {iv.scheduled_at && (
-                  <button onClick={() => addToCalendar(iv)} style={{ ...btn('ghost'), padding: '4px 8px' }} title="Download .ics">
+                  <button onClick={() => addToCalendar(iv)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5 }} title="Download .ics">
                     <Download size={12} /> Calendar
                   </button>
                 )}

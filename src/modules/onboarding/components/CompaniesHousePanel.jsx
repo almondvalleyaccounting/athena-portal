@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Building2, RefreshCw, UserPlus, AlertTriangle } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import { runChLookup, addDirectorSa } from '../api';
 
@@ -97,7 +98,7 @@ export default function CompaniesHousePanel({ ob, onChanged }) {
                           <button
                             onClick={() => addSa(o.name)} disabled={busy}
                             title={`Add self-assessment steps for ${o.name}`}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: '3px 10px' }}
+                            style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                           >
                             <UserPlus size={10} /> Add SA
                           </button>

@@ -171,7 +171,7 @@ export default function HmrcQboCompare() {
           style={{ fontFamily: font, fontSize: 13.5, padding: '5px 8px',
                    border: '1px solid #e5e7eb', borderRadius: 6, color: '#0f172a' }} />
         <button onClick={valueAll} disabled={!!valuing}
-          style={{ ...btn, fontSize: 13.5, opacity: valuing ? 0.6 : 1 }}>
+          style={{ ...btn, opacity: valuing ? 0.6 : 1 }}>
           {valuing || 'Value every mapped client'}
         </button>
         {dates.length > 1 && (
@@ -198,11 +198,11 @@ export default function HmrcQboCompare() {
         {chip('timing', 'Timing', '#b45309')}
         {chip('unvalued', 'Not valued', '#94a3b8')}
         {chip('all', 'Everything')}
-        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <RefreshCw size={12} /> Reload
         </button>
         <button onClick={exportCsv} disabled={!filtered.length}
-          style={{ ...btnQuiet, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5,
+          style={{ ...btnQuiet, display: 'inline-flex', alignItems: 'center', gap: 5,
                    opacity: filtered.length ? 1 : 0.5 }}>
           <Download size={12} /> Export
         </button>

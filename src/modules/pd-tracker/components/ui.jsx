@@ -1,4 +1,5 @@
 import React from 'react';
+import { BTN } from '../../../lib/buttonStyles';
 
 export const FONT = "'Outfit', sans-serif";
 export const SERIF = "'Playfair Display', serif";
@@ -47,28 +48,19 @@ export function Stat({ label, value, sub, accent = '#0f172a' }) {
   );
 }
 
-export function Button({ children, onClick, variant = 'primary', disabled, style }) {
-  const variants = {
-    primary: { bg: '#1E4560', fg: '#fff' },
-    accent:  { bg: '#1E4560', fg: '#fff' },
-    ghost:   { bg: 'transparent', fg: '#0f172a', border: '1px solid #e5e7eb' },
-    danger:  { bg: 'transparent', fg: '#dc2626', border: '1px solid #fee2e2' },
-  };
-  const v = variants[variant] || variants.primary;
+// Built on Athena's shared button definition (lib/buttonStyles.js). 'accent'
+// is the old name for primary here; 'ghost' is the secondary (grey-border) look.
+export function Button({ children, onClick, variant = 'primary', size = 'md', disabled, style }) {
+  const kinds = { primary: 'primary', accent: 'primary', ghost: 'secondary', secondary: 'secondary', danger: 'danger' };
+  const look = (BTN[kinds[variant] || 'primary'] || BTN.primary)[size] || BTN.primary.md;
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: disabled ? '#e5e7eb' : v.bg,
-        color: disabled ? '#94a3b8' : v.fg,
-        fontFamily: FONT,
-        fontSize: 14,
-        fontWeight: 600,
-        border: v.border || 'none',
-        borderRadius: 10,
-        padding: '9px 16px',
+        ...look,
         cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
         transition: 'all 0.15s',
         ...style,
       }}

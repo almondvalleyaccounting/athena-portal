@@ -664,10 +664,8 @@ function ScenarioPicker({ entityId, clientName, currentScenarioId, onClose, onPi
               onClick={createScenario}
               disabled={creating || busy || !draft.opening}
               style={{
-                alignSelf: 'flex-start', padding: '10px 20px', border: 'none', borderRadius: '10px',
-                backgroundColor: creating ? '#cbd5e1' : '#1E4560', color: '#fff',
-                fontFamily: OUTFIT, fontSize: '14.5px', fontWeight: 700,
-                cursor: creating ? 'wait' : 'pointer',
+                ...BTN.primary.md, alignSelf: 'flex-start',
+                cursor: creating ? 'wait' : 'pointer', ...(creating && { opacity: 0.45 }),
               }}
             >
               {creating ? 'Creating…' : 'Create and link'}

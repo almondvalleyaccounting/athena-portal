@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, FONT, SERIF, Select, Button } from '../components/ui';
+import { BTN } from '../../../lib/buttonStyles';
 import {
   loadStaff, loadOneToOnes, addOneToOneComment,
   loadGrantsByOwner, loadGrantsToMe, createGrant, deleteGrant,
@@ -124,7 +125,7 @@ export default function SharingView() {
               <Row key={g.id}>
                 <span style={{ flex: 1, fontSize: 14, color: '#0f172a', fontWeight: 500 }}>{g.grantee?.name}</span>
                 <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, background: '#eef2ff', color: '#4338ca' }}>{g.role}</span>
-                <button onClick={() => revoke(g.id)} style={ghost}>Revoke</button>
+                <button onClick={() => revoke(g.id)} style={BTN.danger.sm}>Revoke</button>
               </Row>
             ))}
           </div>
@@ -217,7 +218,7 @@ function RespondCard({ req, onRespond, onDecline }) {
       <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Your feedback…"
         style={{ width: '100%', minHeight: 56, padding: 10, fontFamily: FONT, fontSize: 14, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', margin: '10px 0' }} />
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <button onClick={() => onDecline(req)} style={ghost}>Decline</button>
+        <button onClick={() => onDecline(req)} style={BTN.secondary.md}>Decline</button>
         <Button variant="primary" onClick={() => onRespond(req, text)} disabled={!text.trim()}>Send feedback</Button>
       </div>
     </div>
@@ -231,4 +232,3 @@ function Fld({ label, children }) {
 function Row({ children }) { return <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', border: '1px solid #f1f5f9', borderRadius: 8 }}>{children}</div>; }
 function Empty({ children }) { return <div style={{ fontSize: 13, color: '#94a3b8' }}>{children}</div>; }
 function Msg({ children }) { return <div style={{ padding: 40, fontFamily: FONT, color: '#64748b', fontSize: 14.5, textAlign: 'center' }}>{children}</div>; }
-const ghost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };

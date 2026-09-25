@@ -1004,10 +1004,10 @@ const td = { padding: '7px 10px', verticalAlign: 'middle' };
 const thStatic = { padding: '8px 10px', borderBottom: '1px solid #e5e7eb' };
 
 const ACTION_STYLES = {
-  expedite:    { label: '⚡ Expedite',  border: '#fcd34d', background: '#fef3c7', color: '#b45309', title: 'Expedite — promote to top box' },
+  expedite:    { label: '⚡ Expedite',  border: '#fcd34d', background: '#fef3c7', color: '#b45309', title: 'Expedite — promote to top box', status: true },
   unexpedite:  { label: 'Unexpedite',   border: '#cbd5e1', background: '#fff',    color: '#475569', title: 'Remove expedite' },
   deprioritise:{ label: 'Deprioritise', border: '#cbd5e1', background: '#fff',    color: '#475569', title: 'Park this client with a reason' },
-  reactivate:  { label: 'Reactivate',   border: '#86efac', background: '#dcfce7', color: '#166534', title: 'Clear deprioritise reason' },
+  reactivate:  { label: 'Reactivate',   border: '#86efac', background: '#dcfce7', color: '#166534', title: 'Clear deprioritise reason', status: true },
 };
 function RowAction({ kind, busy, onExpedite, onUnexpedite, onDeprioritise, onReactivate }) {
   const s = ACTION_STYLES[kind] || ACTION_STYLES.expedite;
@@ -1022,12 +1022,10 @@ function RowAction({ kind, busy, onExpedite, onUnexpedite, onDeprioritise, onRea
       onClick={handler}
       title={s.title}
       style={{
-        fontSize: 12, padding: '3px 8px', fontFamily: font, cursor: busy ? 'wait' : 'pointer',
-        borderRadius: 6,
-        border: '1px solid ' + s.border,
-        background: s.background,
-        color: s.color,
-        fontWeight: 600,
+        ...BTN.secondary.sm,
+        // Expedite (amber) and reactivate (green) keep their status colours.
+        ...(s.status ? { border: '1px solid ' + s.border, background: s.background, color: s.color, fontWeight: 600 } : {}),
+        cursor: busy ? 'wait' : 'pointer',
       }}
     >
       {s.label}
@@ -1168,8 +1166,8 @@ function QueueModal({ changes, onClose, onApplied, onCancel, onCancelAll, onExpo
                   <td style={{ ...qmTd, fontWeight: 600, color: '#92400e' }}>{c.proposed_value || '—'}</td>
                   <td style={{ ...qmTd, color: '#64748b' }}>{c.note || ''}</td>
                   <td style={{ ...qmTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button onClick={() => onApplied(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 12, marginRight: 4 }}>Mark applied</button>
-                    <button onClick={() => onCancel(c.id)} style={{ ...btnSecondary, padding: '3px 8px', fontSize: 12 }}>Discard</button>
+                    <button onClick={() => onApplied(c.id)} style={{ ...btnSecondary, marginRight: 4 }}>Mark applied</button>
+                    <button onClick={() => onCancel(c.id)} style={btnSecondary}>Discard</button>
                   </td>
                 </tr>
               ))}
@@ -1274,7 +1272,7 @@ const selectInput = {
   boxSizing: 'border-box', outline: 'none',
 };
 const btnPrimary = { ...BTN.primary.sm, cursor: 'pointer' };
-const btnPrimaryDisabled = { ...btnPrimary, background: '#94a3b8', border: '1px solid #94a3b8', cursor: 'not-allowed' };
+const btnPrimaryDisabled = { ...btnPrimary, opacity: 0.45, cursor: 'not-allowed' };
 const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer' };
 const qmTh = { padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#475569', borderBottom: '1px solid #e5e7eb' };
 const qmTd = { padding: '7px 10px', verticalAlign: 'middle' };
@@ -1338,9 +1336,9 @@ function DeprioritiseDialog({ client, onCancel, onConfirm }) {
             disabled={disabled}
             onClick={() => onConfirm(choice === 'Other' ? otherText.trim() : choice)}
             style={{
-              fontSize: 13, padding: '6px 14px', fontFamily: font, cursor: disabled ? 'not-allowed' : 'pointer',
-              borderRadius: 6, border: '1px solid #0f172a',
-              background: disabled ? '#94a3b8' : '#1E4560', color: '#fff', fontWeight: 600,
+              ...BTN.primary.sm,
+              opacity: disabled ? 0.45 : 1,
+              cursor: disabled ? 'not-allowed' : 'pointer',
             }}
           >Deprioritise</button>
         </div>

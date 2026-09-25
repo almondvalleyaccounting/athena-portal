@@ -279,7 +279,7 @@ export default function DashboardView() {
               </h3>
               <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 10 }}>{statTransactions.length} entries</span>
               <div style={{ flex: 1 }} />
-              <button onClick={() => setExpandedStat(null)} style={{ ...navBtn, fontSize: 12, padding: '3px 8px', color: '#94a3b8' }}>Close</button>
+              <button onClick={() => setExpandedStat(null)} style={navBtn}>Close</button>
             </div>
             <TransactionList items={statTransactions} entityMap={entityMap} staffMap={staffMap} />
           </div>
@@ -412,7 +412,7 @@ export default function DashboardView() {
                       <td style={{ padding: '8px 10px', color: '#94a3b8' }}>{l.locked_at ? new Date(l.locked_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                       {isAdmin && (
                         <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                          <button onClick={() => handleUnlock(l)} style={{ ...navBtn, fontSize: 12, padding: '3px 9px', color: '#b91c1c', borderColor: '#fecaca' }}>Unlock</button>
+                          <button onClick={() => handleUnlock(l)} style={{ ...navBtn, ...BTN.danger.sm }}>Unlock</button>
                         </td>
                       )}
                     </tr>
@@ -437,7 +437,7 @@ export default function DashboardView() {
                     onClick={handleLock}
                     disabled={lockSaving || !lockFrom || !lockTo}
                     style={{
-                      ...navBtn, gap: 5, color: '#fff', background: '#1E4560', borderColor: '#0e7fe0',
+                      ...navBtn, ...BTN.primary.sm, gap: 5,
                       opacity: (lockSaving || !lockFrom || !lockTo) ? 0.5 : 1,
                     }}
                   >

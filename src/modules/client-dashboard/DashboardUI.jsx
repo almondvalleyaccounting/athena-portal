@@ -1,6 +1,7 @@
 import React from 'react';
 import { Loader, CloudOff, RefreshCw, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { money, OUTFIT, cardStyle } from './dashboardData';
+import { BTN } from '../../lib/buttonStyles';
 
 /*
   Small presentational pieces shared across the Client Dashboard tabs.
@@ -36,10 +37,8 @@ export function EmptyState({ label, needsReconnect, selectedName, onPull, loadin
           onClick={onPull}
           disabled={loading}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
-            border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-            cursor: loading ? 'not-allowed' : 'pointer', fontFamily: OUTFIT, fontSize: '14px',
-            fontWeight: 600, color: '#38bdf8',
+            ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: '6px',
+            cursor: loading ? 'not-allowed' : 'pointer', ...(loading && { opacity: 0.45 }),
           }}
         >
           <RefreshCw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />

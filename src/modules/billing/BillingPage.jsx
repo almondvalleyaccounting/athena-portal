@@ -1400,7 +1400,7 @@ export default function BillingPage() {
                       <span style={{fontSize:14,fontWeight:600,color:'#0f172a',width:96}}>{inv.doc_number?`INV #${inv.doc_number}`:'—'}</span>
                       <span style={{fontSize:13,color:'#64748b',flex:1}}>{inv.txn_date} · {inv.lines.length} line{inv.lines.length!==1?'s':''}</span>
                       <span style={{fontSize:14,fontWeight:600,color:'#0f172a'}}>{fmt(inv.total_amt)}</span>
-                      <button onClick={(e)=>{e.stopPropagation();copyInvoiceToForm(inv);}} style={{...btnPrimary,padding:'6px 10px',fontSize:13,gap:4}}><Plus size={13}/> Copy</button>
+                      <button onClick={(e)=>{e.stopPropagation();copyInvoiceToForm(inv);}} style={{...BTN.primary.sm,display:'inline-flex',alignItems:'center',gap:4,cursor:'pointer'}}><Plus size={13}/> Copy</button>
                     </div>
                     {open && (
                       <div style={{borderTop:'1px solid #f1f5f9',padding:'8px 14px',background:'#fafafa'}}>
@@ -1543,7 +1543,7 @@ function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelet
           onClick={onAdd}
           disabled={busy || !draft.trim()}
           title="Ctrl/⌘ + Enter"
-          style={{ ...btnPrimary, padding:'8px 12px', fontSize:13, opacity:(busy||!draft.trim())?0.4:1, cursor:(busy||!draft.trim())?'default':'pointer' }}
+          style={{ ...BTN.primary.sm, display:'inline-flex', alignItems:'center', opacity:(busy||!draft.trim())?0.4:1, cursor:(busy||!draft.trim())?'default':'pointer' }}
         >{busy ? 'Saving…' : 'Comment'}</button>
       </div>
     </div>
@@ -1600,7 +1600,7 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const pad = compact ? '2px 8px' : '5px 12px';
   const fs = compact ? 12 : 13;
   const solid = { display: 'inline-flex', alignItems: 'center', gap: 4, background: '#059669', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', padding: pad, fontSize: fs, fontWeight: 600, fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap' };
-  const quiet = { ...solid, background: '#fff', color: '#334155', border: '1px solid #cbd5e1' };
+  const quiet = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' };
   const note = { fontSize: compact ? 11.5 : 12.5, color: '#64748b', whiteSpace: 'nowrap' };
 
   let main = null;

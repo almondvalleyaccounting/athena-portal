@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, ChevronDown, ChevronRight, Play, FlaskConical } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import { supabase } from '../../../lib/supabase';
 import { getChaseConfig, setChaseConfig, runChaseDryRun, runChaseTestSend } from '../api';
 
@@ -115,7 +116,7 @@ export default function ChasersPanel() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
             <button
               onClick={dryRun} disabled={busy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, cursor: 'pointer' }}
+              style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Play size={13} /> {busy ? 'Working…' : 'Preview today’s run (dry)'}
             </button>

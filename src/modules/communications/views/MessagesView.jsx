@@ -204,7 +204,7 @@ export default function MessagesView({ channel }) {
               <button
                 onClick={() => doSend(newNumber)}
                 disabled={sending || !draft.trim() || !newNumber.trim()}
-                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: font }}
+                style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 7, ...((sending || !draft.trim() || !newNumber.trim()) ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
               >
                 <Send size={13} /> {sending ? 'Sending…' : 'Send'}
               </button>
@@ -269,7 +269,7 @@ export default function MessagesView({ channel }) {
               <button
                 onClick={() => doSend(activeConv.number, activeConv.entityId)}
                 disabled={sending || !draft.trim()}
-                style={{ alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 7, padding: '0 18px', fontSize: 14, fontWeight: 600, background: sending || !draft.trim() ? '#94a3b8' : '#1E4560', color: '#fff', border: 'none', borderRadius: 10, cursor: sending ? 'default' : 'pointer', fontFamily: font }}
+                style={{ ...BTN.primary.md, alignSelf: 'stretch', display: 'flex', alignItems: 'center', gap: 7, ...((sending || !draft.trim()) ? { opacity: 0.45, cursor: 'not-allowed' } : {}) }}
               >
                 <Send size={14} /> Send
               </button>

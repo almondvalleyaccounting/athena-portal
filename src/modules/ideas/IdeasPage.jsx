@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ThumbsUp, Plus, Lightbulb } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import { BTN } from '../../lib/buttonStyles';
 
 const STATUS_OPTIONS = [
   { key: 'new',         label: 'New',          bg: '#f1f5f9', fg: '#475569' },
@@ -432,9 +433,8 @@ export default function IdeasPage() {
                         onClick={() => handleSaveComment(idea)}
                         disabled={!commentText.trim() || savingComment}
                         style={{
-                          fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600,
-                          color: '#ffffff', background: !commentText.trim() || savingComment ? '#c7d2fe' : '#4f46e5',
-                          border: 'none', borderRadius: 8, padding: '6px 14px',
+                          ...BTN.primary.sm,
+                          opacity: !commentText.trim() || savingComment ? 0.45 : 1,
                           cursor: !commentText.trim() || savingComment ? 'not-allowed' : 'pointer',
                         }}
                       >
@@ -505,9 +505,8 @@ export default function IdeasPage() {
                           onClick={() => handleSaveReply(idea)}
                           disabled={!replyText.trim() || savingReply}
                           style={{
-                            fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 600, color: '#ffffff',
-                            background: !replyText.trim() || savingReply ? '#bae6fd' : '#0284c7',
-                            border: 'none', borderRadius: 8, padding: '6px 14px',
+                            ...BTN.primary.sm,
+                            opacity: !replyText.trim() || savingReply ? 0.45 : 1,
                             cursor: !replyText.trim() || savingReply ? 'not-allowed' : 'pointer',
                           }}
                         >
@@ -589,11 +588,9 @@ export default function IdeasPage() {
           onClick={handleSubmit}
           disabled={!newIdea.trim() || submitting}
           style={{
+            ...BTN.primary.md,
             display: 'inline-flex', alignItems: 'center', gap: 6,
-            backgroundColor: !newIdea.trim() || submitting ? '#e5e7eb' : '#1E4560',
-            color: !newIdea.trim() || submitting ? '#94a3b8' : '#ffffff',
-            fontFamily: "'Outfit', sans-serif", fontSize: 14, fontWeight: 600,
-            border: 'none', borderRadius: 10, padding: '10px 18px',
+            opacity: !newIdea.trim() || submitting ? 0.45 : 1,
             cursor: !newIdea.trim() || submitting ? 'not-allowed' : 'pointer',
           }}
         >

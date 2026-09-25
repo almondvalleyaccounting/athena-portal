@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { FONT, Select } from './ui';
+import { BTN } from '../../../lib/buttonStyles';
 import {
   upsertStaffCategoryOverride, deleteStaffCategoryOverride,
   loadStaffCategoryOverrides, LEVEL_LABELS,
@@ -113,5 +114,5 @@ export default function CustomiseTargets({ staffId, roleCategories, overrides, a
   );
 }
 
-const ghost = { fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#64748b' };
-const primary = { fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', padding: '8px 16px', borderRadius: 8, border: '1px solid #0f172a', background: '#0f172a', color: '#fff' };
+const ghost = { ...BTN.secondary.sm };
+const primary = { ...BTN.primary.md };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { SERVICES } from '../lib/constants';
 import { formatISO } from '../lib/helpers';
 import ClientTypeAhead from './ClientTypeAhead';
+import { BTN } from '../../../lib/buttonStyles';
 
 const labelStyle = {
   display: 'block', fontSize: 10, fontWeight: 600, color: '#94a3b8',
@@ -15,8 +16,7 @@ const inputStyle = {
 };
 const selectStyle = { ...inputStyle };
 const btnBase = {
-  padding: '5px 12px', fontSize: 12, fontWeight: 500,
-  fontFamily: "'Outfit', sans-serif", borderRadius: 8, cursor: 'pointer',
+  cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
 
@@ -143,15 +143,15 @@ export default function QuickTaskModal({ task, staffList, entityList, progressNo
           {task.id && (
           <button
             onClick={() => onDelete(task.id)}
-            style={{ ...btnBase, color: '#dc2626', marginRight: 'auto', border: '1px solid #e5e7eb', background: '#fff' }}
+            style={{ ...BTN.danger.sm, ...btnBase, marginRight: 'auto' }}
           >
             Delete
           </button>
           )}
-          <button onClick={onClose} style={{ ...btnBase, border: '1px solid #e5e7eb', background: '#fff', color: '#1e293b' }}>
+          <button onClick={onClose} style={{ ...BTN.secondary.sm, ...btnBase }}>
             Cancel
           </button>
-          <button onClick={handleSave} style={{ ...btnBase, background: '#1E4560', color: '#fff', border: '1px solid #0f172a' }}>
+          <button onClick={handleSave} style={{ ...BTN.primary.sm, ...btnBase }}>
             Save
           </button>
         </div>

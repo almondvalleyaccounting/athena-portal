@@ -276,14 +276,13 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
                   <button
                     onClick={() => { setNoteInput(task.id); setNoteText(''); }}
                     style={{
-                      border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                      fontSize: 12, fontWeight: 500, cursor: 'pointer',
-                      padding: '3px 10px', marginTop: 4, borderRadius: 6,
-                      fontFamily: "'Outfit', sans-serif",
+                      ...BTN.secondary.sm,
+                      cursor: 'pointer',
+                      marginTop: 4,
                       transition: 'all 0.15s',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#dbeafe'; e.currentTarget.style.color = '#0e7fe0'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#64748b'; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
                   >
                     + Add note
                   </button>

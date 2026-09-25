@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ClipboardList, Plus, X } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import {
   SERVICE_OPTIONS, REGISTRATION_OPTIONS, CH_TASK_OPTIONS,
@@ -134,7 +135,7 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
         {CH_TASK_OPTIONS.map((opt) => (
           <button
             key={opt.key} onClick={() => addChTask(opt)} disabled={busy}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 12.5, fontWeight: 600, fontFamily: font, background: '#fff', color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 999, cursor: busy ? 'default' : 'pointer' }}
+            style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: busy ? 'default' : 'pointer' }}
           >
             <Plus size={11} /> {opt.label}
           </button>

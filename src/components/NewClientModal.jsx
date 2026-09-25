@@ -312,15 +312,9 @@ export default function NewClientModal({ open, onClose, onSave, initialName = ''
             onClick={handleSave}
             disabled={!canSave}
             style={{
+              ...BTN.primary.md,
               flex: 1,
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
-              fontWeight: 600,
-              color: canSave ? '#ffffff' : '#94a3b8',
-              backgroundColor: canSave ? '#1E4560' : '#e5e7eb',
-              border: 'none',
-              borderRadius: '10px',
-              padding: '12px',
+              opacity: canSave ? 1 : 0.45,
               cursor: canSave ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s ease',
             }}

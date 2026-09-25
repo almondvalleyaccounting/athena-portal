@@ -185,7 +185,7 @@ export default function NominalMapView({ entity }) {
             </button>
           );
         })}
-        <button onClick={() => setShowAllRoles((v) => !v)} style={{ ...btnQuiet, padding: '6px 10px' }}>
+        <button onClick={() => setShowAllRoles((v) => !v)} style={btnQuiet}>
           {showAllRoles ? 'Just the PAYE roles' : 'All roles'}
         </button>
       </div>

@@ -15,7 +15,7 @@
 // demand per version; stale versions get a one-click recompute.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { colors, fontStack, H2, serifStack, btnDark, btnOutline } from '../components/ui';
+import { colors, fontStack, H2, serifStack, btnDark, btnGhost, btnOutline } from '../components/ui';
 import { listScenarios, loadOutputs, loadScenarioDrivers, listLoans } from '../lib/queries';
 import { recomputeScenario } from '../lib/recompute';
 import { buildOccupancyIndex, occKey } from '../lib/occupancy.js';
@@ -166,7 +166,7 @@ export default function CompareView({
         <div style={{ padding: 12, background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, marginBottom: 14, fontSize: 14, color: '#7c2d12', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>No computed outputs yet:</span>
           {stale.map(s => (
-            <button key={s.v.id} onClick={() => onRecomputeVersion(s.v.id)} disabled={loading} style={{ ...btnOutline, padding: '4px 10px', fontSize: 13 }}>
+            <button key={s.v.id} onClick={() => onRecomputeVersion(s.v.id)} disabled={loading} style={btnGhost}>
               Recompute {s.v.name}
             </button>
           ))}

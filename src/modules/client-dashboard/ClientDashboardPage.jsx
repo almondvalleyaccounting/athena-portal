@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { getReportsAuthUrl } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
+import { BTN } from '../../lib/buttonStyles';
 import {
   money, timeAgo, shortDate,
   latestByMetric, parseReportTree, reportMonthKeys, bucketReportTree,
@@ -563,9 +564,7 @@ export default function ClientDashboardPage() {
   const emptyProps = { needsReconnect, selectedName, onPull: pull, loading: winBusy || loading };
 
   const btnBase = {
-    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-    border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-    fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#38bdf8',
+    ...BTN.secondary.md, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
   };
 
   const periodCurrency = periodData?.pl_range?.currency || periodData?.pnl_chart?.currency || periodData?.bs_period?.currency || 'GBP';
@@ -619,7 +618,7 @@ export default function ClientDashboardPage() {
                 onClick={pull}
                 disabled={loading || winBusy}
                 title="Refresh from QuickBooks"
-                style={{ ...btnBase, flex: '1 1 auto', padding: '9px 10px', cursor: (loading || winBusy) ? 'not-allowed' : 'pointer' }}
+                style={{ ...btnBase, flex: '1 1 auto', padding: '8px 10px', cursor: (loading || winBusy) ? 'not-allowed' : 'pointer' }}
               >
                 <RefreshCw size={14} style={(loading || winBusy) ? { animation: 'spin 1s linear infinite' } : {}} />
                 Refresh
@@ -628,7 +627,7 @@ export default function ClientDashboardPage() {
             <button
               onClick={handleConnect}
               title="Connect a QuickBooks client"
-              style={{ ...btnBase, flex: '1 1 auto', padding: '9px 10px', cursor: 'pointer' }}
+              style={{ ...btnBase, flex: '1 1 auto', padding: '8px 10px', cursor: 'pointer' }}
             >
               <Plus size={14} /> Connect
             </button>
@@ -646,9 +645,8 @@ export default function ClientDashboardPage() {
                   onClick={() => setPreviewGrantId(g.id)}
                   title={`See exactly what ${g.email} sees`}
                   style={{
-                    ...btnBase, padding: '9px 10px', cursor: 'pointer',
-                    justifyContent: 'flex-start', color: '#0369a1',
-                    backgroundColor: '#f0f9ff', borderColor: '#bae6fd',
+                    ...btnBase, cursor: 'pointer',
+                    justifyContent: 'flex-start',
                   }}
                 >
                   <Eye size={14} />

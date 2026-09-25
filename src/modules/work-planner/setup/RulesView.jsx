@@ -370,7 +370,7 @@ function EditRow({ draft, setDraft, saving, onSave, onCancel, staff, taskNameSug
         </label>
       </td>
       <td style={{ ...td, textAlign: 'right' }}>
-        <button onClick={onSave} disabled={saving} style={{ ...btnPrimary, fontSize: 12, padding: '4px 10px', marginRight: 4, opacity: saving ? 0.5 : 1 }}>
+        <button onClick={onSave} disabled={saving} style={{ ...btnPrimarySm, marginRight: 4, opacity: saving ? 0.5 : 1 }}>
           <Save size={11} /> {saving ? 'Saving…' : 'Save'}
         </button>
         <button onClick={onCancel} disabled={saving} style={{ ...btnGhost, fontSize: 12 }}>
@@ -452,7 +452,7 @@ function OverridesPanel({ rule, overrides, entities, onSave, onDelete }) {
             <input placeholder="Notes" value={draft.notes || ''}
               onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
               style={{ ...inp, flex: 1, minWidth: 120 }} />
-            <button onClick={save} disabled={!newEntityId} style={{ ...btnPrimary, fontSize: 12, padding: '4px 10px' }}>Save</button>
+            <button onClick={save} disabled={!newEntityId} style={btnPrimarySm}>Save</button>
             <button onClick={() => { setAdding(false); setNewEntityId(''); }} style={{ ...btnGhost, fontSize: 12 }}>Cancel</button>
           </div>
         ) : (
@@ -472,6 +472,7 @@ const ovTd = { padding: '5px 8px', fontSize: 13, color: '#1e293b' };
 const inp = { padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13, fontFamily: font, background: '#fff' };
 
 const btnPrimary = { ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
+const btnPrimarySm = { ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
 const btnSecondary = { ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
 const btnGhost = {
   display: 'inline-flex', alignItems: 'center', gap: 4,

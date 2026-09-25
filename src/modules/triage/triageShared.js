@@ -1,18 +1,15 @@
 import { Mail, Phone, Users, ClipboardList, AlertTriangle, PauseCircle, MessageSquareWarning } from 'lucide-react';
+import { BTN } from '../../lib/buttonStyles';
 
 // Shared styles + action-plan helpers for the Triage module.
 
 export const font = "'Outfit', sans-serif";
 export const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
 
-export function btn(kind) {
-  return {
-    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
-    fontFamily: font, borderRadius: 8, cursor: 'pointer',
-    background: kind === 'primary' ? '#1E4560' : '#fff',
-    color: kind === 'primary' ? '#fff' : '#475569',
-    border: kind === 'primary' ? 'none' : '1px solid #e5e7eb',
-  };
+// Text action buttons: 'primary' is the shared ocean button, anything else secondary.
+export function btn(kind, size = 'md') {
+  const look = kind === 'primary' ? BTN.primary : BTN.secondary;
+  return { ...(look[size] || look.md), display: 'inline-flex', alignItems: 'center', gap: 5 };
 }
 export const iconBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 3, padding: '4px 7px', fontFamily: font,

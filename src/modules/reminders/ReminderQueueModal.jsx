@@ -24,14 +24,12 @@ const overlay = {
 };
 const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const btnPrimary = (on) => ({
-  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: on ? '#1E4560' : '#e5e7eb', color: on ? '#fff' : '#94a3b8',
-  border: 'none', borderRadius: 8, cursor: on ? 'pointer' : 'default',
+  ...BTN.primary.md,
+  ...(on ? {} : { opacity: 0.45, cursor: 'not-allowed' }),
 });
 const btnDanger = (on) => ({
-  padding: '7px 14px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: '#fff', color: on ? '#b91c1c' : '#cbd5e1', border: `1px solid ${on ? '#fecaca' : '#e5e7eb'}`,
-  borderRadius: 8, cursor: on ? 'pointer' : 'default',
+  ...BTN.danger.md,
+  ...(on ? {} : { opacity: 0.45, cursor: 'not-allowed' }),
 });
 const selStyle = {
   padding: '6px 10px', fontSize: 13.5, fontFamily: font, color: '#0f172a',

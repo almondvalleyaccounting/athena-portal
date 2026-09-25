@@ -8,6 +8,7 @@ import SearchInput from '../../components/SearchInput';
 import EmptyState from '../../components/EmptyState';
 import { fmtGbp } from '../../lib/money';
 import { CANONICAL_SERVICES } from './BillingServiceMappingPage';
+import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 
@@ -174,10 +175,9 @@ export default function StandardFeesPage() {
               onClick={addTask}
               disabled={saving || !newTask.task_name.trim() || !newTask.service_id}
               style={{
-                padding: '7px 16px', fontSize: 14, fontWeight: 600, fontFamily: font,
-                background: (!newTask.task_name.trim() || !newTask.service_id) ? '#e2e8f0' : '#1E4560',
-                color: (!newTask.task_name.trim() || !newTask.service_id) ? '#94a3b8' : '#fff',
-                border: 'none', borderRadius: 8, cursor: (!newTask.task_name.trim() || !newTask.service_id) ? 'default' : 'pointer',
+                ...BTN.primary.md,
+                opacity: (!newTask.task_name.trim() || !newTask.service_id) ? 0.45 : 1,
+                cursor: (!newTask.task_name.trim() || !newTask.service_id) ? 'not-allowed' : 'pointer',
               }}
             >
               Add task
@@ -287,10 +287,8 @@ export default function StandardFeesPage() {
                             onClick={() => updateRow(r.id, { active: !inactive ? false : true })}
                             disabled={saving}
                             style={{
-                              padding: '4px 10px', fontSize: 12, fontWeight: 600, fontFamily: font,
-                              background: 'none', borderRadius: 6, cursor: 'pointer',
-                              border: inactive ? '1px solid #0e7fe0' : '1px solid #e5e7eb',
-                              color: inactive ? '#0e7fe0' : '#dc2626',
+                              ...(inactive ? BTN.secondary.sm : BTN.danger.sm),
+                              cursor: 'pointer',
                             }}
                           >
                             {inactive ? 'Reactivate' : 'Deactivate'}

@@ -170,7 +170,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
                 </div>
                 <button
                   onClick={() => removeFactor(f.id)}
-                  style={{ padding: '6px 10px', background: 'none', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}
+                  style={{ ...BTN.danger.sm }}
                 >
                   Remove
                 </button>
@@ -189,7 +189,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
                 </div>
                 <button
                   onClick={() => setStaySignedIn(!trusted)}
-                  style={{ flexShrink: 0, padding: '6px 10px', background: 'none', color: '#0f172a', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontFamily: font }}
+                  style={{ ...BTN.secondary.sm, flexShrink: 0 }}
                 >
                   {trusted ? 'Forget this device' : 'Stay signed in here'}
                 </button>
@@ -229,7 +229,7 @@ export default function SecurityPage({ onEnrolled, embedded = false }) {
             />
             {enrolling.error && <p style={{ fontSize: 13, color: '#b91c1c', marginTop: 8, marginBottom: 0 }}>{enrolling.error}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-              <button onClick={cancelEnroll} style={{ padding: '8px 14px', background: 'none', color: '#64748b', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={cancelEnroll} style={{ ...BTN.secondary.md }}>Cancel</button>
               <button
                 onClick={verifyEnroll}
                 disabled={enrolling.verifying || enrolling.code.length < 6}

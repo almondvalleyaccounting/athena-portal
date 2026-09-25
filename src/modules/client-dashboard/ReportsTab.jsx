@@ -296,7 +296,7 @@ function ReportEditor({ draft, setDraft, kpi, busy, canScopeWide, hasSector, onC
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '14px 22px', borderTop: '1px solid #e5e7eb' }}>
           <button onClick={onClose} style={smallBtn}>Cancel</button>
           <button onClick={() => onSave(draft)} disabled={busy || !draft.name.trim()}
-            style={{ ...primaryBtn, backgroundColor: draft.name.trim() && !busy ? '#1E4560' : '#cbd5e1' }}>
+            style={{ ...primaryBtn, ...((busy || !draft.name.trim()) && { opacity: 0.45, cursor: 'not-allowed' }) }}>
             <Save size={14} /> {busy ? 'Saving…' : 'Save report'}
           </button>
         </div>

@@ -171,7 +171,7 @@ export default function TemplateManagerModal({ templates, staffList, onClose, on
                         </button>
                       </div>
                     ))}
-                    <button onClick={() => addStep(t)} style={{ ...btn('ghost'), padding: '4px 9px', fontSize: 12.5, marginTop: 2 }}>
+                    <button onClick={() => addStep(t)} style={{ ...btn('ghost', 'sm'), marginTop: 2 }}>
                       <Plus size={11} /> Add step
                     </button>
                   </div>

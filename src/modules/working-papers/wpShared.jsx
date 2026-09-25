@@ -25,9 +25,7 @@ export const inputStyle = {
 
 export const btn = { ...BTN.primary.sm, cursor: 'pointer' };
 
-export const btnQuiet = {
-  ...btn, border: '1px solid #e5e7eb', background: '#fff', color: '#334155',
-};
+export const btnQuiet = { ...BTN.secondary.sm, cursor: 'pointer' };
 
 /**
  * Money, on a working paper's terms.

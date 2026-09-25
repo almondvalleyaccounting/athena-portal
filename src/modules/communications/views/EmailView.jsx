@@ -124,7 +124,7 @@ function MessageCard({ msg, mailbox, defaultOpen }) {
                       downloadAttachment({ data: res.data, filename: a.filename, mimeType: a.mimeType });
                     } catch (e) { alert(`Download failed: ${e.message}`); }
                   }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '5px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', cursor: 'pointer', fontFamily: font, color: '#334155' }}
+                  style={{ ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   <Paperclip size={12} /> {a.filename} <span style={{ color: '#94a3b8' }}>({Math.max(1, Math.round(a.size / 1024))} KB)</span>
                 </button>
@@ -1129,7 +1129,7 @@ export default function EmailView() {
           style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical', lineHeight: 1.5 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={sendComposer} disabled={sending}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, background: sending ? '#94a3b8' : '#1E4560', color: '#fff', border: 'none', borderRadius: 8, cursor: sending ? 'default' : 'pointer', fontFamily: font }}>
+            style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 8, opacity: sending ? 0.45 : 1, cursor: sending ? 'not-allowed' : 'pointer' }}>
             <Send size={13} /> {sending ? 'Sending…' : 'Send'}
           </button>
           {composer.mode === 'forward' && <span style={{ fontSize: 12, color: '#94a3b8' }}>Attachments aren&apos;t carried over on forwards yet.</span>}
@@ -1150,9 +1150,9 @@ export default function EmailView() {
               {latestMsg?.subject || '(no subject)'}
             </span>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button onClick={() => startComposer('reply')} title="Reply" style={btnIcon}><ReplyIcon size={14} /> Reply</button>
-              <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnIcon}><ReplyAllIcon size={14} /> All</button>
-              <button onClick={() => startComposer('forward')} title="Forward" style={btnIcon}><ForwardIcon size={14} /> Forward</button>
+              <button onClick={() => startComposer('reply')} title="Reply" style={btnText}><ReplyIcon size={14} /> Reply</button>
+              <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnText}><ReplyAllIcon size={14} /> All</button>
+              <button onClick={() => startComposer('forward')} title="Forward" style={btnText}><ForwardIcon size={14} /> Forward</button>
               {/* Labels are per-account, so tagging waits for a single mailbox. */}
               {!isAll && (
                 <LabelPicker
@@ -1160,15 +1160,15 @@ export default function EmailView() {
                   onPick={tagThread}
                   onCreate={ensureLabel}
                   align="right"
-                  trigger={<button title="Tag with a label" style={btnIcon}><Tag size={13} /> Tag</button>}
+                  trigger={<button title="Tag with a label" style={btnText}><Tag size={13} /> Tag</button>}
                 />
               )}
               {thread.messages.some((m) => m.labelIds.includes('INBOX'))
-                ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox)" style={btnIcon}><Archive size={14} /> Archive</button>
-                : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnIcon}><ArchiveRestore size={14} /> To inbox</button>}
+                ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox)" style={btnText}><Archive size={14} /> Archive</button>
+                : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnText}><ArchiveRestore size={14} /> To inbox</button>}
               {threadInTrash
-                ? <button onClick={() => restoreThread(thread.id)} title="Restore from bin" style={btnIcon}><ArchiveRestore size={14} /> Restore</button>
-                : <button onClick={() => trashThread(thread.id)} title="Move to bin (recoverable for ~30 days in Gmail)" style={{ ...btnIcon, color: '#b91c1c', borderColor: '#fca5a5' }}><Trash2 size={14} /> Delete</button>}
+                ? <button onClick={() => restoreThread(thread.id)} title="Restore from bin" style={btnText}><ArchiveRestore size={14} /> Restore</button>
+                : <button onClick={() => trashThread(thread.id)} title="Move to bin (recoverable for ~30 days in Gmail)" style={{ ...BTN.danger.sm, display: 'flex', alignItems: 'center', gap: 5 }}><Trash2 size={14} /> Delete</button>}
               <button onClick={() => setThread(null)} title="Close" style={btnIcon}><X size={14} /></button>
             </div>
           </div>
@@ -1444,7 +1444,7 @@ export default function EmailView() {
             )}
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['INBOX'], verb: 'Archived' })} style={bulkBtn}><Archive size={12} /> Archive</button>
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['UNREAD'], verb: 'Marked read' })} style={bulkBtn}><MailOpen size={12} /> Read</button>
-            <button disabled={bulkBusy} onClick={bulkTrash} style={{ ...bulkBtn, color: '#b91c1c', borderColor: '#fca5a5' }}><Trash2 size={12} /> Delete</button>
+            <button disabled={bulkBusy} onClick={bulkTrash} style={{ ...BTN.danger.sm, display: 'flex', alignItems: 'center', gap: 5 }}><Trash2 size={12} /> Delete</button>
             <button disabled={bulkBusy} onClick={() => setSelected(new Set())} style={{ ...bulkBtn, marginLeft: 'auto' }}>Clear</button>
             {bulkBusy && <span style={{ color: tones.info.fg }}>Working…</span>}
           </div>
@@ -1641,11 +1641,10 @@ const btnIcon = {
   fontFamily: font, color: '#334155',
 };
 
-const bulkBtn = {
-  display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 13, fontWeight: 600,
-  border: `1px solid ${tones.info.border}`, background: '#fff', borderRadius: 6, cursor: 'pointer',
-  fontFamily: font, color: tones.info.fg,
-};
+// Text action buttons in the thread header (Reply, Archive…).
+const btnText = { ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 5 };
+
+const bulkBtn = { ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 5 };
 
 const sweepBtn = {
   display: 'flex', alignItems: 'center', gap: 5, padding: '4px 9px', fontSize: 13, fontWeight: 600,

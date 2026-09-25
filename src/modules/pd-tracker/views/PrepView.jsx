@@ -664,7 +664,7 @@ function NoteColumn({ kind, notes, subjectName, onAdd, onPatch, onDelete, loadin
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-        <Button variant="accent" onClick={submit} disabled={!text.trim()} style={{ padding: '7px 14px' }}>
+        <Button variant="accent" onClick={submit} disabled={!text.trim()}>
           <Plus size={13} style={{ marginRight: 5, verticalAlign: 'text-bottom' }} />Add
         </Button>
       </div>
@@ -943,7 +943,7 @@ function FeedRow({ row, today, expanded, onToggle, onNote, noteCount }) {
               style={{ fontSize: 14 }}
               onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
             />
-            <Button variant="accent" onClick={save} disabled={!draft.trim()} style={{ padding: '8px 14px', flexShrink: 0 }}>Note</Button>
+            <Button variant="accent" onClick={save} disabled={!draft.trim()} style={{ flexShrink: 0 }}>Note</Button>
           </div>
         </div>
       )}

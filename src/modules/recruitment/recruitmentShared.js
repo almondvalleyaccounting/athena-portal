@@ -1,17 +1,16 @@
 // Shared styles + constants for the Recruitment module (in-house ATS).
 // Styling follows the house pattern: inline styles, Outfit font, tone chips.
 
+import { BTN } from '../../lib/buttonStyles';
+
 export const font = "'Outfit', sans-serif";
 export const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12 };
 
+// Athena's shared button definition (lib/buttonStyles.js): 'primary' is the
+// main action, 'danger' destructive, anything else the secondary look.
 export function btn(kind) {
-  return {
-    display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 12px', fontSize: 13.5, fontWeight: 600,
-    fontFamily: font, borderRadius: 8, cursor: 'pointer',
-    background: kind === 'primary' ? '#1E4560' : '#fff',
-    color: kind === 'primary' ? '#fff' : '#475569',
-    border: kind === 'primary' ? 'none' : '1px solid #e5e7eb',
-  };
+  const look = kind === 'primary' ? BTN.primary.md : kind === 'danger' ? BTN.danger.md : BTN.secondary.md;
+  return { ...look, display: 'inline-flex', alignItems: 'center', gap: 5 };
 }
 export const iconBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 3, padding: '4px 7px', fontFamily: font,

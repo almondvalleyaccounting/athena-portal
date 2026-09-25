@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import { fmtGbp } from '../../lib/money';
 import DataTable from '../../components/DataTable';
+import { BTN } from '../../lib/buttonStyles';
 import { closeAuthorisation, reopenAuthorisation } from './hmrcApi';
 import {
   font, DISENGAGE_REASONS, Pill, Stat, Chip, ErrorBar,
@@ -170,7 +171,7 @@ export default function AuthorisationsView() {
     {
       key: 'actions', label: '', width: 120, sortable: false,
       render: (r) => (showClosed ? (
-        <button onClick={() => reopen(r)} style={btn('#64748b', '#f8fafc', '#e5e7eb')}
+        <button onClick={() => reopen(r)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5 }}
                 title="Put this back on the outstanding list">
           <RotateCcw size={12} /> Reopen
         </button>

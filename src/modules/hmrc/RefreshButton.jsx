@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, Clock, Check, X } from 'lucide-react';
 import { font, Pill, dateTime } from './hmrcShared';
+import { BTN } from '../../lib/buttonStyles';
 import { requestRefresh, fetchRefreshQueue, cancelRefresh } from './hmrcApi';
 
 // "Ask HMRC again" for one client.
@@ -81,10 +82,7 @@ export default function RefreshButton({ entityId, services = ALL, compact = fals
         disabled={busy}
         title="Re-check at HMRC. Runs next time someone signs in to HMRC."
         style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          fontSize: compact ? 12.5 : 13, fontWeight: 600, fontFamily: font,
-          color: '#0e7fe0', background: '#fff', border: '1px solid #bfdbfe',
-          borderRadius: 7, padding: compact ? '4px 8px' : '6px 11px',
+          ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5,
           cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1,
         }}
       >

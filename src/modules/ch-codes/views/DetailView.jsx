@@ -15,7 +15,6 @@ import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 };
-const btnGhost = { ...BTN.secondary.md, cursor: 'pointer' };
 const isEmail = (e) => typeof e === 'string' && e.includes('@');
 function localNowValue() {
   const d = new Date();
@@ -112,7 +111,7 @@ export default function DetailView() {
           {req.entity_id && (
             <button
               onClick={() => navigate(`/clients/${req.entity_id}`)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: font, fontSize: 13.5, fontWeight: 600, padding: '6px 12px', borderRadius: 9, background: '#fff', color: '#0e7fe0', border: '1px solid #bfdbfe', cursor: 'pointer' }}
+              style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               Open client page →
             </button>
@@ -158,8 +157,8 @@ export default function DetailView() {
             {req.stage === 's2_decision' && (
               <>
                 <Btn onClick={() => run(() => recordDecision(req, 'self', { actorId }))} disabled={busy}>Client is doing it (Stage 3a)</Btn>
-                <button style={btnGhost} onClick={decideWeDoIt} disabled={busy}>We're doing it — £20+VAT invoice (Stage 3b)</button>
-                <button style={btnGhost} onClick={() => run(() => advanceStage(req, 's1_offer', { actorId }))} disabled={busy}>← Back to Stage 1</button>
+                <button style={BTN.secondary.md} onClick={decideWeDoIt} disabled={busy}>We're doing it — £20+VAT invoice (Stage 3b)</button>
+                <button style={BTN.secondary.md} onClick={() => run(() => advanceStage(req, 's1_offer', { actorId }))} disabled={busy}>← Back to Stage 1</button>
               </>
             )}
             {req.stage === 's3a_client' && (
@@ -175,17 +174,17 @@ export default function DetailView() {
               <div style={{ display: 'flex', gap: 6 }}>
                 <input value={codeInput} onChange={(e) => setCodeInput(e.target.value)} placeholder="FT5-15ED-7JY5"
                   style={{ flex: 1, padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8 }} />
-                <button style={btnGhost} disabled={busy || !codeInput.trim()}
+                <button style={BTN.secondary.md} disabled={busy || !codeInput.trim()}
                   onClick={() => run(async () => { await recordCodeReceived(req, codeInput, { actorId }); setCodeInput(''); })}>Save code</button>
               </div>
             )}
             {req.stage === 's5_entered' && (
               <>
-                <button style={{ ...btnGhost, ...(req.entered_inform_direct_at ? { background: tones.success.bg, borderColor: tones.success.border, color: tones.success.fg } : {}) }}
+                <button style={{ ...BTN.secondary.md, ...(req.entered_inform_direct_at ? { background: tones.success.bg, borderColor: tones.success.border, color: tones.success.fg } : {}) }}
                   onClick={() => run(() => markInformDirect(req, !req.entered_inform_direct_at, { actorId }))} disabled={busy}>
                   {req.entered_inform_direct_at ? '✓ Entered on Inform Direct' : 'Mark entered on Inform Direct'}
                 </button>
-                <button style={{ ...btnGhost, ...(req.entered_bm_at ? { background: tones.success.bg, borderColor: tones.success.border, color: tones.success.fg } : {}) }}
+                <button style={{ ...BTN.secondary.md, ...(req.entered_bm_at ? { background: tones.success.bg, borderColor: tones.success.border, color: tones.success.fg } : {}) }}
                   onClick={() => run(() => markEnteredBm(req, !req.entered_bm_at, { actorId }))} disabled={busy}>
                   {req.entered_bm_at ? '✓ Entered on BM' : 'Mark entered on BM'}
                 </button>
@@ -197,13 +196,13 @@ export default function DetailView() {
             {req.stage === 's6_submitted' && (
               <>
                 <div style={{ fontSize: 14, color: tones.success.fg }}>✅ Filed{req.submitted_at ? ` on ${new Date(req.submitted_at).toLocaleDateString('en-GB')}` : ''}.</div>
-                <button style={btnGhost} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
+                <button style={BTN.secondary.md} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
               </>
             )}
             {req.stage === 's7_rejected' && (
               <>
                 <div style={{ fontSize: 14, color: tones.danger.fg }}>Rejected / exited{req.rejected_reason ? `: ${req.rejected_reason}` : ''}.</div>
-                <button style={btnGhost} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
+                <button style={BTN.secondary.md} onClick={() => run(() => reopenRequest(req, { actorId }))} disabled={busy}>Reopen</button>
               </>
             )}
 
@@ -222,23 +221,23 @@ export default function DetailView() {
                   placeholder="What happened on the call? (optional)"
                   style={{ width: '100%', padding: '7px 9px', fontSize: 13.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <button style={btnGhost} disabled={busy || !callAt}
+                  <button style={BTN.secondary.md} disabled={busy || !callAt}
                     onClick={() => run(async () => {
                       await setComms(req, 'called', { actorId, calledAt: new Date(callAt).toISOString(), outcome: callOutcome, note: callNote });
                       setCallNote(''); setCallAt(localNowValue());
                     })}>Log call</button>
                   {!isEscalated(req) && (
-                    <button style={{ ...btnGhost, color: tones.danger.fg }} disabled={busy}
+                    <button style={BTN.danger.md} disabled={busy}
                       title="Escalate (stays until removed)."
                       onClick={() => run(() => setComms(req, 'escalated', { actorId }))}>Escalate</button>
                   )}
                   {(req.called_at || req.escalation_status === 'call_needed') && (
-                    <button style={btnGhost} disabled={busy}
+                    <button style={BTN.secondary.md} disabled={busy}
                       title={isEscalated(req) ? 'Clears the call only — the escalation stays' : 'Clears the call flag'}
                       onClick={() => run(() => setComms(req, 'reset', { actorId }))}>Clear call flag</button>
                   )}
                   {isEscalated(req) && (
-                    <button style={{ ...btnGhost, color: '#94a3b8' }} disabled={busy}
+                    <button style={{ ...BTN.secondary.md, color: '#94a3b8' }} disabled={busy}
                       title="Only if escalated by mistake."
                       onClick={() => {
                         if (!window.confirm('Remove the escalation?\n\nEscalation is meant to be permanent — only do this if it was applied by mistake.')) return;
@@ -251,7 +250,7 @@ export default function DetailView() {
 
             {!terminal && (
               <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 6, paddingTop: 10 }}>
-                <button style={{ ...btnGhost, color: tones.danger.fg }} onClick={reject} disabled={busy}>Reject / exit</button>
+                <button style={BTN.danger.md} onClick={reject} disabled={busy}>Reject / exit</button>
               </div>
             )}
           </div>
@@ -263,13 +262,13 @@ export default function DetailView() {
             placeholder="Paste or summarise what the client said in an email/call…" rows={3}
             style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button style={btnGhost} disabled={busy || !replyInput.trim()}
+            <button style={BTN.secondary.md} disabled={busy || !replyInput.trim()}
               onClick={() => run(async () => { await recordClientReply(req.id, replyInput, { actorId }); setReplyInput(''); })}>Log as client reply</button>
           </div>
           <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 12 }}>
             <textarea value={noteInput} onChange={(e) => setNoteInput(e.target.value)} placeholder="Internal note…" rows={2}
               style={{ width: '100%', padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, boxSizing: 'border-box', resize: 'vertical' }} />
-            <button style={{ ...btnGhost, marginTop: 8 }} disabled={busy || !noteInput.trim()}
+            <button style={{ ...BTN.secondary.md, marginTop: 8 }} disabled={busy || !noteInput.trim()}
               onClick={() => run(async () => { await addNote(req.id, noteInput, { actorId }); setNoteInput(''); })}>Add note</button>
           </div>
         </div>

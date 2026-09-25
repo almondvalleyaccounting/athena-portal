@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import AccessGuard from './AccessGuard';
 import { supabase } from '../lib/supabase';
+import { BTN } from '../lib/buttonStyles';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import ChangePasswordScreen from './ChangePasswordScreen';
@@ -303,15 +304,7 @@ export default function AppShell() {
           <button
             onClick={handleLogout}
             style={{
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
-              fontWeight: 600,
-              color: '#64748b',
-              background: 'none',
-              border: '1px solid #e5e7eb',
-              borderRadius: '10px',
-              padding: '10px 24px',
-              cursor: 'pointer',
+              ...BTN.secondary.md,
               transition: 'all 0.2s ease',
             }}
           >

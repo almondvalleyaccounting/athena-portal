@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { BTN } from '../lib/buttonStyles';
 import { useAuth } from './AppShell';
 import { ColourPicker, WorkingDaysEditor } from './AdminPage';
 
@@ -203,9 +204,8 @@ export default function UserSettingsPage() {
           onClick={save}
           disabled={saving || !dirty}
           style={{
-            fontFamily: font, fontSize: 14, fontWeight: 600, color: '#fff',
-            backgroundColor: saving || !dirty ? '#94a3b8' : '#1E4560',
-            border: 'none', borderRadius: 10, padding: '10px 24px',
+            ...BTN.primary.md,
+            opacity: saving || !dirty ? 0.45 : 1,
             cursor: saving ? 'wait' : dirty ? 'pointer' : 'default',
             transition: 'all 0.2s ease',
           }}

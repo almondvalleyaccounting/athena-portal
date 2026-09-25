@@ -35,9 +35,8 @@ const COMM_TYPE = 'tax_reminders';
 
 // ── tiny style helpers ────────────────────────────────────────────────
 const btnPrimary = (enabled) => ({
-  padding: '8px 16px', fontSize: 13.5, fontWeight: 600, fontFamily: font,
-  background: enabled ? ACCENT : '#e5e7eb', color: enabled ? '#fff' : '#94a3b8',
-  border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
+  ...BTN.primary.md,
+  ...(enabled ? {} : { opacity: 0.45, cursor: 'not-allowed' }),
 });
 const btnGhost = { ...BTN.secondary.sm, cursor: 'pointer' };
 const PREF_META = {

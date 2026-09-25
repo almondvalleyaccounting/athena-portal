@@ -113,13 +113,9 @@ export default function QuickTasksView({ compact, onAction }) {
           onClick={handleAdd}
           disabled={!canAdd}
           style={{
-            padding: '6px 14px', fontSize: 14, fontWeight: 500,
-            fontFamily: "'Outfit', sans-serif",
-            border: canAdd ? '1px solid #0f172a' : '1px solid #e5e7eb',
-            borderRadius: 8,
-            background: canAdd ? '#1E4560' : '#f1f5f9',
-            color: canAdd ? '#fff' : '#94a3b8',
-            cursor: canAdd ? 'pointer' : 'default',
+            ...BTN.primary.md,
+            opacity: canAdd ? 1 : 0.45,
+            cursor: canAdd ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s',
           }}
         >
@@ -277,10 +273,9 @@ export default function QuickTasksView({ compact, onAction }) {
                         <button
                           onClick={() => { setProgressInput(task.id); setProgressText(''); }}
                           style={{
-                            border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                            fontSize: 11, fontWeight: 500, cursor: 'pointer',
-                            padding: '2px 8px', marginTop: notes.length > 0 ? 2 : 3, borderRadius: 5,
-                            fontFamily: "'Outfit', sans-serif",
+                            ...BTN.secondary.sm,
+                            cursor: 'pointer',
+                            marginTop: notes.length > 0 ? 2 : 3,
                           }}
                         >
                           + Add note
@@ -346,7 +341,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   </button>
                 )}
                 <button
-                  style={{ ...miniBtn, color: '#0f172a', fontWeight: 600 }}
+                  style={miniBtn}
                   onClick={() => {
                     // Promote handled by parent
                     onAction(null, { ...task, _promote: true });
@@ -369,12 +364,7 @@ export default function QuickTasksView({ compact, onAction }) {
   );
 }
 
-const miniBtn = {
-  padding: '3px 8px', fontSize: 12, fontWeight: 500,
-  border: '1px solid #e5e7eb', borderRadius: 4,
-  background: '#fff', color: '#0e7fe0', cursor: 'pointer',
-  fontFamily: "'Outfit', sans-serif", whiteSpace: 'nowrap',
-};
+const miniBtn = { ...BTN.secondary.sm, cursor: 'pointer', whiteSpace: 'nowrap' };
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();

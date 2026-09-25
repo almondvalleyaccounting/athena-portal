@@ -167,7 +167,7 @@ export default function NominalMapBulk() {
             </button>
           );
         })}
-        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        <button onClick={load} style={{ ...btnQuiet, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <RefreshCw size={12} /> Reload
         </button>
       </div>
@@ -184,7 +184,7 @@ export default function NominalMapBulk() {
                 as <code style={{ fontSize: 12.5 }}>{ROLE_LABEL[role]}</code> by QuickBooks. Nothing is
                 being inferred from a name, and each mapping records who accepted it.
               </div>
-              <button onClick={acceptAll} disabled={!!busy} style={{ ...btn, fontSize: 13.5 }}>
+              <button onClick={acceptAll} disabled={!!busy} style={btn}>
                 <Check size={13} style={{ marginRight: 5 }} />
                 {busy || `Accept all ${auto.length}`}
               </button>
@@ -237,7 +237,7 @@ export default function NominalMapBulk() {
                           </td>
                           <td style={{ ...td, textAlign: 'right', verticalAlign: 'top' }}>
                             <button onClick={() => acceptPicked(r)} disabled={!!busy || sel.size === 0}
-                              style={{ ...(sel.size ? btn : btnQuiet), fontSize: 12.5,
+                              style={{ ...(sel.size ? btn : btnQuiet),
                                        opacity: sel.size ? 1 : 0.45,
                                        cursor: sel.size ? 'pointer' : 'default' }}>
                               Map {sel.size || ''}
@@ -272,7 +272,7 @@ export default function NominalMapBulk() {
                         </td>
                         <td style={{ ...td, textAlign: 'right', width: 120 }}>
                           <button onClick={() => acceptOne(r, r.top_account_id, r.top_account_name)}
-                            disabled={!!busy} style={{ ...btnQuiet, fontSize: 12.5 }}>
+                            disabled={!!busy} style={btnQuiet}>
                             Map
                           </button>
                         </td>

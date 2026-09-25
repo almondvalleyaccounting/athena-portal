@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Star, Loader, ArrowRight, RefreshCw, LayoutGrid, List, Rows3, Grid3x3 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import { BTN } from '../../lib/buttonStyles';
 import { PERIOD_PRESETS, OUTFIT, PLAYFAIR, cardStyle, inputStyle } from './dashboardData';
 import { resolveFiscalYear } from './overviewGrain';
 import {
@@ -346,10 +347,8 @@ export default function PortfolioDashboardPage() {
           <button onClick={refreshAll} disabled={busy || !customReady}
             title={`Pull "${presetLabel}" from QuickBooks for every starred client`}
             style={{
-              marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
-              border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#fff',
+              ...BTN.secondary.md, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px',
               cursor: busy || !customReady ? 'default' : 'pointer', opacity: customReady ? 1 : 0.5,
-              fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: '#0369a1',
             }}>
             <RefreshCw size={14} style={busy ? { animation: 'spin 1s linear infinite' } : undefined} />
             {busy ? `Refreshing ${refreshing.done}/${refreshing.total}…` : `Refresh all · ${presetLabel}`}
@@ -391,9 +390,7 @@ export default function PortfolioDashboardPage() {
           </div>
           <button onClick={() => navigate('/client-dashboard')}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '9px 18px',
-              border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#ffffff',
-              cursor: 'pointer', fontFamily: OUTFIT, fontSize: '14px', fontWeight: 600, color: C.accent,
+              ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
             }}>
             Open Client Dashboard <ArrowRight size={14} />
           </button>

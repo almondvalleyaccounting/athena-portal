@@ -299,7 +299,7 @@ ${latest.body}`}
               <MessageSquare size={12} /> {notes.length || ''}
             </button>
             {r.archived_at && (
-              <button disabled={busy} onClick={(e) => runAction(r, 'restore', e)} style={actionBtnStyle('info')}>
+              <button disabled={busy} onClick={(e) => runAction(r, 'restore', e)} style={{ ...BTN.secondary.sm, whiteSpace: 'nowrap' }}>
                 Restore
               </button>
             )}

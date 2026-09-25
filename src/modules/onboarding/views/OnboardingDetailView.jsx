@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import PortalAccessPanel from '../components/PortalAccessPanel';
 import DocumentsPanel from '../components/DocumentsPanel';
@@ -238,7 +239,7 @@ export default function OnboardingDetailView() {
                 try { await addDirectorSa(ob, name.trim(), { actorId: profile?.id }); load(); }
                 catch (e) { setError(e.message); }
               }}
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: `1px solid ${tones.info.border}`, borderRadius: 999, color: tones.info.fg, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: font, padding: '5px 12px' }}
+              style={{ ...BTN.secondary.sm, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
               <UserPlus size={12} /> Add director SA
             </button>

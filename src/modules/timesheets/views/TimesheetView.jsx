@@ -525,8 +525,8 @@ export default function TimesheetView() {
                   <option value="">— Select service —</option>
                   {SERVICES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <button onClick={handleAddRow} disabled={!newRowClient && !newRowService} style={{ ...navBtn, fontSize: 13, opacity: (!newRowClient && !newRowService) ? 0.4 : 1 }}>Add</button>
-                <button onClick={() => { setAddingRow(false); setNewRowClient(''); setNewRowService(''); }} style={{ ...navBtn, fontSize: 13, color: '#94a3b8' }}>Cancel</button>
+                <button onClick={handleAddRow} disabled={!newRowClient && !newRowService} style={{ ...navBtn, opacity: (!newRowClient && !newRowService) ? 0.4 : 1 }}>Add</button>
+                <button onClick={() => { setAddingRow(false); setNewRowClient(''); setNewRowService(''); }} style={navBtn}>Cancel</button>
               </div>
             )}
           </div>

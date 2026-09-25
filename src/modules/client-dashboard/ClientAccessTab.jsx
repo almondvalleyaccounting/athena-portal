@@ -3,6 +3,7 @@ import { Eye, Plus, X, RotateCcw, Info, Loader, Check, Mail } from 'lucide-react
 import { supabase } from '../../lib/supabase';
 import { OUTFIT, cardStyle, inputStyle, shortDate } from './dashboardData';
 import ClientViewPreview from './ClientViewPreview';
+import { BTN } from '../../lib/buttonStyles';
 // Shared with /admin/dashboard-access, which grants the same access from the
 // other direction and so needs the same way of telling somebody about it.
 import {
@@ -214,10 +215,8 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
             disabled={!realmId}
             title={realmId ? undefined : 'This client has no live QuickBooks connection, so there would be nothing to show.'}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 16px',
-              border: 'none', borderRadius: 10, backgroundColor: realmId ? '#1E4560' : '#cbd5e1',
-              color: '#fff', fontFamily: OUTFIT, fontSize: 14, fontWeight: 700,
-              cursor: realmId ? 'pointer' : 'not-allowed',
+              ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 7,
+              cursor: realmId ? 'pointer' : 'not-allowed', ...(!realmId && { opacity: 0.45 }),
             }}
           >
             <Plus size={15} /> Give access
@@ -596,11 +595,8 @@ function GrantModal({ entityId, clientName, existing, onClose, onDone, onError }
             onClick={submit}
             disabled={!valid || saving}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 18px',
-              border: 'none', borderRadius: 10,
-              backgroundColor: (!valid || saving) ? '#cbd5e1' : '#1E4560',
-              color: '#fff', fontFamily: OUTFIT, fontSize: 14, fontWeight: 700,
-              cursor: (!valid || saving) ? 'not-allowed' : 'pointer',
+              ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 7,
+              cursor: (!valid || saving) ? 'not-allowed' : 'pointer', ...((!valid || saving) && { opacity: 0.45 }),
             }}
           >
             {saving ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
@@ -625,12 +621,8 @@ const fieldLabel = {
   display: 'flex', flexDirection: 'column', gap: 6,
   fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#475569',
 };
-const linkishBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px',
-  border: '1px solid #e5e7eb', borderRadius: 9, background: '#fff',
-  fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#334155', cursor: 'pointer',
-};
-const dangerBtn = { ...linkishBtn, color: '#991b1b', borderColor: '#fecaca' };
+const linkishBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
+const dangerBtn = { ...BTN.danger.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
 // Nudged, not shouted: the one row action that is outstanding work rather than
 // something you might want. It reverts to the plain style once they have been told.
 const primaryLinkBtn = { ...linkishBtn, color: '#1E4560', borderColor: '#bfdbfe', background: '#eff6ff' };

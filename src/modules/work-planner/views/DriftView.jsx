@@ -298,8 +298,8 @@ const inputStyle = {
 };
 const btnGhost = { ...BTN.secondary.md, cursor: 'pointer' };
 const btnPrimary = (disabled) => ({
-  fontFamily: FONT, fontSize: '13.5px', fontWeight: 600, padding: '6px 14px', borderRadius: '8px',
-  border: 'none', backgroundColor: disabled ? '#cbd5e1' : '#0ea5e9', color: '#fff',
+  ...BTN.primary.md,
+  opacity: disabled ? 0.45 : 1,
   cursor: disabled ? 'not-allowed' : 'pointer',
 });
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
+import { BTN } from '../../../lib/buttonStyles';
 import ViewTabs from '../components/ViewTabs';
 import {
   listCrossCheck, listCrossCheckTaxes, getCrossCheckCoverage, listCrossCheckOrphans,
@@ -352,11 +353,7 @@ function DirectorSa({ companyId }) {
                     <button
                       onClick={() => save(d.person_id)}
                       disabled={saving === d.person_id || !(draft[d.person_id] || '').trim()}
-                      style={{
-                        padding: '4px 10px', fontSize: 13, fontWeight: 600, fontFamily: font,
-                        background: tones.info.bg, color: tones.info.fg,
-                        border: `1px solid ${tones.info.border}`, borderRadius: 6, cursor: 'pointer',
-                      }}
+                      style={BTN.secondary.sm}
                     >
                       {saving === d.person_id ? 'Saving…' : 'Save'}
                     </button>

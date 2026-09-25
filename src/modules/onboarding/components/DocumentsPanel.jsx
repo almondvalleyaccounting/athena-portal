@@ -180,7 +180,7 @@ export default function DocumentsPanel({ onboarding, documents, onChanged }) {
           type="button"
           onClick={() => startDriveConnect(`/onboarding/${onboarding.id}`)
             .catch((err) => setMsg({ tone: 'danger', text: err.message || 'Could not start the Google Drive connection.' }))}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13.5, fontWeight: 600, fontFamily: font, background: tones.info.bg, color: tones.info.fg, border: `1px solid ${tones.info.border}`, borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}
+          style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
           <HardDriveUpload size={13} /> Connect Google Drive
         </button>

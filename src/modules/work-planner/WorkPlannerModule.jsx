@@ -827,11 +827,7 @@ export default function WorkPlannerModule() {
               {activeTab === 'mytasks' && (
                 <button
                   onClick={() => setQuickModal({ _new: true })}
-                  style={{
-                    padding: '5px 12px', fontSize: 12, fontWeight: 500,
-                    fontFamily: "'Outfit', sans-serif", border: '1px solid #38bdf8',
-                    borderRadius: 8, background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
-                  }}
+                  style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
                 >
                   + Quick Task
                 </button>

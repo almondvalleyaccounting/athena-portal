@@ -123,12 +123,7 @@ export default function ScheduledView({ sort: sortProp, onEdit }) {
             ) : (
               <button
                 onClick={() => { setNoteInput(master.id); setNoteText(''); }}
-                style={{
-                  border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                  fontSize: 11, fontWeight: 500, cursor: 'pointer',
-                  padding: '3px 10px', marginTop: 3, borderRadius: 6,
-                  fontFamily: "'Outfit', sans-serif",
-                }}
+                style={{ ...BTN.secondary.sm, cursor: 'pointer', marginTop: 3 }}
               >
                 + Add note
               </button>
@@ -212,12 +207,7 @@ export default function ScheduledView({ sort: sortProp, onEdit }) {
       render: (master) => (
         <button
           onClick={() => onEdit(master)}
-          style={{
-            padding: '2px 6px', fontSize: 12, fontWeight: 500,
-            border: '1px solid #e5e7eb', borderRadius: 3,
-            background: '#fff', color: '#0e7fe0', cursor: 'pointer',
-            fontFamily: "'Outfit', sans-serif",
-          }}
+          style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
         >
           Edit
         </button>

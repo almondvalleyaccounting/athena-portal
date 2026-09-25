@@ -288,7 +288,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={save} disabled={saving || !form.title.trim()}
-            style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, background: form.title.trim() ? '#1E4560' : '#e5e7eb', color: form.title.trim() ? '#fff' : '#94a3b8', border: 'none', borderRadius: 8, cursor: form.title.trim() ? 'pointer' : 'not-allowed', fontFamily: font }}>
+            style={{ ...BTN.primary.md, opacity: form.title.trim() ? 1 : 0.45, cursor: form.title.trim() ? 'pointer' : 'not-allowed' }}>
             {saving ? 'Saving…' : 'Save changes'}
           </button>
           {savedFlash && <span style={{ fontSize: 13.5, color: '#059669', fontWeight: 600 }}>✓ Saved</span>}
@@ -296,12 +296,12 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
           {/* Billing */}
           {bill ? (
             <button onClick={() => navigate(`/billing?highlight=${task.billing_item_id}`)}
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
+              style={{ ...BTN.secondary.md, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <Receipt size={13} /> Review bill {bill.qbo_doc_number ? `#${bill.qbo_doc_number}` : ''} · £{bill.net_amount} ({codeLabel(BILL_STATUS_LABELS, bill.status)})
             </button>
           ) : (
             <button onClick={addBill}
-              style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#fff', border: '1px solid #bae6fd', borderRadius: 8, cursor: 'pointer', fontFamily: font }}>
+              style={{ ...BTN.secondary.md, marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <Receipt size={13} /> Add a bill{form.service_id && feeFor(form.service_id) != null ? ` (£${feeFor(form.service_id)})` : ''}
             </button>
           )}

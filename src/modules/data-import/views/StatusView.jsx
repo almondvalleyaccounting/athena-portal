@@ -193,8 +193,8 @@ function SourceCard({ source, latest, triggeredByName, onPull, onImport }) {
           }}>Coming soon</span>
         ) : (
           <>
-            <button onClick={onPull} style={btnSecondary}>Pull export</button>
-            <button onClick={onImport} style={btnPrimary}>
+            <button onClick={onPull} style={BTN.secondary.sm}>Pull export</button>
+            <button onClick={onImport} style={{ ...BTN.primary.sm, ...btnIcon }}>
               Go to Import <ArrowRight size={12} />
             </button>
           </>
@@ -240,8 +240,8 @@ function PullModal({ source, onClose, onGoToImport }) {
           Once you have the file, upload it in the Import tab.
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 14 }}>
-          <button onClick={onClose} style={btnSecondary}>Close</button>
-          <button onClick={onGoToImport} style={btnPrimary}>
+          <button onClick={onClose} style={BTN.secondary.sm}>Close</button>
+          <button onClick={onGoToImport} style={{ ...BTN.primary.sm, ...btnIcon }}>
             Go to Import <ArrowRight size={12} />
           </button>
         </div>
@@ -250,5 +250,5 @@ function PullModal({ source, onClose, onGoToImport }) {
   );
 }
 
-const btnSecondary = { ...BTN.secondary.sm, cursor: 'pointer' };
-const btnPrimary = { ...BTN.primary.sm, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' };
+// Layout only; the look comes from BTN.
+const btnIcon = { display: 'inline-flex', alignItems: 'center', gap: 4 };

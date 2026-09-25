@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { formatMoney } from '../lib/currency';
+import { BTN } from '../../../lib/buttonStyles';
 
 export const fontStack = "'Outfit', sans-serif";
 export const serifStack = "'Playfair Display', serif";
@@ -19,19 +20,13 @@ export const colors = {
   red: '#b91c1c',
 };
 
-export const btnDark = {
-  display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '8px 14px', fontSize: 14, fontWeight: 600,
-  background: colors.ink, color: '#fff', border: 'none', borderRadius: 8,
-  cursor: 'pointer', fontFamily: fontStack,
-};
-export const btnOutline = {
-  display: 'inline-flex', alignItems: 'center', gap: 5,
-  padding: '8px 14px', fontSize: 14, fontWeight: 600,
-  background: '#fff', color: colors.ink, border: `1px solid ${colors.border}`,
-  borderRadius: 8, cursor: 'pointer', fontFamily: fontStack,
-};
-export const btnGhost = { ...btnOutline, padding: '6px 10px', fontSize: 13 };
+// Buttons use Athena's shared definition (lib/buttonStyles): dark = primary,
+// outline = secondary, ghost = small secondary. Layout keys only here.
+const btnLayout = { display: 'inline-flex', alignItems: 'center', gap: 5 };
+export const btnDark = { ...BTN.primary.md, ...btnLayout };
+export const btnOutline = { ...BTN.secondary.md, ...btnLayout };
+export const btnGhost = { ...BTN.secondary.sm, ...btnLayout };
+export const btnDanger = { ...BTN.danger.md, ...btnLayout };
 
 export const inputStyle = {
   padding: '6px 8px', border: `1px solid ${colors.border}`, borderRadius: 6,

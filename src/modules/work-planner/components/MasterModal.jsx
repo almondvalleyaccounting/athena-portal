@@ -4,6 +4,7 @@ import { defaultDuration } from '../lib/constants';
 import { countOverrides } from '../lib/instanceEngine';
 import { formatISO } from '../lib/helpers';
 import ClientTypeAhead from './ClientTypeAhead';
+import { BTN } from '../../../lib/buttonStyles';
 
 const labelStyle = {
   display: 'block', fontSize: 10, fontWeight: 600, color: '#94a3b8',
@@ -261,18 +262,15 @@ export default function MasterModal({
           {isEdit && (
             <button
               onClick={() => onDelete(master.id)}
-              style={{
-                ...btnBase, color: '#dc2626', marginRight: 'auto',
-                border: '1px solid #e5e7eb', background: '#fff',
-              }}
+              style={{ ...BTN.danger.sm, ...btnBase, marginRight: 'auto' }}
             >
               Delete
             </button>
           )}
-          <button onClick={onClose} style={{ ...btnBase, border: '1px solid #e5e7eb', background: '#fff', color: '#1e293b' }}>
+          <button onClick={onClose} style={{ ...BTN.secondary.sm, ...btnBase }}>
             Cancel
           </button>
-          <button onClick={handleSave} style={{ ...btnBase, background: '#1E4560', color: '#fff', border: '1px solid #0f172a' }}>
+          <button onClick={handleSave} style={{ ...BTN.primary.sm, ...btnBase }}>
             {isEdit ? 'Update' : 'Create'}
           </button>
         </div>
@@ -282,7 +280,6 @@ export default function MasterModal({
 }
 
 const btnBase = {
-  padding: '5px 12px', fontSize: 12, fontWeight: 500,
-  fontFamily: "'Outfit', sans-serif", borderRadius: 8, cursor: 'pointer',
+  cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
