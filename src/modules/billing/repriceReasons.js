@@ -80,9 +80,15 @@ const money = (n) => `£${Math.abs(Number(n) || 0).toLocaleString('en-GB', { min
 export function componentsOf(line) {
   const cur = Number(line.current) || 0;
   const neu = Number(line.next) || 0;
-  const extras = (line.extra || []).map((e) => ({ reasonKey: e.reasonKey, otherText: e.otherText || '', amount: r2(e.amount) }));
+  const extras = (line.extra || []).map((e) => ({
+    reasonKey: e.reasonKey, otherText: e.otherText || '', amount: r2(e.amount),
+    splitId: e.splitId || null, splitTo: e.splitTo || null, splitFrom: e.splitFrom || null,
+  }));
   const primaryAmount = r2(neu - cur - extras.reduce((t, e) => t + e.amount, 0));
-  const all = [{ reasonKey: line.reasonKey, otherText: line.otherText || '', amount: primaryAmount, primary: true }, ...extras];
+  const all = [{
+    reasonKey: line.reasonKey, otherText: line.otherText || '', amount: primaryAmount, primary: true,
+    splitId: line.splitId || null, splitFrom: line.splitFrom || null,
+  }, ...extras];
   return all
     .filter((c) => c.amount !== 0)
     .map((c) => {
@@ -140,14 +146,20 @@ export function suggestReason({ serviceId, current, next }) {
 // Restore what a line was saved with, so reopening the modal shows the
 // reasons chosen rather than re-suggesting.
 export function reasonFromSaved(s) {
-  const saved = Array.isArray(s.pending_changes) ? s.pending_changes : null;
-  if (saved && saved.length && REASON_BY_KEY[saved[0].reason_key]) {
-    const [first, ...rest] = saved;
+  const saved = Array.isArray(s.pending_changes) ? s.pending_changes.filter((c) => REASON_BY_KEY[c.reason_key]) : null;
+  if (saved && saved.length) {
+    // The first reason is saved flagged `primary` (older saves: the first
+    // entry). It may have netted to £0 and not been saved at all.
+    const first = saved.find((c) => c.primary) || (saved.some((c) => 'primary' in c) ? null : saved[0]);
+    const rest = saved.filter((c) => c !== first);
     return {
-      reasonKey: first.reason_key,
-      otherText: first.reason_key === 'other' ? (first.other_text || '') : '',
-      extra: rest.filter((c) => REASON_BY_KEY[c.reason_key]).map((c, i) => ({
+      reasonKey: first?.reason_key || s.pending_uplift_reason_key || 'other',
+      otherText: first?.reason_key === 'other' ? (first.other_text || '') : '',
+      splitId: first?.split_id || null,
+      splitFrom: first?.split_from || null,
+      extra: rest.map((c, i) => ({
         id: `saved-${i}`, reasonKey: c.reason_key, amount: String(c.amount), otherText: c.other_text || '',
+        splitId: c.split_id || null, splitTo: c.split_to || null, splitFrom: c.split_from || null,
       })),
     };
   }
@@ -160,6 +172,9 @@ export function reasonFromSaved(s) {
 // What the client reads for one change, and for a whole line.
 export function changeLabel(c) {
   if (c.reasonKey === 'other') return (c.otherText || '').trim() || 'Other';
+  // A split names the service the money moved to or from.
+  if (c.reasonKey === 'split' && c.splitTo) return `Split out into ${c.splitTo}`;
+  if (c.reasonKey === 'split' && c.splitFrom) return `Split out of ${c.splitFrom}`;
   return REASON_BY_KEY[c.reasonKey]?.label || '';
 }
 export function reasonText(line) {
@@ -174,6 +189,8 @@ export function savedChanges(line) {
   return componentsOf(line).map((c) => ({
     reason_key: c.reasonKey, other_text: c.reasonKey === 'other' ? c.otherText : null,
     amount: c.amount, bucket: c.bucket, needs_acceptance: c.needsAcceptance,
+    ...(c.primary ? { primary: true } : {}),
+    ...(c.splitId ? { split_id: c.splitId, split_to: c.splitTo, split_from: c.splitFrom } : {}),
   }));
 }
 

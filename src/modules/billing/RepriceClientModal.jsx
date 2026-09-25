@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, ArrowRight, ArrowLeft, Download, FileText, Mail, Plus, RotateCcw, Trash2, ExternalLink, Sparkles } from 'lucide-react';
+import { X, ArrowRight, ArrowLeft, Download, FileText, Mail, Plus, RotateCcw, Trash2, ExternalLink, Sparkles, Scissors } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { fmtGbpDetailed } from '../../lib/money';
 import { BTN } from '../../lib/buttonStyles';
@@ -179,6 +179,65 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
     return next;
   }));
 
+  // ── Splitting a fee between services ──
+  // One action moves money from one line to another: the source gets a
+  // "Split out into X" change (−£), the target a "Split out of Y" change
+  // (+£), linked by splitId so removing either removes both. A service
+  // created by a split is not a new service: no acceptance, Part 1.
+  const [splitting, setSplitting] = useState(null); // source line key
+  const applySplit = ({ sourceKey, amount, targetKey, service }) => {
+    const amt = round2(amount);
+    if (!(amt > 0)) return;
+    const splitId = `split-${Date.now()}`;
+    setLines((prev) => {
+      const source = prev.find((l) => l.key === sourceKey);
+      if (!source) return prev;
+      const sourceName = serviceName(source.serviceId);
+      const target = targetKey ? prev.find((l) => l.key === targetKey) : null;
+      const targetName = target ? serviceName(target.serviceId) : serviceName(service.lineServiceId);
+      let next = prev.map((l) => {
+        if (l.key === sourceKey) {
+          return {
+            ...l, next: String(round2(round2(l.next) - amt)), reasonTouched: true,
+            extra: [...(l.extra || []), { id: splitId, splitId, reasonKey: 'split', amount: String(-amt), splitTo: targetName }],
+          };
+        }
+        if (target && l.key === targetKey) {
+          return {
+            ...l, next: String(round2(round2(l.next) + amt)), reasonTouched: true,
+            extra: [...(l.extra || []), { id: splitId, splitId, reasonKey: 'split', amount: String(amt), splitFrom: sourceName }],
+          };
+        }
+        return l;
+      });
+      if (!target && service) {
+        const row = clientRows.find((r) => r.id === source.rowId) || clientRows[0];
+        next = [...next, {
+          key: `new-${Date.now()}`, rowId: row.id, idx: null, isNew: true,
+          serviceId: service.lineServiceId, qboItemId: service.qboItemId, feeEngineServiceId: service.id,
+          description: service.defaultDescription || service.label, build: null,
+          cadence: 'monthly', current: 0, next: String(amt), original: 0,
+          reasonKey: 'split', reasonTouched: true, otherText: '', extra: [], originalReason: '',
+          splitId, splitFrom: sourceName,
+        }];
+      }
+      return next;
+    });
+    setSplitting(null);
+  };
+  // Undo a split on both sides; a service the split created goes too.
+  const removeSplit = (splitId) => setLines((prev) => prev
+    .filter((l) => !(l.isNew && l.splitId === splitId && !(l.extra || []).length))
+    .map((l) => {
+      const mine = (l.extra || []).find((e) => e.splitId === splitId);
+      if (l.splitId === splitId) {
+        // A created line with other changes on it: keep it, drop the split part.
+        return { ...l, next: String(round2(round2(l.next) - round2(l.next) + (l.extra || []).reduce((t, e) => t + round2(e.amount), 0))), splitId: null, splitFrom: null, reasonKey: 'new_service' };
+      }
+      if (!mine) return l;
+      return { ...l, next: String(round2(round2(l.next) - round2(mine.amount))), extra: l.extra.filter((e) => e.splitId !== splitId) };
+    }));
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -300,7 +359,15 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             standardsReady={!!feeDefaults}
             onSeedStandard={seedFromStandard}
             seedNote={seedNote}
-            onRemoveNew={(key) => setLines((prev) => prev.filter((l) => l.key !== key))}
+            onRemoveNew={(key) => {
+              const l = lines.find((x) => x.key === key);
+              if (l?.splitId) removeSplit(l.splitId);
+              else setLines((prev) => prev.filter((x) => x.key !== key));
+            }}
+            splitting={splitting}
+            setSplitting={setSplitting}
+            onSplit={applySplit}
+            onRemoveSplit={removeSplit}
             adding={adding}
             setAdding={setAdding}
             feServices={feServices}
@@ -378,6 +445,7 @@ function PriceStep({
   lines, summary, effectiveAt, setEffectiveAt, setLine,
   standards, drivers, setDrivers, driverSources, relevant, standardsReady, onSeedStandard, seedNote,
   onRemoveNew, adding, setAdding, feServices, priceFor, feeDefaults, onAdd,
+  splitting, setSplitting, onSplit, onRemoveSplit,
 }) {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px' }}>
@@ -416,7 +484,8 @@ function PriceStep({
                 const changed = d !== 0;
                 const bucket = changed ? bucketFor(n) : null;
                 return (
-                  <tr key={l.key} style={{ borderTop: '1px solid #f1f5f9', background: changed ? '#fcfbff' : '#fff' }}>
+                  <React.Fragment key={l.key}>
+                  <tr style={{ borderTop: '1px solid #f1f5f9', background: changed ? '#fcfbff' : '#fff' }}>
                     <td style={{ ...td, textAlign: 'left' }}>
                       <div style={{ fontWeight: 500, color: '#0f172a' }}>{serviceName(l.serviceId)}</div>
                       <div style={{ fontSize: 11, color: '#94a3b8' }}>
@@ -482,23 +551,49 @@ function PriceStep({
                               Shown to the client under “{BUCKETS.find((b) => b.key === bucket)?.label}”
                             </div>
                           )}
-                          <ExtraChanges line={l} onChange={(extra) => setLine(l.key, { extra, reasonTouched: true })} />
+                          {l.splitFrom && (
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <Scissors size={11} /> Split out of {l.splitFrom} — no acceptance needed
+                            </div>
+                          )}
+                          <ExtraChanges line={l} onChange={(extra) => setLine(l.key, { extra, reasonTouched: true })} onRemoveSplit={onRemoveSplit} />
                           {lineNeedsAcceptance(n) && (
                             <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 3 }}>Needs the client&apos;s written acceptance</div>
                           )}
                         </>
                       ) : <span style={{ fontSize: 12, color: '#cbd5e1' }}>No change</span>}
                     </td>
-                    <td style={{ ...td, padding: '4px 6px' }}>
+                    <td style={{ ...td, padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                      {!l.isNew && n.current > 0 && (
+                        <IconBtn title="Split part of this fee out into another service" onClick={() => setSplitting(splitting === l.key ? null : l.key)}><Scissors size={13} /></IconBtn>
+                      )}
                       {l.isNew ? (
-                        <IconBtn title="Drop this new service" onClick={() => onRemoveNew(l.key)}><X size={13} /></IconBtn>
+                        <IconBtn title={l.splitId ? 'Undo this split' : 'Drop this new service'} onClick={() => onRemoveNew(l.key)}><X size={13} /></IconBtn>
                       ) : changed ? (
-                        <IconBtn title="Back to the current fee" onClick={() => setLine(l.key, { next: String(l.current), reasonTouched: false })}><RotateCcw size={13} /></IconBtn>
+                        <IconBtn title="Back to the current fee" onClick={() => {
+                          (l.extra || []).filter((e) => e.splitId).forEach((e) => onRemoveSplit(e.splitId));
+                          setLine(l.key, { next: String(l.current), reasonTouched: false, extra: [] });
+                        }}><RotateCcw size={13} /></IconBtn>
                       ) : (
                         <IconBtn title="Remove this service (fee to £0)" onClick={() => setLine(l.key, { next: '0' })}><Trash2 size={13} /></IconBtn>
                       )}
                     </td>
                   </tr>
+                  {splitting === l.key && (
+                    <tr style={{ background: '#f8fafc' }}>
+                      <td colSpan={7} style={{ padding: '10px 12px', borderTop: '1px dashed #e2e8f0' }}>
+                        <SplitForm
+                          source={l}
+                          others={lines.filter((o) => o.key !== l.key)}
+                          services={feServices}
+                          takenItems={new Set(lines.map((o) => o.qboItemId).filter(Boolean))}
+                          onCancel={() => setSplitting(null)}
+                          onSplit={(args) => onSplit({ sourceKey: l.key, ...args })}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -992,11 +1087,45 @@ function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt
   );
 }
 
+// Move part of a fee into another service: one of the client's other
+// services, or a service from the fee engine's list (which then starts at
+// the split amount, as part of their existing fee — not a new service).
+function SplitForm({ source, others, services, takenItems, onCancel, onSplit }) {
+  const [amount, setAmount] = useState('');
+  const [target, setTarget] = useState(others[0]?.key || '__new');
+  const [svcId, setSvcId] = useState('');
+  const options = (services || []).filter((s) => !takenItems.has(s.qboItemId));
+  const svc = options.find((s) => s.id === svcId) || null;
+  const amt = Number(amount);
+  const ok = amt > 0 && amt <= Number(source.next) && (target !== '__new' || svc);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', fontSize: 13 }}>
+      <Scissors size={14} style={{ color: '#64748b' }} />
+      <span>Move</span>
+      <input type="number" min="0" step="0.5" value={amount} placeholder="£" onChange={(e) => setAmount(e.target.value)} autoFocus
+        style={{ ...input, width: 90, fontFamily: 'monospace', textAlign: 'right' }} />
+      <span>a month out of <strong>{serviceName(source.serviceId)}</strong> into</span>
+      <select value={target} onChange={(e) => setTarget(e.target.value)} style={{ ...input, minWidth: 200 }}>
+        {others.map((o) => <option key={o.key} value={o.key}>{serviceName(o.serviceId)}</option>)}
+        <option value="__new">Another service…</option>
+      </select>
+      {target === '__new' && (
+        <div style={{ flex: '1 1 240px', minWidth: 220 }}>
+          <ServicePicker value={svcId} options={options} onChange={setSvcId} placeholder="Pick a fee-engine service…" style={{ ...input, width: '100%' }} />
+        </div>
+      )}
+      <button onClick={() => ok && onSplit({ amount: amt, targetKey: target === '__new' ? null : target, service: target === '__new' ? svc : null })}
+        disabled={!ok} style={{ ...BTN.primary.sm, opacity: ok ? 1 : 0.5 }}>Split</button>
+      <button onClick={onCancel} style={BTN.secondary.sm}>Cancel</button>
+    </div>
+  );
+}
+
 // More than one reason on a line — e.g. Accounts split out (−£80) and
 // then our fee raised (+£6). Each extra reason carries its own amount;
 // the line's first reason takes whatever is left, so the line always adds
 // up to its new fee.
-function ExtraChanges({ line, onChange }) {
+function ExtraChanges({ line, onChange, onRemoveSplit }) {
   const extra = line.extra || [];
   const comps = componentsOf(asNumbers(line));
   const primary = comps.find((c) => c.primary);
@@ -1008,7 +1137,14 @@ function ExtraChanges({ line, onChange }) {
           First reason: {primary ? `${primary.amount > 0 ? '+' : ''}${fmtGbpDetailed(primary.amount)}` : '£0.00'}
         </div>
       )}
-      {extra.map((e, i) => (
+      {extra.map((e, i) => (e.splitId ? (
+        <div key={e.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, fontSize: 12, color: '#334155' }}>
+          <Scissors size={12} style={{ color: '#94a3b8', flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>{e.splitTo ? `Split out into ${e.splitTo}` : `Split out of ${e.splitFrom}`}</span>
+          <span style={{ fontFamily: 'monospace' }}>{Number(e.amount) > 0 ? '+' : ''}{fmtGbpDetailed(e.amount)}</span>
+          <IconBtn title="Undo this split (both services)" onClick={() => onRemoveSplit(e.splitId)}><X size={12} /></IconBtn>
+        </div>
+      ) : (
         <div key={e.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', marginTop: 4 }}>
           <select value={e.reasonKey} onChange={(ev) => set(i, { reasonKey: ev.target.value })} style={{ ...input, flex: '1 1 150px', minWidth: 150, fontSize: 12, padding: '4px 6px' }}>
             {BUCKETS.filter((b) => b.key !== 'newService' && b.key !== 'removed').map((b) => (
@@ -1024,7 +1160,7 @@ function ExtraChanges({ line, onChange }) {
             <input value={e.otherText || ''} placeholder="Explain…" onChange={(ev) => set(i, { otherText: ev.target.value })} style={{ ...input, flex: '1 1 100%', fontSize: 12, marginTop: 2 }} />
           )}
         </div>
-      ))}
+      )))}
       <button
         onClick={() => onChange([...extra, { id: `x-${Date.now()}`, reasonKey: 'inflation', amount: '', otherText: '' }])}
         style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, fontSize: 11, color: '#1E4560', cursor: 'pointer', fontFamily: font }}
@@ -1119,6 +1255,7 @@ function initialLines(clientRows) {
           : null,
         cadence: s.cadence, current, next: String(next), original: next,
         reasonKey, otherText, extra, reasonTouched: !!saved,
+        splitId: saved?.splitId || null, splitFrom: saved?.splitFrom || null,
         // What is stored now: a staged line with no saved reason key (a
         // bulk pass) counts as unsaved until its reason is written.
         originalReason: saved ? reasonSig({ reasonKey, otherText, extra }) : '',
