@@ -39,13 +39,11 @@ export default function BillingTabs({ active }) {
         .eq('status', 'active'),
       // Count BM entities with services in capacity planner but no
       // QBO customer (and no live_billing row gets created until they
-      // do). Cheap to count via a join through v_inferred_allocations.
+      // do). Counted server-side by v_billing_add_new_candidates (sql/300):
+      // PostgREST can't embed a view from entities, so the join lives there.
       supabase
-        .from('entities')
-        .select('id, v_inferred_allocations!inner(canonical_service_id)', { count: 'exact', head: true })
-        .eq('entity_status', 'active')
-        .eq('source', 'brightmanager')
-        .is('qbo_customer_id', null),
+        .from('v_billing_add_new_candidates')
+        .select('entity_id', { count: 'exact', head: true }),
     ]);
     const { data } = billingResp;
     const addNew = addNewResp.count || 0;
