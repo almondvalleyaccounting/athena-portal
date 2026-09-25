@@ -262,7 +262,7 @@ function PriceStep({ lines, summary, effectiveAt, setEffectiveAt, setLine, onRem
                         </div>
                       )}
                     </td>
-                    <td style={{ ...td, fontFamily: 'monospace', fontWeight: 600, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#cbd5e1' }}>
+                    <td style={{ ...td, whiteSpace: 'nowrap', fontFamily: 'monospace', fontWeight: 600, color: d > 0 ? '#15803d' : d < 0 ? '#b91c1c' : '#cbd5e1' }}>
                       {changed ? `${d > 0 ? '+' : ''}${fmtGbpDetailed(d)}` : '—'}
                     </td>
                     <td style={{ ...td, textAlign: 'left' }}>
