@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
         const desc = String(line.Description || "");
 
         const hit = pending.find(({ s }) => {
-          const mapped = itemMap[String(s.service_id || "")];
+          const mapped = mappingFor(itemMap, s);
           if (mapped && itemId && mapped.qbo_item_id === itemId) return true;
           if (s.service_id && s.service_id === itemName) return true;
           if (s.description && s.description === desc) return true;
@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
         if (committed.has(i)) continue;
         const label = String(s.description || s.service_id || "a service");
         const prefix = `${label}: not on the QBO template`;
-        const mapping = itemMap[String(s.service_id || "")];
+        const mapping = mappingFor(itemMap, s);
         const monthly = Number(s.pending_monthly_amount);
         const cadence = String(s.cadence || "monthly");
         const approval = String(s.approval_status || "approved");
@@ -433,6 +433,28 @@ async function loadItemMappings(
     };
   }
   return map;
+}
+
+// The QBO item for a service line: the map entry for its service_id, else
+// the item id the line itself carries. Lines pulled from QBO are keyed by
+// the item's full name ("Payroll Related:Payroll"), which the map does not
+// hold, but they carry the item id they were pulled from; a service added
+// from the fee engine's list (the single-client fee review) is keyed the
+// same way and carries the id its fee-engine service maps to. Without the
+// fallback such a line could be repriced by name but never added.
+function mappingFor(
+  itemMap: Record<string, ItemMapping>,
+  s: Record<string, unknown>,
+): ItemMapping | undefined {
+  const mapped = itemMap[String(s.service_id || "")];
+  if (mapped) return mapped;
+  if (!s.qbo_item_id) return undefined;
+  const name = String(s.service_id || "");
+  return {
+    qbo_item_id: String(s.qbo_item_id),
+    qbo_item_name: name.includes(":") ? name.slice(name.lastIndexOf(":") + 1) : (name || null),
+    default_description: null,
+  };
 }
 
 // Same factor logic as qbo-pull — keep in lockstep.

@@ -179,3 +179,36 @@ export async function fetchAdhocServices() {
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
+
+// The fee engine's recurring services, each with the QuickBooks product it
+// maps to — the list behind "Add a service" on the fee review and the Change
+// matrix, so a service added there is the same service New Quote prices and
+// the push lands on the same product.
+//
+// Canonical (non-ad-hoc) qbo_service_items rows are the authority, as for
+// every other picker; FEE_ENGINE_SERVICES only supplies the label. Setup
+// work (formation, HMRC registrations) is one-off and never a recurring line.
+//
+// Shaped for ServicePicker ({ id, label, category }) plus what a live_billing
+// line needs: lineServiceId is the key QBO pulls lines under ("Category:Item"),
+// so an added service sits in the same column as the ones already billed.
+export async function fetchFeeEngineServices() {
+  const { data, error } = await supabase
+    .from('qbo_service_items')
+    .select('service_id, qbo_item_id, qbo_item_name, qbo_category, default_description')
+    .eq('is_adhoc', false);
+  if (error) throw error;
+  const labels = Object.fromEntries(FEE_ENGINE_SERVICES.map((s) => [s.id, s.label]));
+  return (data || [])
+    .filter((r) => r.service_id && r.qbo_item_id && !r.service_id.startsWith('setup_'))
+    .map((r) => ({
+      id: r.service_id,
+      label: labels[r.service_id] || r.qbo_item_name || r.service_id,
+      category: r.qbo_category || 'Other',
+      qboItemId: String(r.qbo_item_id),
+      qboItemName: r.qbo_item_name || '',
+      lineServiceId: r.qbo_category ? `${r.qbo_category}:${r.qbo_item_name}` : (r.qbo_item_name || r.service_id),
+      defaultDescription: r.default_description || '',
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}

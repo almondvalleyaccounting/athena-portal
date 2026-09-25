@@ -8,7 +8,12 @@ import RepriceClientModal from './RepriceClientModal';
 import SearchInput from '../../components/SearchInput';
 import OverflowMenu from '../../components/OverflowMenu';
 import EmptyState from '../../components/EmptyState';
-import { fmtGbp } from '../../lib/money';
+import { fmtGbp, fmtGbpDetailed } from '../../lib/money';
+import ServicePicker from './ServicePicker';
+import { fetchFeeEngineServices } from './billingServices';
+import { standardFor, EMPTY_DRIVERS } from './standardPricing';
+import { firstOfNextMonth } from './repriceReasons';
+import { fetchFeeDefaults } from '../../contexts/FeeEngineContext';
 import { BTN } from '../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
@@ -28,7 +33,6 @@ export default function BillingReviewAndChangePage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [rows, setRows] = useState([]);
-  const [qboItems, setQboItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [scope, setScope] = useState('monthly'); // monthly | annual | all
@@ -55,20 +59,12 @@ export default function BillingReviewAndChangePage() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data }, { data: items }] = await Promise.all([
-      supabase
-        .from('live_billing')
-        .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status, fee_raise_excluded)')
-        .eq('status', 'active')
-        .order('id', { ascending: false }),
-      supabase
-        .from('qbo_items')
-        .select('qbo_item_id, name, description, unit_price, active')
-        .eq('active', true)
-        .order('name', { ascending: true }),
-    ]);
+    const { data } = await supabase
+      .from('live_billing')
+      .select('id, entity_id, services, qbo_recurring_txn_id, entity:entities(id, name, entity_status, fee_raise_excluded)')
+      .eq('status', 'active')
+      .order('id', { ascending: false });
     setRows((data || []).filter((r) => (r.entity?.entity_status || 'active') !== 'nlac'));
-    setQboItems(items || []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -211,7 +207,7 @@ export default function BillingReviewAndChangePage() {
   // is pushed to QBO it can land on the existing template); otherwise
   // attaches to the largest active manual row. Stages the amount as
   // pending so it flows through Uplift Review → push.
-  const addService = async ({ entityId, qboItemId, serviceId, description, cadence, monthlyAmount, effectiveAt, reason }) => {
+  const addService = async ({ entityId, qboItemId, serviceId, feeEngineServiceId, description, cadence, monthlyAmount, effectiveAt, reason }) => {
     if (!entityId || !serviceId) return;
     setSaving(true);
     try {
@@ -228,6 +224,7 @@ export default function BillingReviewAndChangePage() {
       services.push({
         service_id: serviceId,
         qbo_item_id: qboItemId || null,
+        fee_engine_service_id: feeEngineServiceId || null,
         description: description || serviceId,
         cadence,
         cadence_months: cadence === 'monthly' ? 1 : cadence === 'annual' ? 12 : 0,
@@ -761,7 +758,6 @@ export default function BillingReviewAndChangePage() {
         <RepriceClientModal
           entity={repriceFor}
           rows={rows}
-          qboItems={qboItems}
           profile={profile}
           onSaveRow={saveRepricedRow}
           onClose={() => setRepriceFor(null)}
@@ -770,9 +766,7 @@ export default function BillingReviewAndChangePage() {
       )}
       {addOpen && (
         <AddServiceModal
-          services={matrix.services}
           entities={matrix.entityList}
-          qboItems={qboItems}
           defaults={addOpen}
           onClose={() => setAddOpen(null)}
           onApply={addService}
@@ -981,25 +975,56 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
   );
 }
 
-function AddServiceModal({ services, entities, qboItems, defaults, onClose, onApply, saving }) {
+// Add a service from the fee engine's list — the same services New Quote
+// prices and the single-client fee review adds, each mapped to its
+// QuickBooks product (fetchFeeEngineServices). The amount starts at the
+// standard price where that needs no client drivers (confirmation
+// statement, VAT returns, registered office…).
+function AddServiceModal({ entities, defaults, onClose, onApply, saving }) {
   const [entityId, setEntityId] = useState(defaults.entityId || '');
-  // Try to pre-pick a QBO item by matching the defaults.serviceId
-  // against item names (defaults.serviceId comes from a column header
-  // click on the matrix — that header IS a QBO item name).
-  const preselected = defaults.serviceId
-    ? (qboItems.find((it) => it.name === defaults.serviceId) || null)
-    : null;
-  const [qboItemId, setQboItemId] = useState(preselected?.qbo_item_id || (qboItems[0]?.qbo_item_id || ''));
-  const selectedItem = qboItems.find((it) => it.qbo_item_id === qboItemId) || null;
-  const [description, setDescription] = useState(preselected?.description || '');
+  const [options, setOptions] = useState([]);
+  const [feeDefaults, setFeeDefaults] = useState(null);
+  const [serviceId, setServiceId] = useState('');
+  const [description, setDescription] = useState('');
   const [cadence, setCadence] = useState('monthly');
-  const [amount, setAmount] = useState(preselected?.unit_price || 0);
-  const [effectiveAt, setEffectiveAt] = useState('2026-06-01');
+  const [amount, setAmount] = useState(0);
+  const [effectiveAt, setEffectiveAt] = useState(firstOfNextMonth());
   const [reason, setReason] = useState('New service added on Change matrix');
 
+  const priceFor = (svc, D = feeDefaults) => {
+    const st = svc && D ? standardFor(svc.id, EMPTY_DRIVERS, D) : null;
+    return st && st.monthly != null ? st.monthly : null;
+  };
+  const pick = (id, list = options, D = feeDefaults) => {
+    setServiceId(id);
+    const svc = list.find((o) => o.id === id);
+    if (!svc) return;
+    setDescription(svc.defaultDescription || svc.label);
+    const p = priceFor(svc, D);
+    if (p != null) setAmount(cadence === 'annual' ? Math.round(p * 12 * 100) / 100 : p);
+  };
+
+  useEffect(() => {
+    (async () => {
+      const [list, D] = await Promise.all([fetchFeeEngineServices().catch(() => []), fetchFeeDefaults()]);
+      setOptions(list);
+      setFeeDefaults(D);
+      // A column-header click passes that column's line key ("Category:Item");
+      // pre-pick the fee-engine service on that product.
+      if (defaults.serviceId) {
+        const onProduct = list.filter((o) => o.lineServiceId === defaults.serviceId);
+        const leaf = defaults.serviceId.split(':').pop();
+        const best = onProduct.find((o) => o.label === leaf) || onProduct[0];
+        if (best) pick(best.id, list, D);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selected = options.find((o) => o.id === serviceId) || null;
   // Amount may be £0 — a placeholder to be priced when the uplift is
   // reviewed on Push. The reason/note explains why it's being raised.
-  const canApply = entityId && qboItemId && Number.isFinite(Number(amount)) && Number(amount) >= 0;
+  const canApply = entityId && selected && Number.isFinite(Number(amount)) && Number(amount) >= 0;
 
   return (
     <ModalShell title="Add service" onClose={onClose}>
@@ -1009,27 +1034,13 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
         {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
       </select>
 
-      <Label style={{ marginTop: 12 }}>QBO product</Label>
-      <select
-        value={qboItemId}
-        onChange={(e) => {
-          const id = e.target.value;
-          setQboItemId(id);
-          const item = qboItems.find((it) => it.qbo_item_id === id);
-          if (item) {
-            setDescription(item.description || item.name);
-            if (!amount || amount === 0) setAmount(item.unit_price || 0);
-          }
-        }}
-        style={inputStyle}
-      >
-        <option value="">— pick product —</option>
-        {qboItems.map((it) => (
-          <option key={it.qbo_item_id} value={it.qbo_item_id}>{it.name}</option>
-        ))}
-      </select>
-      {selectedItem?.description && (
-        <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{selectedItem.description}</p>
+      <Label style={{ marginTop: 12 }}>Service</Label>
+      <ServicePicker value={serviceId} options={options} onChange={(id) => pick(id)} placeholder="Pick a fee-engine service…" style={inputStyle} />
+      {selected && (
+        <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+          QuickBooks product: <strong style={{ fontWeight: 500 }}>{selected.qboItemName}</strong>
+          {priceFor(selected) != null ? ` · standard ${fmtGbpDetailed(priceFor(selected))}/mo` : ''}
+        </p>
       )}
 
       <Label style={{ marginTop: 10 }}>Cadence</Label>
@@ -1057,9 +1068,10 @@ function AddServiceModal({ services, entities, qboItems, defaults, onClose, onAp
         <button
           onClick={() => onApply({
             entityId,
-            qboItemId,
-            serviceId: selectedItem?.name || '',
-            description: description || selectedItem?.description || selectedItem?.name || '',
+            qboItemId: selected.qboItemId,
+            serviceId: selected.lineServiceId,
+            feeEngineServiceId: selected.id,
+            description: description || selected.label,
             cadence,
             monthlyAmount: Number(amount),
             effectiveAt,

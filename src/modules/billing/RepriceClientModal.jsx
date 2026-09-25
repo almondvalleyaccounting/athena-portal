@@ -12,6 +12,8 @@ import { composeRepriceEmail, defaultCoveringText } from './composeRepriceEmail'
 import { resolvePrimaryContact, firstNameOf, candidateAddresses } from './recipients';
 import { buildServiceResolver, standardFor, EMPTY_DRIVERS, DRIVER_LABEL } from './standardPricing';
 import { fetchFeeDefaults } from '../../contexts/FeeEngineContext';
+import { fetchFeeEngineServices } from './billingServices';
+import ServicePicker from './ServicePicker';
 
 const font = "'Outfit', sans-serif";
 const serif = "'Playfair Display', serif";
@@ -29,7 +31,7 @@ const serif = "'Playfair Display', serif";
 // summary table, the letter as a PDF with the waterfall, and a Gmail
 // draft with the PDF attached. Nothing is sent from here — the draft
 // is finished and sent in Gmail, as on Push uplifts.
-export default function RepriceClientModal({ entity, rows, qboItems, profile, onSaveRow, onClose, onOpenClient }) {
+export default function RepriceClientModal({ entity, rows, profile, onSaveRow, onClose, onOpenClient }) {
   const clientRows = useMemo(() => rows.filter((r) => r.entity_id === entity.id), [rows, entity.id]);
 
   const [step, setStep] = useState('price'); // price | email
@@ -46,6 +48,9 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
   const [drivers, setDrivers] = useState(EMPTY_DRIVERS);
   const [driverSources, setDriverSources] = useState({});
   const [seedNote, setSeedNote] = useState(null);
+  const [feServices, setFeServices] = useState([]);
+
+  useEffect(() => { fetchFeeEngineServices().then(setFeServices).catch(() => setFeServices([])); }, []);
 
   useEffect(() => {
     let live = true;
@@ -91,7 +96,7 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
     const out = {};
     if (!feeDefaults) return out;
     for (const l of lines) {
-      const sid = resolveService(l.serviceId, l.description);
+      const sid = l.feeEngineServiceId || resolveService(l.serviceId, l.description);
       out[l.key] = sid ? standardFor(sid, drivers, feeDefaults) : null;
     }
     return out;
@@ -101,7 +106,7 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
   const relevant = useMemo(() => {
     const need = new Set();
     for (const l of lines) {
-      const sid = resolveService(l.serviceId, l.description);
+      const sid = l.feeEngineServiceId || resolveService(l.serviceId, l.description);
       if (sid === 'accounts_ct' || sid === 'ltd_accounts' || sid === 'property_accounts') need.add('accounts');
       if (sid === 'directors_tax_return') need.add('directors');
       if (sid === 'payroll') need.add('employees');
@@ -170,6 +175,7 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
             services.push({
               service_id: l.serviceId,
               qbo_item_id: l.qboItemId || null,
+              fee_engine_service_id: l.feeEngineServiceId || null,
               description: l.description || l.serviceId,
               cadence: 'monthly',
               cadence_months: 1,
@@ -259,13 +265,15 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
             onRemoveNew={(key) => setLines((prev) => prev.filter((l) => l.key !== key))}
             adding={adding}
             setAdding={setAdding}
-            qboItems={qboItems}
-            onAdd={(item, amount) => {
+            feServices={feServices}
+            priceFor={(svc) => (feeDefaults ? standardFor(svc.id, drivers, feeDefaults) : null)}
+            onAdd={(svc, amount) => {
               const target = clientRows.find((r) => r.qbo_recurring_txn_id) || clientRows[0];
               if (!target) return;
               setLines((prev) => [...prev, {
                 key: `new-${Date.now()}`, rowId: target.id, idx: null, isNew: true,
-                serviceId: item.name, qboItemId: item.qbo_item_id, description: item.description || item.name,
+                serviceId: svc.lineServiceId, qboItemId: svc.qboItemId, feeEngineServiceId: svc.id,
+                description: svc.defaultDescription || svc.label,
                 cadence: 'monthly', current: 0, next: String(amount), original: 0,
                 reasonKey: 'new_service', otherText: '', reasonTouched: false, originalReason: '',
               }]);
@@ -315,7 +323,7 @@ export default function RepriceClientModal({ entity, rows, qboItems, profile, on
 function PriceStep({
   lines, summary, effectiveAt, setEffectiveAt, setLine,
   standards, drivers, setDrivers, driverSources, relevant, standardsReady, onSeedStandard, seedNote,
-  onRemoveNew, adding, setAdding, qboItems, onAdd,
+  onRemoveNew, adding, setAdding, feServices, priceFor, onAdd,
 }) {
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '18px 22px' }}>
@@ -428,7 +436,7 @@ function PriceStep({
           </div>
           <div style={{ padding: '10px 12px', borderTop: '1px solid #f1f5f9', background: '#fafafa' }}>
             {adding
-              ? <AddLine qboItems={qboItems} taken={new Set(lines.map((l) => l.serviceId))} onCancel={() => setAdding(false)} onAdd={onAdd} />
+              ? <AddLine services={feServices} priceFor={priceFor} takenItems={new Set(lines.map((l) => l.qboItemId).filter(Boolean))} onCancel={() => setAdding(false)} onAdd={onAdd} />
               : <button onClick={() => setAdding(true)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Plus size={13} /> Add a service</button>}
           </div>
         </div>
@@ -623,20 +631,43 @@ function MiniWaterfall({ summary }) {
   );
 }
 
-function AddLine({ qboItems, taken, onCancel, onAdd }) {
-  const options = qboItems.filter((it) => !taken.has(it.name));
+// Add a service from the fee engine's list — the same services New Quote
+// prices, each already mapped to its QuickBooks product. Services whose
+// product this client is already billed for are left out: the push would
+// refuse a second line on the same product. The amount starts at the
+// standard price when the drivers allow one.
+function AddLine({ services, priceFor, takenItems, onCancel, onAdd }) {
+  const options = (services || []).filter((s) => !takenItems.has(s.qboItemId));
+  const hidden = (services || []).length - options.length;
   const [id, setId] = useState('');
-  const item = options.find((it) => it.qbo_item_id === id);
+  const svc = options.find((s) => s.id === id) || null;
   const [amount, setAmount] = useState('');
+  const std = svc ? priceFor(svc) : null;
+  const pick = (next) => {
+    setId(next);
+    const s = options.find((o) => o.id === next);
+    const p = s ? priceFor(s) : null;
+    setAmount(p && p.monthly != null ? String(p.monthly) : '');
+  };
+  const ok = svc && Number(amount) > 0;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      <select value={id} onChange={(e) => { setId(e.target.value); const it = options.find((o) => o.qbo_item_id === e.target.value); if (it && !amount) setAmount(String(it.unit_price || '')); }} style={{ ...input, flex: 1, minWidth: 220 }}>
-        <option value="">— pick a QBO product —</option>
-        {options.map((it) => <option key={it.qbo_item_id} value={it.qbo_item_id}>{it.name}</option>)}
-      </select>
-      <input type="number" step="0.5" min="0" placeholder="£ / month" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...input, width: 100, fontFamily: 'monospace', textAlign: 'right' }} />
-      <button onClick={() => item && Number(amount) > 0 && onAdd(item, Number(amount))} disabled={!item || !(Number(amount) > 0)} style={{ ...BTN.primary.sm, opacity: item && Number(amount) > 0 ? 1 : 0.5 }}>Add</button>
-      <button onClick={onCancel} style={BTN.secondary.sm}>Cancel</button>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <ServicePicker value={id} options={options} onChange={pick} placeholder="Pick a fee-engine service…" style={{ ...input, width: '100%' }} />
+        </div>
+        <input type="number" step="0.5" min="0" placeholder="£ / month" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ ...input, width: 100, fontFamily: 'monospace', textAlign: 'right' }} />
+        <button onClick={() => ok && onAdd(svc, Number(amount))} disabled={!ok} style={{ ...BTN.primary.sm, opacity: ok ? 1 : 0.5 }}>Add</button>
+        <button onClick={onCancel} style={BTN.secondary.sm}>Cancel</button>
+      </div>
+      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 5 }}>
+        {svc
+          ? <>QuickBooks product: <strong style={{ color: '#64748b', fontWeight: 500 }}>{svc.qboItemName}</strong>
+              {std?.monthly != null ? <> · standard {fmtGbpDetailed(std.monthly)}/mo ({std.basis})</>
+                : std?.missing ? <> · set the {DRIVER_LABEL[std.missing]} above for a standard price</>
+                : <> · no standard rate — enter the fee</>}</>
+          : hidden > 0 ? `${hidden} service${hidden === 1 ? '' : 's'} on products this client is already billed for are not listed.` : ' '}
+      </div>
     </div>
   );
 }
@@ -820,7 +851,10 @@ function initialLines(clientRows) {
       const otherText = saved?.otherText || '';
       out.push({
         key: `${r.id}:${idx}`, rowId: r.id, idx, isNew: false,
-        serviceId, description: s.description || '', cadence: s.cadence, current, next: String(next), original: next,
+        serviceId, description: s.description || '',
+        qboItemId: s.qbo_item_id != null ? String(s.qbo_item_id) : null,
+        feeEngineServiceId: s.fee_engine_service_id || null,
+        cadence: s.cadence, current, next: String(next), original: next,
         reasonKey, otherText, reasonTouched: !!saved,
         // What is stored now: a staged line with no saved reason key (a
         // bulk pass) counts as unsaved until its reason is written.
