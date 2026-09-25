@@ -1,8 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
+import { BTN } from '../../../lib/buttonStyles';
 
+// The row-level action menu. Same three button kinds as everywhere else in
+// Athena (buttonStyles.js): secondary for the choices, danger for Delete.
+// It used to flash a green "Done" badge before the completion modal had
+// even opened; nothing was done at that point, so the flash is gone.
 export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComplete, onStartNotReq, onDelete }) {
   const ref = useRef(null);
-  const [done, setDone] = useState(false);
 
   useEffect(() => {
     function handle(e) {
@@ -13,7 +17,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
   }, [onClose]);
 
   // Clamp position to viewport
-  const posX = Math.min(x, window.innerWidth - 200);
+  const posX = Math.min(x, window.innerWidth - 340);
   const posY = Math.min(y, window.innerHeight - 60);
 
   const popStyle = {
@@ -22,99 +26,35 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
     top: posY,
     zIndex: 200,
     display: 'flex',
-    gap: 1,
+    gap: 6,
     background: '#fff',
     border: '1px solid #e5e7eb',
     borderRadius: 10,
     boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-    padding: 3,
+    padding: 6,
     fontFamily: "'Outfit', sans-serif",
   };
 
-  if (done) {
-    return (
-      <div ref={ref} style={popStyle}>
-        <div
-          style={{
-            background: '#059669',
-            color: '#fff',
-            padding: '6px 14px',
-            borderRadius: 8,
-            fontSize: 12,
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          &#10003; Done
-        </div>
-      </div>
-    );
+  const btn = { ...BTN.secondary.sm, whiteSpace: 'nowrap' };
+
+  // Deleting an occurrence of a recurring task deletes the whole series —
+  // there is no per-occurrence delete — so say so before doing it.
+  function handleDelete() {
+    const series = task._instance || task.recurring;
+    const msg = series
+      ? `Delete "${task.title}" and every future occurrence of it? This removes the whole recurring task, not just this date.`
+      : `Delete "${task.title}"?`;
+    if (!window.confirm(msg)) return;
+    onDelete(task);
   }
-
-  const btnStyle = {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 1,
-    padding: '4px 8px',
-    borderRadius: 6,
-    border: 'none',
-    background: 'none',
-    cursor: 'pointer',
-    fontFamily: "'Outfit', sans-serif",
-    fontSize: 9,
-    fontWeight: 500,
-    color: '#1e293b',
-    minWidth: 44,
-  };
 
   return (
     <div ref={ref} style={popStyle}>
-      <button
-        style={btnStyle}
-        onClick={() => onOpen(task)}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-      >
-        <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#9998;</span>
-        Open
-      </button>
-      <button
-        style={btnStyle}
-        onClick={() => {
-          setDone(true);
-          setTimeout(() => onStartComplete(task), 400);
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-      >
-        <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#10003;</span>
-        Done
-      </button>
-      <button
-        style={btnStyle}
-        onClick={() => {
-          setDone(true);
-          setTimeout(() => onStartNotReq(task), 400);
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-      >
-        <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#10005;</span>
-        Not Req
-      </button>
+      <button style={btn} onClick={() => onOpen(task)}>Open</button>
+      <button style={btn} onClick={() => onStartComplete(task)}>Done</button>
+      <button style={btn} onClick={() => onStartNotReq(task)}>Not required</button>
       {onDelete && (
-        <button
-          style={{ ...btnStyle, color: '#dc2626' }}
-          onClick={() => onDelete(task)}
-          onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
-        >
-          <span style={{ fontSize: 14.5, lineHeight: 1 }}>&#128465;</span>
-          Delete
-        </button>
+        <button style={{ ...BTN.danger.sm, whiteSpace: 'nowrap' }} onClick={handleDelete}>Delete</button>
       )}
     </div>
   );

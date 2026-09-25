@@ -293,15 +293,10 @@ export default function MyTasksView({ dueFilter, compact, searchTerm, onAction }
               <div style={{ flexShrink: 0, marginTop: compact ? 0 : 1 }}>
                 <button
                   onClick={(e) => onAction(e, task)}
-                  title="Actions"
-                  style={{
-                    padding: compact ? '2px 6px' : '3px 8px', fontSize: compact ? 10 : 11, fontWeight: 500,
-                    border: '1px solid #0e7fe0', borderRadius: compact ? 3 : 4,
-                    background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
-                    fontFamily: "'Outfit', sans-serif",
-                  }}
+                  title="Open, complete, mark not required or delete"
+                  style={{ ...BTN.secondary.sm, whiteSpace: 'nowrap' }}
                 >
-                  &#9654;
+                  Actions
                 </button>
               </div>
             </div>

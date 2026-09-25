@@ -4,6 +4,7 @@ import Avatar from '../components/Avatar';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import { deleteCompletedTask } from '../lib/supabaseQueries';
 import DataTable from '../../../components/DataTable';
+import { BTN } from '../../../lib/buttonStyles';
 
 const sourceLabel = (t) => (t.source_type === 'quick' ? 'Quick' : 'Scheduled');
 
@@ -136,22 +137,14 @@ export default function CompletedView() {
       ),
     },
     {
-      key: 'delete', label: '', width: 48, align: 'center', sortable: false,
+      key: 'delete', label: '', width: 80, align: 'right', sortable: false,
       render: (t) => (
         <button
           onClick={() => handleDelete(t)}
-          title="Delete"
           aria-label={`Delete completed task ${t.title || ''}`}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            padding: 3, opacity: 0.3, transition: 'opacity 0.15s', flexShrink: 0,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.3'; }}
+          style={{ ...BTN.danger.sm, whiteSpace: 'nowrap' }}
         >
-          <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-            <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          Delete
         </button>
       ),
     },

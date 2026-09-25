@@ -290,15 +290,10 @@ export default function QuickTasksView({ compact, onAction }) {
               <div style={{ display: 'flex', gap: 3, flexShrink: 0, marginTop: compact ? 0 : 1, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button
                   onClick={(e) => onAction(e, task)}
-                  title="Complete"
-                  style={{
-                    padding: '2px 6px', fontSize: 10, fontWeight: 500,
-                    border: '1px solid #0e7fe0', borderRadius: 3,
-                    background: '#dbeafe', color: '#0e7fe0', cursor: 'pointer',
-                    fontFamily: "'Outfit', sans-serif",
-                  }}
+                  title="Open, complete, mark not required or delete"
+                  style={miniBtn}
                 >
-                  &#9654;
+                  Actions
                 </button>
                 <input
                   type="date"

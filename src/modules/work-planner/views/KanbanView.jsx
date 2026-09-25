@@ -263,14 +263,9 @@ export default function KanbanView({ dueFilter, onAction }) {
                     ) : (
                       <button
                         onClick={(e) => { e.stopPropagation(); setNoteInput(inst._key); setNoteText(''); }}
-                        style={{
-                          border: '1px solid #e5e7eb', background: '#f8fafc', color: '#64748b',
-                          fontSize: 10, fontWeight: 500, cursor: 'pointer',
-                          padding: '2px 7px', marginTop: 3, borderRadius: 4,
-                          fontFamily: "'Outfit', sans-serif",
-                        }}
+                        style={{ ...BTN.secondary.sm, marginTop: 3 }}
                       >
-                        + note
+                        + Add note
                       </button>
                     )}
                   </div>
