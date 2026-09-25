@@ -6,6 +6,7 @@ import { BTN } from '../../lib/buttonStyles';
 import {
   BUCKETS, REASONS, REASON_BY_KEY, OUR_FEES_FOOTNOTE, VAT_RATE, visibleBuckets,
   bucketFor, suggestReason, reasonFromSaved, reasonText, summarise, firstOfNextMonth, longDate,
+  kindOf, lineNeedsAcceptance, savedChanges, componentsOf, BUCKET_BY_KEY,
 } from './repriceReasons';
 import { buildRepricePdf, pdfBase64, pdfFilename, serviceName } from './repricePdf';
 import { composeRepriceEmail, defaultCoveringText } from './composeRepriceEmail';
@@ -161,8 +162,12 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   // The lines the letter and email describe: a new service still at £0
   // hasn't been priced, so it isn't on them.
   const letterLines = useMemo(() => lines.map(asNumbers).filter((l) => !(l.isNew && !(l.next > 0))), [lines]);
+
+  // Notice or proposal follows from the changes (repriceReasons: only a
+  // new service needs the client's agreement).
+  const kind = kindOf(summary);
   const dirty = useMemo(() => lines.some((l) => lineDirty(l)) || effectiveAt !== initialEffective(clientRows), [lines, effectiveAt, clientRows]);
-  const missingReason = lines.some((l) => isChanged(l) && l.reasonKey === 'other' && !l.otherText.trim());
+  const missingReason = lines.some((l) => isChanged(l) && ((l.reasonKey === 'other' && !l.otherText.trim()) || (l.extra || []).some((e) => e.reasonKey === 'other' && !(e.otherText || '').trim())));
 
   const setLine = (key, patch) => setLines((prev) => prev.map((l) => {
     if (l.key !== key) return l;
@@ -216,7 +221,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
           if (!s) continue;
           if (neu === l.current) {
             if (s.pending_monthly_amount != null) {
-              services[l.idx] = { ...s, pending_monthly_amount: null, pending_effective_at: null, pending_uplift_reason: null, pending_uplift_reason_key: null, pending_uplift_staged_at: null };
+              services[l.idx] = { ...s, pending_monthly_amount: null, pending_effective_at: null, pending_uplift_reason: null, pending_uplift_reason_key: null, pending_uplift_staged_at: null, pending_proposal_id: null, pending_changes: null, pending_needs_acceptance: null };
               touched = true;
             }
             continue;
@@ -263,6 +268,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             </div>
             <h2 style={{ fontFamily: serif, fontSize: 22, fontWeight: 500, color: '#0f172a', margin: '2px 0 0' }}>{entity.name}</h2>
           </div>
+          <KindBadge kind={kind} />
           <button onClick={onOpenClient} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 6 }} title="Open the client record">
             <ExternalLink size={12} /> Client record
           </button>
@@ -277,7 +283,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             <div style={{ padding: '8px 22px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
               Letter preview — from the prices on screen, unsaved. {pdfFilename(entity.name)}
             </div>
-            <PdfPreview build={() => buildRepricePdf({ clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary })} buildKey={JSON.stringify([recipient?.contactName, effectiveAt, summary, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
+            <PdfPreview build={() => buildRepricePdf({ kind, clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary })} buildKey={JSON.stringify([kind, recipient?.contactName, effectiveAt, summary, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
           </div>
         ) : step === 'price' ? (
           <PriceStep
@@ -311,7 +317,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
                 ...(prev.some((l) => l.reasonKey === 'split' && isChanged(l))
                   ? { reasonKey: 'split', reasonTouched: true }
                   : { reasonKey: 'new_service', reasonTouched: false }),
-                otherText: '', originalReason: '',
+                otherText: '', extra: [], originalReason: '',
               }]);
               setAdding(false);
             }}
@@ -319,6 +325,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
         ) : (
           <EmailStep
             entity={entity}
+            kind={kind}
             info={recipient}
             clientRows={clientRows}
             lines={letterLines}
@@ -460,6 +467,10 @@ function PriceStep({
                             <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 3 }}>
                               Shown to the client under “{BUCKETS.find((b) => b.key === bucket)?.label}”
                             </div>
+                          )}
+                          <ExtraChanges line={l} onChange={(extra) => setLine(l.key, { extra, reasonTouched: true })} />
+                          {lineNeedsAcceptance(n) && (
+                            <div style={{ fontSize: 10.5, color: '#92400e', marginTop: 3 }}>Needs the client&apos;s written acceptance</div>
                           )}
                         </>
                       ) : <span style={{ fontSize: 12, color: '#cbd5e1' }}>No change</span>}
@@ -719,7 +730,7 @@ function AddLine({ services, priceFor, takenItems, onCancel, onAdd }) {
 
 // ─── Step 2 ──────────────────────────────────────────────────────────
 
-function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBack }) {
+function EmailStep({ entity, kind, info, clientRows, lines, summary, effectiveAt, onBack }) {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [covering, setCovering] = useState('');
@@ -728,21 +739,24 @@ function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBa
   const [error, setError] = useState(null);
   const [previewTab, setPreviewTab] = useState('email'); // email | letter
 
-  // First drafts, once the contact is known.
+  const [issued, setIssued] = useState(null); // proposal id once recorded
+
+  // First drafts once the contact is known, and again if the kind changes —
+  // a notice and a proposal say different things.
   useEffect(() => {
     if (!info) return;
-    setTo(info.candidates[0]?.addr || '');
-    setSubject(composeRepriceEmail({ clientName: entity.name, coveringText: '', effectiveAt, summary }).subject);
-    setCovering(defaultCoveringText({ contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary }));
+    setTo((t) => t || info.candidates[0]?.addr || '');
+    setSubject(composeRepriceEmail({ kind, clientName: entity.name, coveringText: '', effectiveAt, summary }).subject);
+    setCovering(defaultCoveringText({ kind, contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info]);
+  }, [info, kind]);
 
   const email = useMemo(
-    () => composeRepriceEmail({ clientName: entity.name, coveringText: covering, effectiveAt, summary }),
-    [entity.name, covering, effectiveAt, summary],
+    () => composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary }),
+    [kind, entity.name, covering, effectiveAt, summary],
   );
 
-  const makePdf = () => buildRepricePdf({ clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary });
+  const makePdf = () => buildRepricePdf({ kind, clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary });
 
   const download = async () => {
     setBusy('pdf');
@@ -767,6 +781,40 @@ function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBa
     || clientRows.find((r) => (r.services || []).some((s) => s.pending_monthly_amount != null))
     || clientRows[0])?.id;
 
+  // Record what was issued (fee-proposal edge function). For a proposal
+  // this is what holds the staged fees back from Push until the client's
+  // written acceptance is recorded.
+  const pendingBillingIds = clientRows
+    .filter((r) => (r.services || []).some((s) => s.pending_monthly_amount != null))
+    .map((r) => r.id);
+  const issue = async (gmailDraftId) => {
+    const { data, error: fnErr } = await supabase.functions.invoke('fee-proposal', {
+      body: {
+        action: 'issue',
+        entity_id: entity.id,
+        kind,
+        effective_at: effectiveAt,
+        billing_ids: pendingBillingIds,
+        lines: lines.map((l) => ({ service: l.serviceId, current: l.current, next: l.next, reason: reasonText(l), reason_key: l.reasonKey })),
+        summary,
+        subject,
+        recipient_email: to || null,
+        gmail_draft_id: gmailDraftId,
+      },
+    });
+    if (fnErr || !data?.success) throw new Error(`The draft was created but the ${kind} wasn't recorded: ${data?.error || fnErr?.message || 'unknown error'}`);
+    setIssued(data.proposal_id);
+  };
+
+  const issueWithoutEmail = async () => {
+    if (!window.confirm(`Record this ${kind} as issued without an email (for example, sent by post)?`)) return;
+    setBusy('issue');
+    setError(null);
+    try { await issue(null); }
+    catch (e) { setError(e.message || String(e)); }
+    finally { setBusy(null); }
+  };
+
   const draft = async () => {
     if (!to) { setError('Pick or type a recipient first.'); return; }
     setBusy('draft');
@@ -788,6 +836,7 @@ function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBa
         throw new Error(data?.error || fnErr?.message || 'Draft creation failed');
       }
       setDrafted(data.account_email || 'Gmail');
+      await issue(data.draft_id || null);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -852,18 +901,25 @@ function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBa
           </div>
           {previewTab === 'email'
             ? <iframe title="Email preview" srcDoc={email.bodyHtml} sandbox="" style={{ flex: 1, width: '100%', border: 'none' }} />
-            : <PdfPreview build={makePdf} buildKey={JSON.stringify([info?.contactName, effectiveAt, summary, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
+            : <PdfPreview build={makePdf} buildKey={JSON.stringify([kind, info?.contactName, effectiveAt, summary, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
         </div>
       </div>
 
       <div style={{ padding: '12px 22px', borderTop: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
         <button onClick={onBack} disabled={!!busy} style={{ ...BTN.secondary.md, display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowLeft size={14} /> Back to prices</button>
         <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : drafted ? '#15803d' : '#64748b' }}>
-          {error || (drafted
-            ? `Draft created in ${drafted} with the letter attached — review and send it from Gmail.`
-            : `Nothing sends from here. The draft lands in Gmail with the PDF attached. New fees still need approving on Push uplifts${effectiveAt ? ` before ${longDate(effectiveAt)}` : ''}.`)}
+          {error || (issued
+            ? (kind === 'proposal'
+              ? `${drafted ? `Draft created in ${drafted}. ` : ''}Proposal recorded — once the client accepts by email, record it on Push uplifts.`
+              : `${drafted ? `Draft created in ${drafted}. ` : ''}Notice recorded — the new fees are ready to push from ${longDate(effectiveAt)}.`)
+            : `Nothing sends from here — the draft goes to Gmail with the letter attached.${kind === 'proposal' ? ' The new fees are held until the client accepts in writing.' : ''}`)}
         </span>
         <div style={{ flex: 1 }} />
+        {!issued && (
+          <button onClick={issueWithoutEmail} disabled={!!busy || !info} style={{ ...BTN.secondary.md, whiteSpace: 'nowrap' }} title="Sent another way, such as by post">
+            {busy === 'issue' ? 'Recording…' : 'Issued without email'}
+          </button>
+        )}
         <button
           onClick={draft}
           disabled={!!busy || !info || !to || !billingId}
@@ -873,6 +929,65 @@ function EmailStep({ entity, info, clientRows, lines, summary, effectiveAt, onBa
         </button>
       </div>
     </>
+  );
+}
+
+// More than one reason on a line — e.g. Accounts split out (−£80) and
+// then our fee raised (+£6). Each extra reason carries its own amount;
+// the line's first reason takes whatever is left, so the line always adds
+// up to its new fee.
+function ExtraChanges({ line, onChange }) {
+  const extra = line.extra || [];
+  const comps = componentsOf(asNumbers(line));
+  const primary = comps.find((c) => c.primary);
+  const set = (i, patch) => onChange(extra.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+  return (
+    <div style={{ marginTop: 4 }}>
+      {extra.length > 0 && (
+        <div style={{ fontSize: 10.5, color: '#64748b', margin: '2px 0 4px' }}>
+          First reason: {primary ? `${primary.amount > 0 ? '+' : ''}${fmtGbpDetailed(primary.amount)}` : '£0.00'}
+        </div>
+      )}
+      {extra.map((e, i) => (
+        <div key={e.id} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4 }}>
+          <select value={e.reasonKey} onChange={(ev) => set(i, { reasonKey: ev.target.value })} style={{ ...input, flex: 1, minWidth: 0, fontSize: 12, padding: '4px 6px' }}>
+            {BUCKETS.filter((b) => b.key !== 'newService' && b.key !== 'removed').map((b) => (
+              <optgroup key={b.key} label={b.label}>
+                {REASONS.filter((r) => r.bucket === b.key).map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <input type="number" step="0.5" value={e.amount} placeholder="±£" onChange={(ev) => set(i, { amount: ev.target.value })}
+            style={{ ...input, width: 70, fontSize: 12, padding: '4px 6px', fontFamily: 'monospace', textAlign: 'right' }} />
+          <IconBtn title="Remove this reason" onClick={() => onChange(extra.filter((_, j) => j !== i))}><X size={12} /></IconBtn>
+          {e.reasonKey === 'other' && (
+            <input value={e.otherText || ''} placeholder="Explain…" onChange={(ev) => set(i, { otherText: ev.target.value })} style={{ ...input, width: '100%', fontSize: 12, marginTop: 2 }} />
+          )}
+        </div>
+      ))}
+      <button
+        onClick={() => onChange([...extra, { id: `x-${Date.now()}`, reasonKey: 'inflation', amount: '', otherText: '' }])}
+        style={{ background: 'none', border: 'none', padding: 0, marginTop: 4, fontSize: 11, color: '#1E4560', cursor: 'pointer', fontFamily: font }}
+      >+ another reason</button>
+    </div>
+  );
+}
+
+// What this fee change is, from its changes: a notice we push from the
+// effective date, or a proposal whose new services wait for the client's
+// written acceptance.
+function KindBadge({ kind }) {
+  const proposal = kind === 'proposal';
+  return (
+    <span
+      title={proposal
+        ? 'New services need the client to accept in writing before they reach QuickBooks. Everything else goes ahead from the effective date.'
+        : 'Fee changes, splits and removals go ahead from the effective date — no acceptance needed.'}
+      style={{
+        marginLeft: 12, fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap',
+        background: proposal ? '#fef3c7' : '#f1f5f9', color: proposal ? '#92400e' : '#475569',
+      }}
+    >{proposal ? 'Proposal · new services need acceptance' : 'Fee notice · no acceptance needed'}</span>
   );
 }
 
@@ -933,16 +1048,17 @@ function initialLines(clientRows) {
       const serviceId = s.service_id || s.description || 'Service';
       const reasonKey = saved?.reasonKey || suggestReason({ serviceId, current, next });
       const otherText = saved?.otherText || '';
+      const extra = saved?.extra || [];
       out.push({
         key: `${r.id}:${idx}`, rowId: r.id, idx, isNew: false,
         serviceId, description: s.description || '',
         qboItemId: s.qbo_item_id != null ? String(s.qbo_item_id) : null,
         feeEngineServiceId: s.fee_engine_service_id || null,
         cadence: s.cadence, current, next: String(next), original: next,
-        reasonKey, otherText, reasonTouched: !!saved,
+        reasonKey, otherText, extra, reasonTouched: !!saved,
         // What is stored now: a staged line with no saved reason key (a
         // bulk pass) counts as unsaved until its reason is written.
-        originalReason: saved ? `${reasonKey}|${otherText}` : '',
+        originalReason: saved ? reasonSig({ reasonKey, otherText, extra }) : '',
       });
     });
   }
@@ -958,11 +1074,16 @@ function initialEffective(clientRows) {
 }
 
 function pendingFields(l, amount, effectiveAt, stagedAt, strategy) {
+  const line = { ...l, next: amount };
   return {
     pending_monthly_amount: amount,
     pending_effective_at: effectiveAt,
-    pending_uplift_reason: reasonText(l),
+    pending_uplift_reason: reasonText(line),
     pending_uplift_reason_key: l.reasonKey,
+    // Each reason and its amount, and whether the line waits for the
+    // client's written acceptance — qbo-push-recurring reads the flag.
+    pending_changes: savedChanges(line),
+    pending_needs_acceptance: lineNeedsAcceptance(line),
     pending_uplift_staged_at: stagedAt,
     pending_uplift_strategy: strategy,
   };
@@ -973,7 +1094,8 @@ const asNumbers = (l) => ({ ...l, next: round2(l.next) });
 const isChanged = (l) => round2(l.next) !== l.current;
 // Unsaved: a new line, an amount moved from what was loaded, or a
 // changed line whose reason differs from the one stored on it.
-const lineDirty = (l) => l.isNew || round2(l.next) !== l.original || (isChanged(l) && `${l.reasonKey}|${l.otherText}` !== l.originalReason);
+const reasonSig = (l) => JSON.stringify([l.reasonKey, l.otherText || '', (l.extra || []).map((e) => [e.reasonKey, round2(e.amount), e.otherText || ''])]);
+const lineDirty = (l) => l.isNew || round2(l.next) !== l.original || (isChanged(l) && reasonSig(l) !== l.originalReason);
 
 function Field({ label, hint, children }) {
   return (

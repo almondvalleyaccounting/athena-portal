@@ -13,6 +13,8 @@ import GmailConnectionPanel from '../../components/GmailConnectionPanel';
 import { tones } from '../../lib/tokens';
 import { composeUpliftEmail } from './composeUpliftEmail';
 import { splitEmails, resolvePrimaryContact, firstNameOf } from './recipients';
+import { RecordAcceptanceDialog, CloseProposalDialog } from './FeeProposalDialogs';
+import { longDate } from './repriceReasons';
 import { explainRows, explainBlocked } from './pushOutcome';
 import { fmtGbp } from '../../lib/money';
 import { BTN } from '../../lib/buttonStyles';
@@ -37,6 +39,8 @@ export default function BillingUpliftReviewPage() {
   const [pushing, setPushing] = useState(false);
   const [search, setSearch] = useState('');
   const [emailFor, setEmailFor] = useState(null); // row whose draft email is being previewed
+  const [proposals, setProposals] = useState({}); // fee_proposals by id
+  const [signOff, setSignOff] = useState(null); // { mode: 'accept'|'decline'|'withdraw', proposal, clientName }
   const [emailsBatch, setEmailsBatch] = useState(null); // list of rows for bulk preview
   // Sort state for the Push table. Default: largest delta first so
   // the user works through the meaningful changes top-down.
@@ -97,6 +101,20 @@ export default function BillingUpliftReviewPage() {
       )
       && (r.entity?.entity_status || 'active') !== 'nlac'
     );
+    // Fee changes issued from the single-client fee review (sql/300): a
+    // proposal holds its row until the client's written acceptance is
+    // recorded.
+    const pids = [...new Set(filtered.flatMap((r) => r.services
+      .filter((s) => s.pending_monthly_amount != null && s.pending_proposal_id)
+      .map((s) => s.pending_proposal_id)))];
+    let byId = {};
+    if (pids.length) {
+      const { data: fps } = await supabase.from('fee_proposals')
+        .select('id, kind, status, effective_at, issued_at, recipient_email, accepted_at, acceptance_received_on, acceptance_inbox')
+        .in('id', pids);
+      byId = Object.fromEntries((fps || []).map((p) => [p.id, p]));
+    }
+    setProposals(byId);
     setRows(filtered);
     setSelected(new Set());
     setLoading(false);
@@ -165,6 +183,18 @@ export default function BillingUpliftReviewPage() {
     }
     const goLive = pending.map((s) => s.pending_effective_at).filter(Boolean).sort()[0] || null;
     const reason = pending.map((s) => s.pending_uplift_reason).find(Boolean) || null;
+    const proposal = pending.map((s) => proposals[s.pending_proposal_id]).find(Boolean) || null;
+    // Held back from push — qbo-push-recurring checks the same:
+    //   - a new service waits for the client's written acceptance
+    //     (pending_needs_acceptance); the rest of the row can still go
+    //   - new fees that start after the template's next invoice wait until
+    //     that invoice has gone out at the old price
+    const heldLines = pending.filter((s) => s.pending_needs_acceptance
+      && !(proposals[s.pending_proposal_id]?.status === 'accepted'));
+    const notIssued = heldLines.some((s) => !s.pending_proposal_id);
+    const allHeld = heldLines.length > 0 && heldLines.length === pending.length;
+    const notDue = !!(goLive && r.qbo_next_run_date && r.qbo_next_run_date < goLive);
+    const hold = allHeld ? 'acceptance' : notDue ? 'timing' : null;
     return {
       ...r,
       _pendingLines: pending.length,
@@ -173,8 +203,12 @@ export default function BillingUpliftReviewPage() {
       _delta: Math.round((newTotal - oldTotal) * 100) / 100,
       _goLive: goLive,
       _reason: reason,
+      _proposal: proposal,
+      _hold: hold,
+      _held: heldLines.length,
+      _notIssued: notIssued,
     };
-  }), [rows]);
+  }), [rows, proposals]);
 
   const counts = useMemo(() => {
     const c = { staged: 0, approved: 0, rejected: 0, no_email: 0, all: summarised.length };
@@ -246,6 +280,9 @@ export default function BillingUpliftReviewPage() {
       pending_effective_at: null,
       pending_uplift_reason: null,
       pending_uplift_staged_at: null,
+      pending_proposal_id: null,
+      pending_changes: null,
+      pending_needs_acceptance: null,
     }));
     setSaving(true);
     await supabase.from('live_billing').update({
@@ -279,14 +316,18 @@ export default function BillingUpliftReviewPage() {
   };
 
   const pushApproved = async (dryRun = false) => {
-    const approvedRows = summarised.filter((r) => r.uplift_review_status === 'approved' && r.qbo_recurring_txn_id);
+    const ready = summarised.filter((r) => r.uplift_review_status === 'approved' && r.qbo_recurring_txn_id);
+    const approvedRows = ready.filter((r) => !r._hold);
+    const held = ready.length - approvedRows.length;
     if (approvedRows.length === 0) {
-      alert('Nothing to push — no rows are approved with a QBO template link.');
+      alert(held
+        ? `Nothing to push yet — ${held} approved row${held === 1 ? ' is' : 's are'} waiting for client acceptance or for the right invoice date.`
+        : 'Nothing to push — no rows are approved with a QBO template link.');
       return;
     }
     const ids = approvedRows.map((r) => r.id);
     const label = dryRun ? 'Dry-run' : 'Push';
-    if (!window.confirm(`${label} ${ids.length} approved uplift${ids.length === 1 ? '' : 's'} to QBO?\n\nThis overwrites line amounts on the existing recurring templates.`)) return;
+    if (!window.confirm(`${label} ${ids.length} approved uplift${ids.length === 1 ? '' : 's'} to QBO?\n\nThis overwrites line amounts on the existing recurring templates.${held ? `\n\n${held} approved row${held === 1 ? ' is' : 's are'} held back (awaiting acceptance or not due yet).` : ''}`)) return;
     setPushing(true);
     try {
       const { data, error } = await supabase.functions.invoke('qbo-push-recurring', {
@@ -367,6 +408,15 @@ export default function BillingUpliftReviewPage() {
                   title={`Gmail draft created ${r.uplift_gmail_draft_created_at ? new Date(r.uplift_gmail_draft_created_at).toLocaleString('en-GB') : ''}${r.uplift_email_to ? ` for ${r.uplift_email_to}` : ''} — finalise and send in Gmail.`}
                 >✎ Draft</span>
               )}
+              {r._proposal && <ProposalChip p={r._proposal} />}
+              {r._held > 0 && (
+                <span
+                  style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#fef3c7', color: '#92400e' }}
+                  title={r._notIssued
+                    ? 'A new service was added but the proposal hasn’t been issued to the client yet — issue it from the fee review'
+                    : 'New services wait for the client’s written acceptance; everything else on this row can be pushed'}
+                >{r._held} new service{r._held === 1 ? '' : 's'} · {r._notIssued ? 'not issued' : 'awaiting acceptance'}</span>
+              )}
               {r.uplift_email_skipped && !r.uplift_email_sent_at && (
                 <span
                   style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', color: '#475569' }}
@@ -408,6 +458,11 @@ export default function BillingUpliftReviewPage() {
           {r.qbo_next_run_date || (metaErrors[r.id]
             ? <span style={{ color: '#b45309', cursor: 'help' }} title={`QBO could not be read for this template: ${metaErrors[r.id]}`}>— ⚠</span>
             : '—')}
+          {r._hold === 'timing' && (
+            <div style={{ fontSize: 11, color: '#b45309' }} title="This invoice goes out at the current fee; push after it has been raised">
+              Push after this invoice
+            </div>
+          )}
         </span>
       ),
     },
@@ -438,12 +493,50 @@ export default function BillingUpliftReviewPage() {
 
         let main = null;
         let items;
+        const p = r._proposal;
+        const openProposal = p && p.kind === 'proposal' && (p.status === 'issued' || p.status === 'accepted');
+        const canAccept = p && p.kind === 'proposal' && p.status === 'issued' && r._held > 0 && !r._notIssued;
+        const signOffItems = openProposal ? [
+          canAccept && r._hold !== 'acceptance' && { label: 'Record acceptance…', icon: Check, onClick: guard(() => setSignOff({ mode: 'accept', proposal: p, clientName: r.entity?.name })) },
+          p.status === 'issued' && { label: 'Client declined…', icon: X, onClick: guard(() => setSignOff({ mode: 'decline', proposal: p, clientName: r.entity?.name })) },
+          { label: 'Withdraw proposal…', icon: X, onClick: guard(() => setSignOff({ mode: 'withdraw', proposal: p, clientName: r.entity?.name })) },
+        ] : [];
+        if (r._hold === 'acceptance' && !canAccept) {
+          main = <span style={{ fontSize: 12.5, color: '#92400e', whiteSpace: 'nowrap' }} title="Issue it to the client from the fee review first">Not issued</span>;
+          items = [status === 'approved' ? restage : approve, preview, discard];
+          return (
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {main}
+              <RowMenu items={items.filter(Boolean)} />
+            </div>
+          );
+        }
+        if (r._hold === 'acceptance') {
+          main = <button onClick={() => setSignOff({ mode: 'accept', proposal: p, clientName: r.entity?.name })} disabled={saving} style={solid} title="The client has accepted by email"><Check size={13} strokeWidth={3} />Record acceptance</button>;
+          items = [status === 'approved' ? restage : approve, preview, ...signOffItems, discard];
+          return (
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {main}
+              <RowMenu items={items.filter(Boolean)} />
+            </div>
+          );
+        }
+        if (status === 'approved' && r._hold === 'timing') {
+          main = <span style={{ fontSize: 12.5, color: '#b45309', whiteSpace: 'nowrap' }} title={`New fees start ${r._goLive}; the ${r.qbo_next_run_date} invoice goes out at the current fee first`}>Not due yet</span>;
+          items = [preview, emailToggle, restage, ...signOffItems, discard];
+          return (
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {main}
+              <RowMenu items={items.filter(Boolean)} />
+            </div>
+          );
+        }
         if (status === 'approved' && !skipped) {
           main = <button onClick={() => setEmailFor(r)} disabled={saving} style={quiet} title="Preview the fee-raise email for this client"><Mail size={13} />Preview email</button>;
-          items = [emailToggle, restage, reject, discard];
+          items = [emailToggle, restage, reject, ...signOffItems, discard];
         } else if (status === 'approved') {
           main = <span style={{ fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }}>Ready to push</span>;
-          items = [emailToggle, restage, reject, discard];
+          items = [emailToggle, restage, reject, ...signOffItems, discard];
         } else if (status === 'rejected') {
           main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset"><RotateCcw size={13} />Back to pending</button>;
           items = [approve, preview, emailToggle, discard];
@@ -609,6 +702,12 @@ export default function BillingUpliftReviewPage() {
         </div>
       )}
 
+      {signOff?.mode === 'accept' && (
+        <RecordAcceptanceDialog proposal={signOff.proposal} clientName={signOff.clientName} onClose={() => setSignOff(null)} onDone={load} />
+      )}
+      {(signOff?.mode === 'decline' || signOff?.mode === 'withdraw') && (
+        <CloseProposalDialog proposal={signOff.proposal} mode={signOff.mode} clientName={signOff.clientName} onClose={() => setSignOff(null)} onDone={load} />
+      )}
       {emailFor && (
         <EmailPreviewModal rows={[emailFor]} onClose={() => setEmailFor(null)} initiatedBy={profile?.id} onSent={load} />
       )}
@@ -670,6 +769,21 @@ const pushFooterStyle = {
 // system mail client via a mailto: link (subject + body pre-filled).
 // No backend send wiring — that comes in a separate piece once we
 // pick the sender (accounts@ via Gmail OAuth or transactional).
+// Where a fee change issued from the fee review stands.
+function ProposalChip({ p }) {
+  const base = { fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999 };
+  if (p.kind === 'notice') {
+    return <span style={{ ...base, background: '#f1f5f9', color: '#475569' }} title={`Fee notice issued ${longDate(p.issued_at)}`}>Notice</span>;
+  }
+  if (p.status === 'issued') {
+    return <span style={{ ...base, background: '#fef3c7', color: '#92400e' }} title={`Proposal issued ${longDate(p.issued_at)} — needs the client's written acceptance before push`}>Awaiting acceptance</span>;
+  }
+  if (p.status === 'accepted') {
+    return <span style={{ ...base, background: '#dcfce7', color: '#166534' }} title={`Accepted by email received ${longDate(p.acceptance_received_on)} in ${p.acceptance_inbox}`}>Accepted {longDate(p.acceptance_received_on)}</span>;
+  }
+  return <span style={{ ...base, background: '#f1f5f9', color: '#475569' }}>Proposal {p.status}</span>;
+}
+
 function EmailPreviewModal({ rows, onClose, initiatedBy, onSent }) {
   const drafts = (rows || []).map((r) => {
     const services = (r.services || []).filter((s) => s.pending_monthly_amount != null);

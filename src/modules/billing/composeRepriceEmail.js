@@ -1,20 +1,14 @@
-// The covering email for a single-client fee review. The PDF letter
-// carries the detail and the waterfall; the email carries the staff-
-// written covering note and one summary table:
+// The covering email for a single-client fee change. Two kinds:
 //
-//   Current fees
-//   Increases in our fees *
-//   New services
-//   Services removed
-//   Costs passed on
-//   Other
-//   New fees (net of VAT)
-//   VAT at 20%
-//   Total including VAT
+//   notice    — we're telling the client their fees change
+//   proposal  — the same, plus new services the client must accept in
+//               writing (Part 2); Part 1 goes ahead either way
 //
-// with the footnote under it. Returns { subject, body, bodyHtml }.
+// The PDF letter carries the detail; the email carries a short covering
+// note (editable) and the summary table from summaryRows(), so the two
+// can't disagree. Returns { subject, body, bodyHtml }.
 
-import { visibleBuckets, OUR_FEES_FOOTNOTE, VAT_RATE, longDate, reasonText } from './repriceReasons';
+import { OUR_FEES_FOOTNOTE, longDate, reasonText, summaryRows } from './repriceReasons';
 
 const money = (n) => `£${Math.abs(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const signed = (n) => (Number(n) > 0 ? `+${money(n)}` : Number(n) < 0 ? `−${money(n)}` : '—');
@@ -24,46 +18,52 @@ function esc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// A starting covering note, built from the reasons picked. Staff edit
-// it in the modal; this only has to be a sensible first draft.
-export function defaultCoveringText({ contactName, clientName, effectiveAt, lines, summary }) {
-  const changed = lines.filter((l) => Number(l.current) !== Number(l.next));
-  const reasons = [...new Set(changed.map(reasonText).filter(Boolean))];
-  const dir = summary.delta > 0 ? 'increase' : summary.delta < 0 ? 'reduce' : 'change';
-  const paras = [
-    `Dear ${contactName || clientName},`,
-    `We have been reviewing the fees for ${clientName}${effectiveAt ? `, and from ${longDate(effectiveAt)}` : ' and'} your monthly fee will ${dir} from ${money(summary.current)} to ${money(summary.next)} plus VAT.`,
-  ];
-  if (reasons.length === 1) {
-    paras.push(`The reason for the change: ${reasons[0].charAt(0).toLowerCase()}${reasons[0].slice(1)}.`);
-  } else if (reasons.length > 1) {
-    paras.push(`The change comes from the following:\n${reasons.map((r) => `• ${r}`).join('\n')}`);
+export const KIND_TITLE = {
+  notice: 'Your fee review',
+  proposal: 'Proposed changes to your services',
+};
+
+// A first draft of the covering note. Staff edit it in the modal.
+export function defaultCoveringText({ kind = 'notice', contactName, clientName, effectiveAt, lines, summary }) {
+  const when = effectiveAt ? longDate(effectiveAt) : 'next month';
+  const from = money(summary.current);
+  const to = money(summary.next);
+  const reasons = [...new Set(lines.filter((l) => Number(l.current) !== Number(l.next)).map(reasonText).filter(Boolean))];
+  const paras = [`Dear ${contactName || clientName},`];
+
+  if (kind === 'proposal') {
+    paras.push(`From ${when} we're making some changes to your fees (Part 1), and we'd like to add some new services (Part 2). If you accept, your monthly fee will go from ${from} to ${to}, plus VAT.`);
+    paras.push('The table below sums it up and the attached letter has the detail.');
+    paras.push("To accept the new services, please reply to this email to say you agree. We won't add them until we have your reply. The changes in Part 1 go ahead either way.");
+  } else {
+    paras.push(`From ${when}, your monthly fee will go from ${from} to ${to}, plus VAT.`);
+    if (reasons.length === 1) paras.push(`This is because of: ${reasons[0].charAt(0).toLowerCase()}${reasons[0].slice(1)}.`);
+    else if (reasons.length > 1) paras.push(`This is because of:\n${reasons.map((r) => `• ${r}`).join('\n')}`);
+    paras.push("The table below sums it up and the attached letter has the detail. You don't need to do anything.");
   }
-  paras.push('The table below summarises the change, and the attached letter sets it out service by service. There is nothing you need to do — the new amount will simply appear on your invoices from that date.');
-  paras.push('If you have any questions at all, just reply to this email and we will be happy to talk it through.');
+  paras.push('If you have any questions, just reply to this email.');
   return paras.join('\n\n');
 }
 
-export function composeRepriceEmail({ clientName, coveringText, effectiveAt, summary }) {
-  const subject = `Your fees from ${effectiveAt ? longDate(effectiveAt) : 'next month'} — ${clientName}`;
-
-  const rows = [
-    { label: 'Current fees', v: summary.current, kind: 'total' },
-    ...visibleBuckets(summary).map((b) => ({ label: b.label, v: summary.buckets[b.key], kind: 'step', star: b.star })),
-    { label: 'New fees (net of VAT)', v: summary.next, kind: 'total' },
-    { label: `VAT at ${Math.round(VAT_RATE * 100)}%`, v: summary.vat, kind: 'vat' },
-    { label: 'Total including VAT', v: summary.gross, kind: 'grand' },
-  ];
+export function composeRepriceEmail({ kind = 'notice', clientName, coveringText, effectiveAt, summary }) {
+  const when = effectiveAt ? longDate(effectiveAt) : 'next month';
+  const subject = kind === 'proposal'
+    ? `Proposed changes to your services from ${when} — ${clientName}`
+    : `Your fees from ${when} — ${clientName}`;
+  const rows = summaryRows(summary, kind);
+  const cell = (r, v) => (r.type === 'step' ? signed(v) : money(v));
 
   // ─── Plain text ───
   const pad = (s, n) => (s.length >= n ? s : s + ' '.repeat(n - s.length));
   const padR = (s, n) => (s.length >= n ? s : ' '.repeat(n - s.length) + s);
-  const fmtCell = (r, v) => (r.kind === 'step' ? signed(v).replace('−', '-') : money(v));
   const text = [
     coveringText.trim(),
     '',
-    pad('', 36) + padR('Per month', 14) + padR('Per year', 14),
-    ...rows.map((r) => pad(r.label + (r.star ? ' *' : ''), 36) + padR(fmtCell(r, r.v), 14) + padR(fmtCell(r, r.v * 12), 14)),
+    pad('', 44) + padR('Per month', 14) + padR('Per year', 14),
+    ...rows.map((r) => (r.type === 'section'
+      ? `\n${r.label}`
+      : pad(`${r.type === 'step' ? '  ' : ''}${r.label}${r.star ? ' *' : ''}`, 44)
+        + padR(cell(r, r.v).replace('−', '-'), 14) + padR(cell(r, r.v * 12).replace('−', '-'), 14))),
     '',
     `* ${OUR_FEES_FOOTNOTE}`,
     '',
@@ -75,19 +75,23 @@ export function composeRepriceEmail({ clientName, coveringText, effectiveAt, sum
   const td = 'padding:9px 12px;font-size:14px;border-bottom:1px solid #eef2f6;';
   const num = 'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;';
   const tableRows = rows.map((r) => {
-    const cell = (v) => {
-      if (r.kind !== 'step') return esc(money(v));
+    if (r.type === 'section') {
+      return `<tr><td colspan="3" style="padding:12px 12px 6px;font-size:12px;font-weight:700;letter-spacing:0.03em;color:#193a50;border-bottom:1px solid #e5e9ef;background:#fbfcfd;">${esc(r.label)}</td></tr>`;
+    }
+    const val = (v) => {
+      if (r.type !== 'step') return esc(money(v));
       const colour = v > 0 ? '#9a5b17' : v < 0 ? '#2f855a' : '#94a3b8';
       return `<span style="color:${colour};">${esc(signed(v))}</span>`;
     };
     const label = `${esc(r.label)}${r.star ? '<sup style="color:#1E4560;">*</sup>' : ''}`;
-    if (r.kind === 'grand') {
-      return `<tr style="background:#193a50;"><td style="${td}color:#fff;font-weight:700;border-bottom:none;">${label}</td><td style="${td}${num}color:#fff;font-weight:700;border-bottom:none;">${cell(r.v)}</td><td style="${td}${num}color:#fff;font-weight:700;border-bottom:none;">${cell(r.v * 12)}</td></tr>`;
+    if (r.type === 'grand') {
+      return `<tr style="background:#193a50;"><td style="${td}color:#fff;font-weight:700;border-bottom:none;">${label}</td><td style="${td}${num}color:#fff;font-weight:700;border-bottom:none;">${val(r.v)}</td><td style="${td}${num}color:#fff;font-weight:700;border-bottom:none;">${val(r.v * 12)}</td></tr>`;
     }
-    const weight = r.kind === 'total' ? 'font-weight:700;color:#0f172a;' : r.kind === 'vat' ? 'color:#475569;' : 'color:#334155;';
-    const bg = r.kind === 'total' ? 'background:#f4f8fb;' : '';
-    const indent = r.kind === 'step' ? 'padding-left:24px;' : '';
-    return `<tr style="${bg}"><td style="${td}${weight}${indent}">${label}</td><td style="${td}${num}${weight}">${cell(r.v)}</td><td style="${td}${num}${weight}">${cell(r.v * 12)}</td></tr>`;
+    const strong = r.type === 'total' || r.type === 'subtotal';
+    const weight = strong ? 'font-weight:700;color:#0f172a;' : r.type === 'vat' ? 'color:#475569;' : 'color:#334155;';
+    const bg = r.type === 'total' ? 'background:#f4f8fb;' : '';
+    const indent = r.type === 'step' ? 'padding-left:24px;' : '';
+    return `<tr style="${bg}"><td style="${td}${weight}${indent}">${label}</td><td style="${td}${num}${weight}">${val(r.v)}</td><td style="${td}${num}${weight}">${val(r.v * 12)}</td></tr>`;
   }).join('');
 
   const paras = coveringText.trim().split(/\n{2,}/).map((p) =>
@@ -101,8 +105,8 @@ export function composeRepriceEmail({ clientName, coveringText, effectiveAt, sum
     <tr><td align="center">
       <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e9ef;">
         <tr><td style="background:#193a50;padding:22px 32px;">
-          <div style="font-family:Georgia,'Playfair Display',serif;font-size:22px;color:#ffffff;">Your fee review</div>
-          <div style="font-size:13px;color:#b9d3e2;margin-top:4px;">${esc(clientName)}${effectiveAt ? ` · new fees from ${esc(longDate(effectiveAt))}` : ''}</div>
+          <div style="font-family:Georgia,'Playfair Display',serif;font-size:22px;color:#ffffff;">${esc(KIND_TITLE[kind] || KIND_TITLE.notice)}</div>
+          <div style="font-size:13px;color:#b9d3e2;margin-top:4px;">${esc(clientName)} · from ${esc(when)}</div>
         </td></tr>
         <tr><td style="padding:28px 32px 8px;">
           ${paras}
@@ -110,7 +114,7 @@ export function composeRepriceEmail({ clientName, coveringText, effectiveAt, sum
         <tr><td style="padding:0 32px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid #e5e9ef;border-radius:8px;overflow:hidden;">
             <thead><tr style="background:#f8fafc;">
-              <th align="left" style="padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e5e9ef;">All figures net of VAT</th>
+              <th align="left" style="padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e5e9ef;">Excluding VAT</th>
               <th align="right" style="padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e5e9ef;">Per month</th>
               <th align="right" style="padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e5e9ef;">Per year</th>
             </tr></thead>

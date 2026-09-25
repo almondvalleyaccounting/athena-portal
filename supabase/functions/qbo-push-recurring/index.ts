@@ -83,6 +83,21 @@ Deno.serve(async (req) => {
     }
   }
   const itemMap = await loadItemMappings(sb, Array.from(serviceIds));
+
+  // Fee changes issued from the single-client fee review (sql/300). A line
+  // tagged with a proposal is not pushed until staff have recorded the
+  // client's written acceptance; a notice needs none.
+  const proposalIds = new Set<string>();
+  for (const r of rows) {
+    for (const s of ((r.services as Array<Record<string, unknown>>) || [])) {
+      if (s.pending_monthly_amount != null && s.pending_proposal_id) proposalIds.add(String(s.pending_proposal_id));
+    }
+  }
+  const proposals: Record<string, { kind: string; status: string; issued_at: string }> = {};
+  if (proposalIds.size) {
+    const { data } = await sb.from("fee_proposals").select("id, kind, status, issued_at").in("id", [...proposalIds]);
+    for (const p of data || []) proposals[p.id as string] = { kind: p.kind as string, status: p.status as string, issued_at: p.issued_at as string };
+  }
   const { data: conn } = await sb
     .from("qbo_connections")
     .select("default_tax_code_id")
@@ -110,10 +125,26 @@ Deno.serve(async (req) => {
     // fields of exactly the ones this push got into QBO, and no others.
     // It used to clear every one of them whenever the row pushed at all,
     // so a service QBO never received still read locally as billed.
-    const pending = services
+    const staged = services
       .map((s, i) => ({ s, i }))
       .filter(({ s }) => s.pending_monthly_amount != null);
-    if (pending.length === 0) {
+
+    // A line that adds a service needs the client's written acceptance
+    // (pending_needs_acceptance, set by the single-client fee review). Until
+    // staff record it on the line's proposal, the line stays staged and is
+    // left out of this push; the rest of the row — fee changes, splits,
+    // removals — goes ahead.
+    const held = staged.filter(({ s }) => {
+      if (!s.pending_needs_acceptance) return false;
+      const p = s.pending_proposal_id ? proposals[String(s.pending_proposal_id)] : null;
+      return !(p && p.status === "accepted");
+    });
+    const heldIdx = new Set(held.map(({ i }) => i));
+    const pending = staged.filter(({ i }) => !heldIdx.has(i));
+    const heldNote = held.length
+      ? `${held.length} new service${held.length === 1 ? "" : "s"} held back until the client's written acceptance is recorded${held.some(({ s }) => !s.pending_proposal_id) ? " (not yet issued to the client)" : ""}`
+      : null;
+    if (staged.length === 0) {
       skipped++;
       results.push({ billing_id: billing.id, entity: entityName, status: "skipped", reason: "no pending uplifts" });
       continue;
@@ -125,6 +156,12 @@ Deno.serve(async (req) => {
     if (billing.uplift_review_status !== "approved") {
       skipped++;
       results.push({ billing_id: billing.id, entity: entityName, status: "skipped", reason: `uplift_review_status=${billing.uplift_review_status || "null"} (not approved)` });
+      continue;
+    }
+
+    if (pending.length === 0) {
+      skipped++;
+      results.push({ billing_id: billing.id, entity: entityName, status: "skipped", reason: heldNote || "no pending uplifts" });
       continue;
     }
 
@@ -150,6 +187,30 @@ Deno.serve(async (req) => {
         || (template.ScheduleInfo as Record<string, unknown> | undefined);
       const factor = monthlyFactor(schedule);
       const reverseFactor = 1 / factor; // monthly → per-occurrence
+
+      // 2b. Timing. A new fee takes effect from a date; the template's last
+      //     invoice at the old price must already have been raised before we
+      //     change it, or that invoice goes out at the new price early. So
+      //     push only once the template's next run is on or after the
+      //     effective date — for a 1 January change on a template that runs
+      //     on the 1st, that means after the 1 December invoice exists. Read
+      //     from the live template, not the cached qbo_next_run_date, so a
+      //     stale cache can't let one through.
+      const nextRun = String((recurringInfo.ScheduleInfo as Record<string, unknown> | undefined)?.NextDate
+        || (schedule as Record<string, unknown> | undefined)?.NextDate || "").slice(0, 10);
+      const effective = pending
+        .map(({ s }) => String(s.pending_effective_at || "").slice(0, 10))
+        .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort()[0] || "";
+      if (nextRun && effective && nextRun < effective) {
+        skipped++;
+        results.push({
+          billing_id: billing.id, entity: entityName, status: "skipped",
+          reason: `not yet — the next invoice (${nextRun}) is before the new fees start (${effective}); push after it has been raised`,
+          next_run: nextRun, effective_at: effective,
+        });
+        continue;
+      }
 
       // 3. Reprice existing lines. Match each QBO line to a local service
       //    by QBO item id first, then ItemRef.name (== service_id from
@@ -205,7 +266,7 @@ Deno.serve(async (req) => {
       //     ever (Orthopaedic Consultancy, Fee Protection Insurance,
       //     2026-08-28). Every refusal below names itself: a fee that
       //     quietly fails to reach QBO is a fee we never bill.
-      const blocked: string[] = [];
+      const blocked: string[] = heldNote ? [heldNote] : [];
       const takenItemIds = new Set(
         existingLines
           .filter((l) => l.DetailType === "SalesItemLineDetail")
@@ -341,8 +402,21 @@ Deno.serve(async (req) => {
           pending_effective_at: null,
           pending_uplift_reason: null,
           pending_uplift_staged_at: null,
+          pending_proposal_id: null,
+          pending_changes: null,
+          pending_needs_acceptance: null,
+          last_uplift_changes: s.pending_changes || null,
+          last_uplift_proposal_id: s.pending_proposal_id || null,
         };
       });
+      // Lines held for acceptance (or blocked) are still staged and already
+      // approved internally, so the row stays approved for the next push.
+      const stillStaged = newServices.some((sv) => sv.pending_monthly_amount != null);
+      const pushedProposalIds = new Set(
+        services
+          .filter((s, i) => s.pending_monthly_amount != null && committed.has(i) && s.pending_proposal_id)
+          .map((s) => String(s.pending_proposal_id)),
+      );
 
       const rowMonthlyNet = newServices.reduce((sum: number, sv: Record<string, unknown>) => {
         return sv.cadence === "monthly" && sv.approval_status === "approved"
@@ -359,10 +433,21 @@ Deno.serve(async (req) => {
         annual_total: Math.round(rowAnnualTotal * 100) / 100,
         last_synced_qbo: new Date().toISOString(),
         qbo_sync_status: "synced",
-        uplift_review_status: null,
-        uplift_reviewed_by: null,
-        uplift_reviewed_at: null,
+        ...(stillStaged ? {} : { uplift_review_status: null, uplift_reviewed_by: null, uplift_reviewed_at: null }),
       }).eq("id", billing.id);
+
+      // A fee change is "pushed" once none of its lines is still staged on
+      // any of the rows it was issued against.
+      for (const pid of pushedProposalIds) {
+        const { data: fp } = await sb.from("fee_proposals").select("billing_ids, status").eq("id", pid).maybeSingle();
+        if (!fp || !["issued", "accepted"].includes(fp.status as string)) continue;
+        const { data: still } = await sb.from("live_billing").select("services").in("id", (fp.billing_ids as string[]) || []);
+        const remaining = (still || []).some((r) =>
+          ((r.services as Array<Record<string, unknown>>) || []).some((s) => s.pending_proposal_id === pid && s.pending_monthly_amount != null));
+        if (!remaining) {
+          await sb.from("fee_proposals").update({ status: "pushed", pushed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", pid);
+        }
+      }
 
       pushed++;
       results.push({

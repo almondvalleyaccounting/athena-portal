@@ -239,8 +239,13 @@ export default function BillingReviewAndChangePage() {
         pending_monthly_amount: cadence === 'annual' ? Math.round((Number(monthlyAmount) || 0) / 12 * 100) / 100 : monthly,
         pending_effective_at: effectiveAt || '2026-06-01',
         pending_uplift_reason: reason || 'New service added on Change matrix',
+        pending_uplift_reason_key: 'new_service',
         pending_uplift_staged_at: new Date().toISOString(),
         pending_uplift_strategy: 'manual',
+        // Adding a service needs the client's written acceptance before it
+        // reaches QuickBooks (repriceReasons). Issue it to the client from
+        // the fee review and record their acceptance on Push uplifts.
+        pending_needs_acceptance: true,
       });
       await supabase.from('live_billing').update({
         services,
@@ -294,6 +299,9 @@ export default function BillingReviewAndChangePage() {
       pending_effective_at: null,
       pending_uplift_reason: null,
       pending_uplift_staged_at: null,
+      pending_proposal_id: null,
+      pending_changes: null,
+      pending_needs_acceptance: null,
     };
     // If no services on this row still have pending, clear the row-level
     // review status too.
@@ -322,6 +330,9 @@ export default function BillingReviewAndChangePage() {
         pending_effective_at: null,
         pending_uplift_reason: null,
         pending_uplift_staged_at: null,
+        pending_proposal_id: null,
+      pending_changes: null,
+      pending_needs_acceptance: null,
       }));
       await supabase.from('live_billing').update({
         services,
