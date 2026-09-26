@@ -18,6 +18,9 @@
 //   batch_commit  { items: [{ entity_id, period_end }] }
 //                 propose with defaults then commit, for the jobs that take
 //                 the template unchanged.
+//   set_client_meeting { entity_id, has_meeting (true|false|null), basis?, note? }
+//                 the client-level answer (sql/306); null clears it back to
+//                 what the billing says.
 //   mark_done     { milestone_id, minutes?, note? }
 //                 the Done button on Today. Minutes > 0 also write a
 //                 timesheet_entries row against the job (source 'completed').
@@ -113,17 +116,16 @@ Deno.serve(async (req) => {
 
   /** Owners by role, and the variant defaults, from the allocations data. */
   async function resolveContext(entityId: string, job: Record<string, unknown>, plan: { has_meeting: boolean | null; books_with_us: boolean | null } | null) {
-    const [inferred, alloc, reviewers, services, fees] = await Promise.all([
+    const [inferred, alloc, reviewers, meeting] = await Promise.all([
       db.from("v_inferred_allocations").select("canonical_service_id, assignee_id").eq("entity_id", entityId),
       db.from("client_service_allocations").select("service_id, fee_earner_id, fee_earner_manager_id").eq("entity_id", entityId),
       db.from("service_reviewers").select("canonical_service_id, reviewer_id").eq("entity_id", entityId),
-      db.from("services").select("canonical_service_id, service_name, status").eq("entity_id", entityId),
-      // The fee engine's live fees: a client with the Review Meetings line
-      // (service_id review_meetings, QBO item "Review Meetings") gets the
-      // meeting stages by default. Bobby, 2026-09-26.
-      db.from("entity_fees").select("service_id").eq("entity_id", entityId).eq("service_id", "review_meetings").limit(1),
+      // Does the client get an annual review meeting? sql/306: a manual
+      // answer set by the team wins, else "billed" when the live QuickBooks
+      // templates carry the Review Meetings line, else none.
+      db.from("v_client_review_meeting").select("has_meeting, basis, note").eq("entity_id", entityId).maybeSingle(),
     ]);
-    for (const r of [inferred, alloc, reviewers, services, fees]) if (r.error) throw new Error(r.error.message);
+    for (const r of [inferred, alloc, reviewers, meeting]) if (r.error) throw new Error(r.error.message);
     const inf = (k: string) => inferred.data?.find((x) => x.canonical_service_id === k)?.assignee_id ?? null;
     const al = (k: string) => alloc.data?.find((x) => x.service_id === k) ?? null;
 
@@ -132,10 +134,8 @@ Deno.serve(async (req) => {
     const reviewer = reviewers.data?.find((x) => x.canonical_service_id === "accounts_preparation")?.reviewer_id ?? clientManager;
     const bookkeeper = inf("bookkeeping") ?? al("bookkeeping_vat")?.fee_earner_id ?? preparer;
 
-    const meetingDefault = (fees.data?.length ?? 0) > 0
-      || !!al("review_meetings")
-      || !!services.data?.some((s) => s.canonical_service_id === "review_meetings"
-        || /meeting/i.test(String(s.service_name ?? "")) && String(s.status ?? "active") === "active");
+    const meetingDefault = !!meeting.data?.has_meeting;
+    const meetingBasis = meeting.data?.basis ?? "none";
     const booksDefault = !!inf("bookkeeping") || !!al("bookkeeping_vat");
 
     const owners: Record<string, string | null> = {
@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
       owners, workingDays,
       hasMeeting: plan?.has_meeting ?? meetingDefault,
       booksWithUs: plan?.books_with_us ?? booksDefault,
-      meetingDefault, booksDefault,
+      meetingDefault, meetingBasis, booksDefault,
     };
   }
 
@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
       planned_by: me, planned_at: now, updated_at: now,
     }).eq("id", plan.id);
     if (pErr) throw new Error(pErr.message);
-    return { defaults: { has_meeting: ctx0.meetingDefault, books_with_us: ctx0.booksDefault, owners: ctx0.owners } };
+    return { defaults: { has_meeting: ctx0.meetingDefault, meeting_basis: ctx0.meetingBasis, books_with_us: ctx0.booksDefault, owners: ctx0.owners } };
   }
 
   async function propose(entityId: string, periodEnd: string, hasMeeting: boolean | null, booksWithUs: boolean | null, replan: boolean) {
@@ -334,6 +334,28 @@ Deno.serve(async (req) => {
           }
         }
         return json({ success: true, committed: results.filter((r) => r.ok).length, results });
+      }
+
+      // "This client gets a review meeting" (or does not), set by the team
+      // for the client rather than one job: included in their package, baked
+      // into the accounts fee, or simply "we meet them". Clears back to the
+      // billing-derived answer when has_meeting is null.
+      case "set_client_meeting": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const has = optBool(p.has_meeting);
+        if (has === null) {
+          const { error } = await db.from("client_review_meetings").delete().eq("entity_id", entityId);
+          if (error) throw new Error(error.message);
+        } else {
+          const basis = ["manual", "package", "included_in_accounts"].includes(String(p.basis)) ? String(p.basis) : "manual";
+          const { error } = await db.from("client_review_meetings").upsert({
+            entity_id: entityId, has_meeting: has, basis,
+            note: p.note ? String(p.note).slice(0, 1000) : null, set_by: me, set_at: now,
+          }, { onConflict: "entity_id" });
+          if (error) throw new Error(error.message);
+        }
+        const { data: rm } = await db.from("v_client_review_meeting").select("has_meeting, basis, note").eq("entity_id", entityId).maybeSingle();
+        return json({ success: true, meeting: rm });
       }
 
       case "mark_done":

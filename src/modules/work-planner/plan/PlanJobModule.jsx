@@ -18,6 +18,14 @@ import {
 const font = "'Outfit', sans-serif";
 
 const KIND_LABEL = { comms: 'Client comms', milestone: 'Milestone', work: 'Work', calendar: 'Calendar' };
+// Why a client has (or lacks) the meeting stages — v_client_review_meeting (sql/306).
+const MEETING_BASIS = {
+  billed: 'billed on the recurring invoice',
+  package: 'included in their package',
+  included_in_accounts: 'included in the accounts fee',
+  manual: 'set by the team',
+  none: 'not billed',
+};
 const ROLE_LABEL = {
   client_manager: 'Client manager', preparer: 'Preparer', reviewer: 'Reviewer',
   bookkeeper: 'Bookkeeper', client: 'Client',
@@ -208,6 +216,7 @@ function PlanList() {
                 <th style={th}>Companies House</th>
                 <th style={th}>Preparer</th>
                 <th style={th}>BM status</th>
+                <th style={th} title="Annual review meeting, and why">Meeting</th>
                 <th style={th}>Plan</th>
                 <th style={th}></th>
               </tr>
@@ -233,6 +242,11 @@ function PlanList() {
                     <td style={td}>{fmtDate(j.ch_deadline)}</td>
                     <td style={td}>{j.preparer_name || <span style={{ color: '#94a3b8' }}>Unassigned</span>}</td>
                     <td style={{ ...td, color: '#64748b' }}>{j.bm_status}</td>
+                    <td style={td} title={MEETING_BASIS[j.meeting_basis] || ''}>
+                      {j.meeting_default
+                        ? <span style={pill('#ede9fe', '#5b21b6')}>{j.meeting_basis === 'billed' ? 'Yes · billed' : 'Yes · set'}</span>
+                        : <span style={{ color: '#cbd5e1' }}>—</span>}
+                    </td>
                     <td style={td}>
                       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
                         <span style={PLAN_PILL[j.plan_status || 'none']}>{j.plan_status || 'not planned'}</span>
@@ -379,11 +393,22 @@ function PlanEditor() {
         <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px' }}>
           <Switch
             label="Annual meeting"
-            value={plan.has_meeting ?? defaults?.has_meeting ?? milestones.some((m) => m.stage_key === 'client_meeting')}
-            hint={plan.has_meeting == null ? 'from the client’s services' : 'set here'}
+            value={plan.has_meeting ?? job?.meeting_default ?? defaults?.has_meeting ?? milestones.some((m) => m.stage_key === 'client_meeting')}
+            hint={plan.has_meeting == null
+              ? (MEETING_BASIS[job?.meeting_basis || defaults?.meeting_basis] || 'from the client')
+              : 'this job only'}
             disabled={committed || busy}
             onChange={(v) => setVariant('has_meeting', v)}
           />
+          {plan.has_meeting != null && !committed && (
+            <RememberForClient
+              entityId={entityId}
+              hasMeeting={plan.has_meeting}
+              busy={busy}
+              onSaved={async () => { const j = await fetchAccountsJob(entityId, periodEnd); if (j) setJob(j); setInfo('Remembered for this client.'); }}
+              onError={setError}
+            />
+          )}
           <Switch
             label="We keep the books"
             value={plan.books_with_us ?? defaults?.books_with_us ?? milestones.some((m) => m.stage_key === 'close_books')}
@@ -477,6 +502,46 @@ function PlanEditor() {
         A date or owner you change is pinned automatically, so a recompute or the nightly pass leaves it alone. Removing a stage takes it out of this job only.
       </div>
     </div>
+  );
+}
+
+// A meeting switched on or off for one job can be remembered for the client,
+// so every later year end starts from the right answer and the billing cross
+// check knows we meet them. Writes client_review_meetings through job-plan.
+function RememberForClient({ entityId, hasMeeting, busy, onSaved, onError }) {
+  const [open, setOpen] = useState(false);
+  const [basis, setBasis] = useState(hasMeeting ? 'package' : 'manual');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await callJobPlan({ action: 'set_client_meeting', entity_id: entityId, has_meeting: hasMeeting, basis, note });
+      setOpen(false);
+      await onSaved();
+    } catch (e) { onError(e.message || String(e)); }
+    finally { setSaving(false); }
+  };
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} disabled={busy} style={BTN.secondary.sm} title="Keep this answer for the client, not just this job">
+        Remember for client
+      </button>
+    );
+  }
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      {hasMeeting ? (
+        <select value={basis} onChange={(e) => setBasis(e.target.value)} style={selStyle}>
+          <option value="package">Included in their package</option>
+          <option value="included_in_accounts">Included in the accounts fee</option>
+          <option value="manual">We meet them (not billed)</option>
+        </select>
+      ) : <span style={{ fontSize: 12.5, color: '#64748b' }}>No meeting for this client</span>}
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={{ ...selStyle, width: 160 }} />
+      <button onClick={save} disabled={saving} style={BTN.primary.sm}>{saving ? 'Saving…' : 'Save'}</button>
+      <button onClick={() => setOpen(false)} style={BTN.secondary.sm}>Cancel</button>
+    </span>
   );
 }
 
