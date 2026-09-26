@@ -6,7 +6,7 @@ import { downloadCSV } from '../lib/exportUtils';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import DataTable from '../components/DataTable';
 import { fetchAllRows } from '../lib/fetchAllRows';
-import FeeReviewsPanel, { useFeeReviews, annualDelta } from '../modules/billing/FeeReviewsPanel';
+import { useFeeReviews, annualDelta, reviewAsRow, ReviewStateBadge, reviewHref, REVIEW_STATE } from '../modules/billing/FeeReviewsPanel';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
@@ -30,6 +30,9 @@ const STATUS_CARDS = [
 ];
 
 const VALID_CARDS = ['draft', 'review_draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'pipeline_committed', 'declined'];
+
+// A fee review's change in fees: always signed.
+const signedFmt = (n) => { const v = Number(n) || 0; return `${v > 0 ? '+' : v < 0 ? '-' : ''}${fmt(Math.abs(v))}`; };
 
 // Whole-pound formatter for the status cards (no pennies).
 const fmtWhole = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(n) || 0);
@@ -230,8 +233,10 @@ export default function QuotesPage() {
   }, [quotes, netGross, feeReviews]);
 
   // ── Filtering (sorting is done by the table's headings) ──
+  // Fee reviews sit in the same list, as rows shaped like quotes whose
+  // money columns hold the change in fees (reviewAsRow).
   const filtered = useMemo(() => {
-    let list = quotes.filter(q => q.status !== 'deleted');
+    let list = [...quotes.filter(q => q.status !== 'deleted'), ...(feeReviews || []).filter(r => r.stage).map(reviewAsRow)];
 
     // Apply active card filter
     const card = STATUS_CARDS.find(c => c.key === activeCard);
@@ -260,7 +265,7 @@ export default function QuotesPage() {
       );
     }
     return list;
-  }, [quotes, activeCard, search, chipFilters, letter]);
+  }, [quotes, feeReviews, activeCard, search, chipFilters, letter]);
 
   const filterSig = JSON.stringify([activeCard, search, letter, chipFilters]);
   const page = pageAt.sig === filterSig ? pageAt.n : 1;
@@ -277,7 +282,7 @@ export default function QuotesPage() {
     q.quote_ref || '',
     q.relationship_group || '',
     (q.group_id && groupMap[q.group_id]) || '',
-    STATUS_LABELS[q.status] || q.status || '',
+    q._review ? `Fee review: ${REVIEW_STATE[q._review.state]?.label || ''}` : (STATUS_LABELS[q.status] || q.status || ''),
     q.annual_total ?? '',
     q.monthly_net ?? '',
     q.vat ?? '',
@@ -352,12 +357,14 @@ export default function QuotesPage() {
     {
       key: 'quote_ref', label: 'Quote Ref', width: '20%',
       sortValue: (q) => (q.quote_ref || '').toLowerCase(),
-      render: (q) => (
+      render: (q) => (q._review ? (
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#ede9fe', color: '#5b21b6' }}>Fee review</span>
+      ) : (
         <span className="font-medium text-gray-700">
           {q.quote_ref}
           {q.group_id && <span className="ml-1 text-[10px] bg-ocean-50 text-ocean-600 px-1 rounded">group</span>}
         </span>
-      ),
+      )),
     },
     {
       key: 'relationship_group', label: 'Client',
@@ -381,26 +388,26 @@ export default function QuotesPage() {
     {
       key: 'status', label: 'Status', width: 160,
       sortValue: (q) => (q.status || '').toLowerCase(),
-      render: (q) => <StatusBadge status={q.status} />,
+      render: (q) => (q._review ? <ReviewStateBadge state={q._review.state} /> : <StatusBadge status={q.status} />),
     },
     {
       key: 'monthly', label: netGross === 'net' ? 'Monthly (Net)' : 'Monthly (Gross)', width: 140, align: 'right',
       sortValue: (q) => Number(monthlyOf(q)) || 0,
-      render: (q) => <span className="font-mono text-ocean-600">{fmt(monthlyOf(q))}</span>,
+      render: (q) => <span className="font-mono text-ocean-600">{q._review ? signedFmt(monthlyOf(q)) : fmt(monthlyOf(q))}</span>,
     },
     {
       key: 'annual_total', label: 'Annual (Net)', width: 130, align: 'right',
       sortValue: (q) => Number(q.annual_total) || 0,
-      render: (q) => <span className="font-mono text-gray-500">{fmt(q.annual_total)}</span>,
+      render: (q) => <span className="font-mono text-gray-500">{q._review ? signedFmt(q.annual_total) : fmt(q.annual_total)}</span>,
     },
     {
       key: 'created_at', label: 'Created', width: 110, align: 'right',
       sortValue: (q) => (q.created_at ? new Date(q.created_at).getTime() : null),
-      render: (q) => <span className="text-gray-500">{new Date(q.created_at).toLocaleDateString('en-GB')}</span>,
+      render: (q) => <span className="text-gray-500">{q.created_at ? new Date(q.created_at).toLocaleDateString('en-GB') : '—'}</span>,
     },
     {
       key: 'actions', label: '', width: 48, align: 'right', sortable: false,
-      render: (q) => (
+      render: (q) => (q._review ? null : (
         <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
           <button
             onClick={(e) => {
@@ -436,7 +443,7 @@ export default function QuotesPage() {
             </div>
           )}
         </div>
-      ),
+      )),
     },
   ];
 
@@ -506,9 +513,6 @@ export default function QuotesPage() {
           );
         })}
       </div>
-
-      {/* Fee reviews in the selected card's stages, above the quotes in them */}
-      <FeeReviewsPanel rows={feeReviews} statuses={STATUS_CARDS.find(c => c.key === activeCard)?.statuses} search={search} />
 
       {/* Batch action bar */}
       {selectMode && selected.size > 0 && (
@@ -624,19 +628,19 @@ export default function QuotesPage() {
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
           <p className="text-sm text-gray-400 mb-3">
-            {quotes.length === 0 ? 'No quotes yet. Create your first quote to get started.'
-              : (cardData[activeCard]?.reviews || 0) > 0 ? 'No quotes at this stage — the fee reviews at this stage are listed above.'
-              : 'No quotes match your filters.'}
+            {quotes.length === 0 ? 'No quotes yet. Create your first quote to get started.' : 'No quotes match your filters.'}
           </p>
           {quotes.length === 0 && <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>}
         </div>
       ) : (
         <DataTable
           columns={columns}
-          rows={filtered}
+          // Select mode is for batch actions on quotes, so fee reviews step out of it.
+          rows={selectMode ? filtered.filter(q => !q._review) : filtered}
           rowKey={(q) => q.id}
-          // In Select mode a row click ticks the row, as before; otherwise it opens the quote.
-          rowHref={selectMode ? undefined : (q) => '/manage/quotes/' + q.id}
+          // In Select mode a row click ticks the row, as before; otherwise it
+          // opens the quote, or a fee review in the fee review modal.
+          rowHref={selectMode ? undefined : (q) => (q._review ? reviewHref(q._review) : '/manage/quotes/' + q.id)}
           onOpen={(href) => navigate(href)}
           onRowClick={selectMode ? (q) => toggleSelect(q.id) : undefined}
           sort={sort}

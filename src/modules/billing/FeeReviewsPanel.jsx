@@ -1,18 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/fetchAllRows';
-import { fmtGbpDetailed } from '../../lib/money';
-import { longDate } from './repriceReasons';
 
 // Fee reviews alongside quotes: every client with a fee change from the
-// single-client fee review, where it has got to, and a way back into it.
+// single-client fee review and where it has got to, as rows of the Quotes
+// table (reviewAsRow) that open the fee review.
 //
 // Two sources: fee_proposals (what was issued, sql/300) and live_billing
 // lines staged in the fee review but not yet sent (they carry
 // pending_changes with no open fee change). A client shows once, at its
-// latest state. Both are fee-gated, so staff without fee access see nothing
-// and the panel hides itself.
+// latest state. Both are fee-gated, so staff without fee access see none.
 //
 // On the Quotes page fee reviews count in the pipeline alongside quotes:
 // each state maps to the quote stage it corresponds to (STAGE below), and
@@ -20,7 +17,7 @@ import { longDate } from './repriceReasons';
 // happens to revenue if everything in it lands, and a fee review changes
 // an existing fee rather than adding a whole new one.
 
-const STATE = {
+export const REVIEW_STATE = {
   unsent:    { label: 'Not sent', bg: '#fee2e2', fg: '#991b1b' },
   notice:    { label: 'Sent — fee notice', bg: '#e0f2fe', fg: '#075985' },
   awaiting:  { label: 'Sent — awaiting acceptance', bg: '#fef3c7', fg: '#92400e' },
@@ -93,67 +90,33 @@ export function useFeeReviews() {
   return rows;
 }
 
-// The fee reviews in the stages the selected card covers (`statuses`, the
-// same list the quote table filters on). Hidden when there are none.
-export default function FeeReviewsPanel({ rows, statuses, search = '' }) {
-  const navigate = useNavigate();
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (rows || [])
-      .filter((r) => r.stage && (!statuses || statuses.includes(r.stage)))
-      .filter((r) => !q || r.name.toLowerCase().includes(q));
-  }, [rows, statuses, search]);
+// A review as a row of the Quotes table: shaped like a quote so the
+// table's columns, sorting, search and exports work unchanged, with the
+// money columns holding the change in fees (net, gross, VAT, annual).
+export function reviewAsRow(r) {
+  const delta = (Number(r.next) || 0) - (Number(r.current) || 0);
+  return {
+    id: `review:${r.entityId}`,
+    _review: r,
+    quote_ref: 'Fee review',
+    relationship_group: r.name,
+    group_id: null,
+    status: r.stage,
+    monthly_net: delta,
+    monthly_gross: delta * 1.2,
+    vat: delta * 0.2,
+    annual_total: annualDelta(r),
+    created_at: r.when || null,
+    valid_until: null,
+  };
+}
 
-  if (visible.length === 0) return null;
+// Opens the client's fee review (the modal on Review and change).
+export function reviewHref(r) {
+  return `/manage/billing/change?client=${encodeURIComponent(r.name)}&reprice=${r.entityId}`;
+}
 
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 mb-4">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-        <div className="text-sm font-semibold text-ocean-700">
-          Fee reviews <span className="text-xs font-normal text-gray-400">· fee changes for existing clients</span>
-        </div>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-[11px] text-gray-500 text-left">
-            <th className="px-3 py-1.5 font-medium">Client</th>
-            <th className="px-3 py-1.5 font-medium">Where it is</th>
-            <th className="px-3 py-1.5 font-medium text-right">Current / mo</th>
-            <th className="px-3 py-1.5 font-medium text-right">New / mo</th>
-            <th className="px-3 py-1.5 font-medium">From</th>
-            <th className="px-3 py-1.5" />
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((r) => {
-            const st = STATE[r.state] || STATE.withdrawn;
-            const d = (Number(r.next) || 0) - (Number(r.current) || 0);
-            return (
-              <tr key={r.entityId} className="border-t border-gray-100">
-                <td className="px-3 py-2 text-gray-800">{r.name}</td>
-                <td className="px-3 py-2">
-                  <span style={{ background: st.bg, color: st.fg }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full">{st.label}</span>
-                </td>
-                <td className="px-3 py-2 text-right font-mono text-gray-500">{fmtGbpDetailed(r.current)}</td>
-                <td className="px-3 py-2 text-right font-mono">
-                  {fmtGbpDetailed(r.next)}
-                  {d !== 0 && <span className={`ml-1 text-[11px] ${d > 0 ? 'text-green-700' : 'text-red-700'}`}>{d > 0 ? '+' : ''}{fmtGbpDetailed(d)}</span>}
-                </td>
-                <td className="px-3 py-2 text-gray-500">{r.effectiveAt ? longDate(r.effectiveAt) : '—'}</td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">
-                  <button
-                    onClick={() => navigate(`/manage/billing/change?client=${encodeURIComponent(r.name)}&reprice=${r.entityId}`)}
-                    className="text-xs text-ocean-600 hover:underline mr-3"
-                  >Open fee review</button>
-                  {['awaiting', 'accepted', 'notice'].includes(r.state) && (
-                    <button onClick={() => navigate('/manage/billing/uplifts')} className="text-xs text-ocean-600 hover:underline">Push uplifts</button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+export function ReviewStateBadge({ state }) {
+  const st = REVIEW_STATE[state] || REVIEW_STATE.withdrawn;
+  return <span style={{ background: st.bg, color: st.fg }} className="text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">{st.label}</span>;
 }
