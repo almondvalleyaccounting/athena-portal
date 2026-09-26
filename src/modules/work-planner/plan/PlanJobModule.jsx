@@ -421,7 +421,13 @@ function ReviewDrafts() {
                   <td style={{ ...td, fontWeight: 500 }}>{j.client}</td>
                   <td style={td}>{fmtDate(j.period_end)}</td>
                   <td style={td}>{hasMeeting(j) ? <span style={pill('#ede9fe', '#5b21b6')}>Yes</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
-                  <td style={td}>{j.vat_covers_year_end ? <span style={pill('#dcfce7', '#166534')} title="Gap request">via VAT</span> : <span style={{ color: '#64748b' }}>full request</span>}</td>
+                  <td style={td}>
+                    {(stages.get(j.plan_id) || {}).close_books && (stages.get(j.plan_id) || {}).close_books.status !== 'removed'
+                      ? <span style={pill('#e0f2fe', '#075985')} title="We keep the books: close them to the year end instead of requesting records">we keep the books</span>
+                      : j.vat_covers_year_end
+                        ? <span style={pill('#dcfce7', '#166534')} title="A VAT return we prepare covers the year end, so the request is for the gaps">via VAT</span>
+                        : <span style={{ color: '#64748b' }}>full request</span>}
+                  </td>
                   {KEY_STAGES.map((s) => <td key={s.key} style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(stageDate(j, s.key)) || <span style={{ color: '#cbd5e1' }}>—</span>}</td>)}
                   <td style={{ ...td, color: '#64748b' }}>{fmtDate(j.ch_deadline)}</td>
                   {!mine && <td style={td}>{j.preparer_name}</td>}
