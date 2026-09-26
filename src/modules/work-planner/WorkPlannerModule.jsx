@@ -680,8 +680,6 @@ export default function WorkPlannerModule() {
     setAnchor((prev) => {
       const d = new Date(prev);
       if (calendarView === 'month') d.setMonth(d.getMonth() + dir);
-      else if (calendarView === 'day') d.setDate(d.getDate() + dir);
-      else if (calendarView === '3day') d.setDate(d.getDate() + dir * 3);
       else d.setDate(d.getDate() + dir * 7);
       return d;
     });
@@ -689,9 +687,8 @@ export default function WorkPlannerModule() {
 
   function calTitle() {
     if (calendarView === 'month') return anchor.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-    if (calendarView === 'day') return anchor.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
     const cv = CALENDAR_VIEWS.find((v) => v.id === calendarView);
-    const s = (calendarView === '3day') ? anchor : startOfWeek(anchor);
+    const s = startOfWeek(anchor);
     const end = addDays(s, (cv ? cv.days : 7) - 1);
     return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} \u2014 ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
   }
@@ -902,7 +899,12 @@ export default function WorkPlannerModule() {
             <ScheduledView sort={sort} onEdit={(m) => setModal(m)} />
           )}
           {activeTab === 'calendar' && (
-            <CalendarView calendarView={calendarView} anchor={anchor} onAction={handleAction} />
+            <CalendarView
+              calendarView={calendarView}
+              anchor={anchor}
+              onAction={handleAction}
+              onPickDay={(d) => { setAnchor(new Date(d)); setCalendarView('workweek'); }}
+            />
           )}
           {activeTab === 'kanban' && (
             <StageBoardView />

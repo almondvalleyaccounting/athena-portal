@@ -43,11 +43,11 @@ export const RECURRENCE_OPTIONS = [
   { id: 'annually', label: 'Annually' },
 ];
 
+// The Calendar is a week planner: a working week, a full week, or a month
+// of counts that opens a week. Day and 3-day went with the 15-minute grid.
 export const CALENDAR_VIEWS = [
-  { id: 'day', label: 'Day', days: 1 },
-  { id: '3day', label: '3 Day', days: 3 },
-  { id: 'workweek', label: 'Work Wk', days: 5 },
-  { id: 'week', label: 'Full Wk', days: 7 },
+  { id: 'workweek', label: 'Work week', days: 5 },
+  { id: 'week', label: 'Full week', days: 7 },
   { id: 'month', label: 'Month', days: 0 },
 ];
 

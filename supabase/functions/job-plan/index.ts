@@ -26,6 +26,7 @@
 //   preview_comms { milestone_id }               the rendered email (to, subject, text)
 //   send_comms    { milestone_id, to?, test? }   send it; test=true with `to` sends a copy
 //                 to that address and leaves the stage untouched
+//   move_milestone { milestone_id, due_date, owner_id? }   the week planner's drag; pins the stage
 //   mark_done     { milestone_id, minutes?, note? }
 //                 the Done button on Today. Minutes > 0 also write a
 //                 timesheet_entries row against the job (source 'completed').
@@ -439,6 +440,28 @@ Deno.serve(async (req) => {
         const out = await sendForMilestone(db, id, { mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly, items });
         const { data: m } = await db.from("job_milestones").select("plan_id").eq("id", id).maybeSingle();
         return json({ success: true, ...out, plan: m ? await loadPlan(m.plan_id) : null, milestones: m ? await milestonesOf(m.plan_id) : [] });
+      }
+
+      // The week planner: drag a stage to another day (or person). The move
+      // pins it, so the nightly pass leaves it where it was put.
+      case "move_milestone": {
+        const id = uuid(p.milestone_id, "milestone_id");
+        const due = isoDate(p.due_date, "due_date");
+        const { data: m, error } = await db.from("job_milestones").select("id, plan_id, kind, status, owner_id").eq("id", id).maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!m) throw new BadRequest("Stage not found", 404);
+        if (m.status !== "pending") throw new BadRequest("Only a pending stage can be moved");
+        const patch: Record<string, unknown> = { due_date: due, pinned_by: me, pinned_at: now, updated_at: now };
+        if (m.kind === "work") patch.planned_date = due;
+        if (p.owner_id !== undefined && p.owner_id !== null) {
+          const ownerId = uuid(p.owner_id, "owner_id");
+          const { data: staff } = await db.from("staff_profiles").select("id, is_active").eq("id", ownerId).maybeSingle();
+          if (!staff?.is_active) throw new BadRequest("Owner must be an active team member");
+          patch.owner_id = ownerId;
+        }
+        const { error: uErr } = await db.from("job_milestones").update(patch).eq("id", id);
+        if (uErr) throw new Error(uErr.message);
+        return json({ success: true, plan: await loadPlan(m.plan_id), milestones: await milestonesOf(m.plan_id) });
       }
 
       case "mark_done":

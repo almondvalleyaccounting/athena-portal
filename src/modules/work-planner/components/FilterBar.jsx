@@ -121,20 +121,6 @@ export default function FilterBar({
               {v.label}
             </button>
           ))}
-          <div style={sepStyle} />
-          <span style={labelStyle}>Colour</span>
-          <button
-            style={colourMode === 'staff' ? btnActiveStyle : btnStyle}
-            onClick={() => setColourMode('staff')}
-          >
-            By Staff
-          </button>
-          <button
-            style={colourMode === 'status' ? btnActiveStyle : btnStyle}
-            onClick={() => setColourMode('status')}
-          >
-            By Status
-          </button>
         </>
       )}
 
