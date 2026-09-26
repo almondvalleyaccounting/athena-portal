@@ -32,8 +32,9 @@ for the statutory buffer, it's flagged.
 3. Press **Commit these N**. From that night the stages appear on your
    **Today** tab on their dates, and the nightly pass keeps them honest.
 
-Please have your list committed by [date]. After that, a job that is a month
-past its year end and still unplanned will get a reminder from me.
+Please have your list committed by **Friday 16 October**. From the following
+week, a job that is a month past its year end and still unplanned will get a
+weekly reminder from me.
 
 **Two things to know**
 

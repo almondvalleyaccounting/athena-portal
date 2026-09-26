@@ -217,7 +217,10 @@ Deno.serve(async (req) => {
 
     // ── Nudges ───────────────────────────────────────────────────────────
     const { data: settings } = await db.from("job_plan_settings").select("*").eq("id", true).maybeSingle();
-    if (settings?.nudges_armed) {
+    // Armed, and past the start date if one is set (sql/308): the team has a
+    // deadline to commit their lists before anyone is chased.
+    const nudgesLive = !!settings?.nudges_armed && (!settings?.nudges_from || today >= settings.nudges_from);
+    if (nudgesLive) {
       const cutoff = new Date(); cutoff.setUTCMonth(cutoff.getUTCMonth() - 1);
       const { data: jobs, error: jErr } = await db.from("v_accounts_jobs")
         .select("entity_id, client, period_end, ch_deadline, preparer_id, plan_status")
