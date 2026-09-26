@@ -902,7 +902,7 @@ export default function WorkPlannerModule() {
             <CalendarView
               calendarView={calendarView}
               anchor={anchor}
-              onAction={handleAction}
+              onOpen={handleOpen}
               onPickDay={(d) => { setAnchor(new Date(d)); setCalendarView('workweek'); }}
             />
           )}
@@ -986,10 +986,13 @@ export default function WorkPlannerModule() {
             setQuickModal(null);
           }}
           onDelete={async (id) => {
+            if (!window.confirm(`Delete "${quickModal.title}"?`)) return;
             setQuickTasks((prev) => prev.filter((t) => t.id !== id));
             await deleteQuickTaskDb(id);
             setQuickModal(null);
           }}
+          onDone={quickModal?.id ? () => { const t = quickModal; setQuickModal(null); handleStartComplete({ ...t, _isQuick: true }); } : undefined}
+          onNotRequired={quickModal?.id ? () => { const t = quickModal; setQuickModal(null); handleStartNotReq({ ...t, _isQuick: true }); } : undefined}
           onAddEntity={addEntity}
           onClose={() => setQuickModal(null)}
         />

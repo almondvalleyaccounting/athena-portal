@@ -58,7 +58,9 @@ function Cell({ id, children, style }) {
   return <div ref={setNodeRef} style={{ ...style, background: isOver ? '#eff6ff' : style?.background }}>{children}</div>;
 }
 
-export default function CalendarView({ calendarView, anchor, onAction, onPickDay }) {
+// onOpen opens a quick task straight into its editor (Done, Not required and
+// Delete live there), rather than a click-then-Open popover.
+export default function CalendarView({ calendarView, anchor, onOpen, onPickDay }) {
   const navigate = useNavigate();
   const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours } = useWorkPlanner();
   const [milestones, setMilestones] = useState([]);
@@ -278,7 +280,7 @@ export default function CalendarView({ calendarView, anchor, onAction, onPickDay
           <div style={{ padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #e5e7eb' }}>Unplanned quick tasks ({unplannedQuick.length})</div>
           <div style={{ overflowY: 'auto', padding: 5, flex: 1 }}>
             {unplannedQuick.map((q) => (
-              <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onAction(e, { ...q, _isQuick: true }); }}>
+              <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpen({ ...q, _isQuick: true }); }}>
                 {renderTile('quick', q)}
               </Tile>
             ))}
@@ -331,7 +333,7 @@ export default function CalendarView({ calendarView, anchor, onAction, onPickDay
                           <Tile key={b.id} id={`bm:${b.id}`} data={{ type: 'bm' }}>{renderTile('bm', b)}</Tile>
                         ))}
                         {c?.quick.map((q) => (
-                          <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onAction(e, { ...q, _isQuick: true }); }}>
+                          <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpen({ ...q, _isQuick: true }); }}>
                             {renderTile('quick', q)}
                           </Tile>
                         ))}

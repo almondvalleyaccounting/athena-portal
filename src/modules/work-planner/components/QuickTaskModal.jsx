@@ -20,7 +20,10 @@ const btnBase = {
   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
 };
 
-export default function QuickTaskModal({ task, staffList, entityList, progressNotes = [], onSave, onDelete, onClose, onAddEntity }) {
+// Opened straight from a click on the Calendar (and from the Open action
+// elsewhere). Done, Not required and Delete sit here so a task can be
+// closed from the same place it is read.
+export default function QuickTaskModal({ task, staffList, entityList, progressNotes = [], onSave, onDelete, onDone, onNotRequired, onClose, onAddEntity }) {
   const [form, setForm] = useState({
     title: task.title || '',
     entity_id: task.entity_id || '',
@@ -139,14 +142,13 @@ export default function QuickTaskModal({ task, staffList, entityList, progressNo
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14 }}>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14, flexWrap: 'wrap' }}>
           {task.id && (
-          <button
-            onClick={() => onDelete(task.id)}
-            style={{ ...BTN.danger.sm, ...btnBase, marginRight: 'auto' }}
-          >
-            Delete
-          </button>
+            <span style={{ display: 'inline-flex', gap: 6, marginRight: 'auto' }}>
+              <button onClick={() => onDelete(task.id)} style={{ ...BTN.danger.sm, ...btnBase }}>Delete</button>
+              {onNotRequired && <button onClick={onNotRequired} style={{ ...BTN.secondary.sm, ...btnBase }}>Not required</button>}
+              {onDone && <button onClick={onDone} style={{ ...BTN.secondary.sm, ...btnBase }}>Done</button>}
+            </span>
           )}
           <button onClick={onClose} style={{ ...BTN.secondary.sm, ...btnBase }}>
             Cancel
