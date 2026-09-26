@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { MessageSquare } from 'lucide-react';
 import { SERVICES } from '../lib/constants';
 import { clientName, formatISO, addDays, today, formatDateShort, sameDay } from '../lib/helpers';
 import Avatar from '../components/Avatar';
@@ -21,6 +22,7 @@ export default function QuickTasksView({ compact, onAction }) {
   const [assigneeId, setAssigneeId] = useState(profile?.id || '');
   const [expandedNote, setExpandedNote] = useState(null);
   const [progressInput, setProgressInput] = useState(null);
+  const [openNotes, setOpenNotes] = useState(new Set()); // quick tasks with their thread open
   const [progressText, setProgressText] = useState('');
   const [dragId, setDragId] = useState(null);
 
@@ -221,6 +223,7 @@ export default function QuickTasksView({ compact, onAction }) {
                 {(() => {
                   const notes = notesMap[`quick:${task.id}`] || [];
                   const isAddingNote = progressInput === task.id;
+                  if (!openNotes.has(task.id)) return null;
                   return (
                     <div style={{ flexBasis: '100%', width: '100%' }}>
                       {notes.length > 0 && (
@@ -288,6 +291,19 @@ export default function QuickTasksView({ compact, onAction }) {
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: 3, flexShrink: 0, marginTop: compact ? 0 : 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                {(() => {
+                  const n = (notesMap[`quick:${task.id}`] || []).length;
+                  const open = openNotes.has(task.id);
+                  return (
+                    <button
+                      onClick={() => setOpenNotes((s) => { const next = new Set(s); if (next.has(task.id)) next.delete(task.id); else { next.add(task.id); if (!n) { setProgressInput(task.id); setProgressText(''); } } return next; })}
+                      title="Notes & comments"
+                      style={{ ...miniBtn, display: 'inline-flex', alignItems: 'center', gap: 3, padding: '3px 7px', color: open || n ? '#0e7fe0' : '#94a3b8', borderColor: open || n ? '#bae6fd' : '#cbd5e1' }}
+                    >
+                      <MessageSquare size={13} />{n > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{n}</span>}
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={(e) => onAction(e, task)}
                   title="Open, complete, mark not required or delete"
@@ -335,15 +351,6 @@ export default function QuickTasksView({ compact, onAction }) {
                     Unplan
                   </button>
                 )}
-                <button
-                  style={miniBtn}
-                  onClick={() => {
-                    // Promote handled by parent
-                    onAction(null, { ...task, _promote: true });
-                  }}
-                >
-                  Promote&#8599;
-                </button>
               </div>
             </div>
           );

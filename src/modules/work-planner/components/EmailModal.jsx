@@ -121,7 +121,11 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
                   <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 8 }}>{picker.some((i) => i.remembered) ? 'Pre-ticked from what we asked them for last time.' : 'Pre-ticked defaults.'} Your ticks are remembered for next year.</div>
                   {groups.map((g) => (
                     <div key={g} style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 600, color: '#475569', margin: '4px 0' }}>{GRP_LABEL[g]}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '4px 0' }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: '#475569', flex: 1 }}>{GRP_LABEL[g]}</span>
+                        <button onClick={() => rerender(picker.map((x) => (x.grp === g ? { ...x, ticked: true } : x)))} style={{ ...BTN.secondary.sm, padding: '1px 7px', fontSize: 11.5 }}>All</button>
+                        <button onClick={() => rerender(picker.map((x) => (x.grp === g ? { ...x, ticked: false } : x)))} style={{ ...BTN.secondary.sm, padding: '1px 7px', fontSize: 11.5 }}>None</button>
+                      </div>
                       {picker.map((i, idx) => i.grp === g && (
                         <label key={i.key || `c${idx}`} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, padding: '2px 0', cursor: 'pointer' }}>
                           <input type="checkbox" checked={i.ticked} onChange={(e) => rerender(picker.map((x, n) => (n === idx ? { ...x, ticked: e.target.checked } : x)))} style={{ marginTop: 3 }} />

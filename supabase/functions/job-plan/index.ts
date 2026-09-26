@@ -44,7 +44,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { computeChain, type StageRule, type JobContext } from "../_shared/workflow.ts";
-import { renderForMilestone, sendForMilestone, renderGeneric, sendGeneric } from "../_shared/job-comms.ts";
+import { renderForMilestone, sendForMilestone, renderGeneric, sendGeneric, loadPrefs, cleanPrefs } from "../_shared/job-comms.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -450,8 +450,21 @@ Deno.serve(async (req) => {
         // items: the picker's current ticks, so the preview re-renders as
         // the sender changes them; omitted = remembered or defaults.
         const items = Array.isArray(p.items) ? pickedItems(p.items) : null;
-        const r = await renderForMilestone(db, m, m.job_plans as Record<string, unknown>, items);
+        const r = await renderForMilestone(db, m, m.job_plans as Record<string, unknown>, items, p.prefs ?? undefined);
         return json({ success: true, preview: r, sent_at: m.comms_sent_at, sent_to: m.comms_to });
+      }
+
+      // The sender's defaults for the draft screen (sql/316).
+      case "get_comms_prefs": {
+        const prefs = await loadPrefs(db, me);
+        const { data: sigs } = await db.from("comms_signatures").select("mailbox_email").eq("staff_id", me);
+        return json({ success: true, prefs, has_signature: (sigs || []).length > 0 });
+      }
+      case "set_comms_prefs": {
+        const prefs = cleanPrefs(p.prefs);
+        const { error } = await db.from("staff_comms_prefs").upsert({ staff_id: me, ...prefs, updated_at: now }, { onConflict: "staff_id" });
+        if (error) throw new Error(error.message);
+        return json({ success: true, prefs });
       }
 
       case "send_comms": {
@@ -462,7 +475,10 @@ Deno.serve(async (req) => {
         const testOnly = p.test === true;
         if (testOnly && !toOverride) throw new BadRequest("A test send needs an address");
         const items = Array.isArray(p.items) ? pickedItems(p.items) : undefined;
-        const out = await sendForMilestone(db, id, { mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly, items });
+        const out = await sendForMilestone(db, id, {
+          mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly, items, prefs: p.prefs ?? undefined,
+          subjectOverride: p.subject ? String(p.subject) : null, textOverride: p.text ? String(p.text) : null,
+        });
         const { data: m } = await db.from("job_milestones").select("plan_id").eq("id", id).maybeSingle();
         return json({ success: true, ...out, plan: m ? await loadPlan(m.plan_id) : null, milestones: m ? await milestonesOf(m.plan_id) : [] });
       }
@@ -473,7 +489,7 @@ Deno.serve(async (req) => {
         const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
         const kind = p.kind === "records_request" ? "records_request" : "blank";
         const items = Array.isArray(p.items) ? pickedItems(p.items) : null;
-        const r = await renderGeneric(db, { entityId, kind, ownerId: me, taskLabel: p.task_label ? String(p.task_label).slice(0, 160) : null, items });
+        const r = await renderGeneric(db, { entityId, kind, ownerId: me, taskLabel: p.task_label ? String(p.task_label).slice(0, 160) : null, items, prefs: p.prefs ?? undefined });
         return json({ success: true, preview: r });
       }
 

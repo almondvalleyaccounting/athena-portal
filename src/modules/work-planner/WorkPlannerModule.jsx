@@ -623,10 +623,6 @@ export default function WorkPlannerModule() {
   // ── Event handlers ──
 
   function handleAction(e, task) {
-    if (task._promote) {
-      handlePromote(task);
-      return;
-    }
     if (e) {
       const rect = e.target.getBoundingClientRect();
       setHighlightId(task.id);
@@ -649,32 +645,6 @@ export default function WorkPlannerModule() {
       setModal(task);
       setPopover(null);
     }
-  }
-
-  async function handlePromote(qt) {
-    const newMaster = {
-      title: qt.title,
-      task_type: qt.entity_id ? 'client_work' : 'admin',
-      entity_id: qt.entity_id || null,
-      service: qt.service || 'Admin',
-      assignee_id: qt.assignee_id || null,
-      recurring: false,
-      recurrence: null,
-      status: 'not_started',
-      source: 'manual',
-      planned_date: qt.planned_date || null,
-      planned_hour: null,
-      planned_min: null,
-      duration: defaultDuration(qt.service, 'manual'),
-    };
-
-    // Delete quick task
-    setQuickTasks((prev) => prev.filter((t) => t.id !== qt.id));
-    await deleteQuickTaskDb(qt.id);
-
-    // Create scheduled task
-    const created = await addScheduledTask(newMaster);
-    setModal(created);
   }
 
   async function handleSaveOverride(key, overrideData) {

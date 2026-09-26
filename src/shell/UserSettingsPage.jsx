@@ -5,6 +5,52 @@ import { supabase } from '../lib/supabase';
 import { BTN } from '../lib/buttonStyles';
 import { useAuth } from './AppShell';
 import { ColourPicker, WorkingDaysEditor } from './AdminPage';
+import { callJobPlan } from '../modules/work-planner/plan/planQueries';
+
+const SIGNOFFS = ['Kind regards', 'Best regards', 'Thanks', 'Cheers', 'Many thanks'];
+
+// Email defaults for client comms (sql/316): the draft screen starts from
+// these, and "Save as my defaults" there writes here too.
+function EmailDefaultsCard({ card, cardTitle, labelStyle, inputStyle, hint }) {
+  const [prefs, setPrefs] = useState(null);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    callJobPlan({ action: 'get_comms_prefs' }).then((r) => { if (!cancelled) { setPrefs(r.prefs); setHasSignature(!!r.has_signature); } }).catch((e) => { if (!cancelled) setMsg(String(e.message || e)); });
+    return () => { cancelled = true; };
+  }, []);
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try { await callJobPlan({ action: 'set_comms_prefs', prefs }); setMsg('Saved.'); }
+    catch (e) { setMsg(String(e.message || e)); }
+    setSaving(false);
+  };
+  if (!prefs) return <section style={card}><h2 style={cardTitle}>Client emails</h2><p style={hint}>Loading…</p></section>;
+  return (
+    <section style={card}>
+      <h2 style={cardTitle}>Client emails</h2>
+      <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+        <input type="checkbox" checked={prefs.opener_enabled} onChange={(e) => setPrefs({ ...prefs, opener_enabled: e.target.checked })} />Include a friendly opener
+      </label>
+      <input value={prefs.opener_text} disabled={!prefs.opener_enabled} onChange={(e) => setPrefs({ ...prefs, opener_text: e.target.value })} style={{ ...inputStyle, marginBottom: 12, opacity: prefs.opener_enabled ? 1 : 0.5 }} />
+      <label style={labelStyle}>Sign off with</label>
+      <select value={prefs.signoff} onChange={(e) => setPrefs({ ...prefs, signoff: e.target.value })} style={{ ...inputStyle, marginBottom: 12 }}>
+        {SIGNOFFS.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <div style={{ display: 'flex', gap: 14, fontFamily: font, fontSize: 14, marginBottom: 6 }}>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}><input type="radio" checked={prefs.signature_mode === 'name'} onChange={() => setPrefs({ ...prefs, signature_mode: 'name' })} />First name</label>
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: hasSignature ? 'pointer' : 'default', opacity: hasSignature ? 1 : 0.5 }}><input type="radio" disabled={!hasSignature} checked={prefs.signature_mode === 'signature'} onChange={() => setPrefs({ ...prefs, signature_mode: 'signature' })} />Saved signature</label>
+      </div>
+      <p style={hint}>{hasSignature ? 'Your signature comes from Communications.' : 'Save a signature under Communications to sign with it.'}</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+        <button onClick={save} disabled={saving} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{saving ? 'Saving…' : 'Save email defaults'}</button>
+        {msg && <span style={{ fontFamily: font, fontSize: 13, color: msg === 'Saved.' ? '#16a34a' : '#ef4444' }}>{msg}</span>}
+      </div>
+    </section>
+  );
+}
 
 const font = "'Outfit', sans-serif";
 
@@ -119,7 +165,7 @@ export default function UserSettingsPage() {
         How your name and colour appear across Athena, and the days you work.
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'start' }}>
         {/* Profile — the wide card */}
         <section style={card}>
           <h2 style={cardTitle}>Profile</h2>
@@ -170,6 +216,8 @@ export default function UserSettingsPage() {
           </div>
           <p style={hint}>Used when your planner work is scheduled.</p>
         </section>
+
+        <EmailDefaultsCard card={card} cardTitle={cardTitle} labelStyle={labelStyle} inputStyle={inputStyle} hint={hint} />
 
         {/* Security — status plus the way in (was only in the avatar menu) */}
         <section style={card}>

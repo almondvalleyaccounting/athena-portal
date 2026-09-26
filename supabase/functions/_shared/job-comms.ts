@@ -88,6 +88,49 @@ async function primaryContact(db: SupabaseClient, entityId: string) {
   return { greeting, email: (p.email || "").trim() || null };
 }
 
+// ── Per-person defaults (sql/316): opener, sign-off, name or signature ──
+export interface CommsPrefs { opener_enabled: boolean; opener_text: string; signoff: string; signature_mode: "name" | "signature" }
+const DEFAULT_PREFS: CommsPrefs = { opener_enabled: true, opener_text: "Hope you’re well.", signoff: "Thanks", signature_mode: "name" };
+const SIGNOFFS = new Set(["Kind regards", "Best regards", "Thanks", "Cheers", "Many thanks"]);
+
+export function cleanPrefs(v: unknown, base: CommsPrefs = DEFAULT_PREFS): CommsPrefs {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return {
+    opener_enabled: typeof o.opener_enabled === "boolean" ? o.opener_enabled : base.opener_enabled,
+    opener_text: typeof o.opener_text === "string" ? o.opener_text.trim().slice(0, 200) : base.opener_text,
+    signoff: SIGNOFFS.has(String(o.signoff)) ? String(o.signoff) : base.signoff,
+    signature_mode: o.signature_mode === "signature" ? "signature" : o.signature_mode === "name" ? "name" : base.signature_mode,
+  };
+}
+
+/** The sender's saved defaults, with an optional unsaved override from the draft screen on top. */
+export async function loadPrefs(db: SupabaseClient, staffId: string | null, override?: unknown): Promise<CommsPrefs> {
+  let base = DEFAULT_PREFS;
+  if (staffId) {
+    const { data } = await db.from("staff_comms_prefs").select("opener_enabled, opener_text, signoff, signature_mode").eq("staff_id", staffId).maybeSingle();
+    if (data) base = cleanPrefs(data);
+  }
+  return override ? cleanPrefs(override, base) : base;
+}
+
+/** The person's saved signature as plain text (comms_signatures: exact mailbox first, then '*'). */
+async function signatureText(db: SupabaseClient, staffId: string | null, mailbox: string | null): Promise<string | null> {
+  if (!staffId) return null;
+  const { data } = await db.from("comms_signatures").select("mailbox_email, body").eq("staff_id", staffId);
+  const row = (data || []).find((s) => mailbox && s.mailbox_email === mailbox) || (data || []).find((s) => s.mailbox_email === "*");
+  if (!row?.body) return null;
+  const text = String(row.body).replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|tr)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\n{3,}/g, "\n\n").trim();
+  return text || null;
+}
+
+/** {{opener}} and {{signoff}} for the templates. */
+async function closingVars(db: SupabaseClient, staffId: string | null, mailbox: string | null, firstName: string, prefs: CommsPrefs) {
+  const opener = prefs.opener_enabled && prefs.opener_text ? `${prefs.opener_text.trim()} ` : "";
+  const sig = prefs.signature_mode === "signature" ? await signatureText(db, staffId, mailbox) : null;
+  const signoff = `${prefs.signoff},\n${sig || firstName}`;
+  return { opener, signoff };
+}
+
 /** The picker for a request/chase: catalogue, defaults for the kind, and what this client was asked for before. */
 export async function pickerFor(db: SupabaseClient, entityId: string, kind: string): Promise<PickerItem[]> {
   const [{ data: cat }, { data: mine }] = await Promise.all([
@@ -118,8 +161,8 @@ function itemsText(items: PickedItem[], picker: PickerItem[] | null): string {
 
 /** Render the email for a milestone without sending it. */
 export async function renderForMilestone(
-  db: SupabaseClient, milestone: Record<string, any>, plan: Record<string, any>, items?: PickedItem[] | null,
-): Promise<Rendered> {
+  db: SupabaseClient, milestone: Record<string, any>, plan: Record<string, any>, items?: PickedItem[] | null, prefsOverride?: unknown,
+): Promise<Rendered & { prefs: CommsPrefs }> {
   const kind = templateKindFor(milestone.stage_key, plan);
   if (!kind) throw new Error("Not a comms stage");
 
@@ -156,8 +199,11 @@ export async function renderForMilestone(
 
   const picker = ITEM_STAGES.has(milestone.stage_key) ? await pickerFor(db, plan.entity_id, kind) : null;
   const picked: PickedItem[] = items ?? (picker || []).filter((p) => p.ticked).map((p) => (p.key ? { key: p.key } : { text: p.label }));
+  const prefs = await loadPrefs(db, ownerId || null, prefsOverride);
+  const closing = await closingVars(db, ownerId || null, fromEmail, firstWord(fromName) || "Almond Valley Accounting", prefs);
 
   const vars: Record<string, string> = {
+    ...closing,
     greeting,
     client_name: ent.name,
     year_end: fmtLong(plan.period_end),
@@ -176,6 +222,7 @@ export async function renderForMilestone(
     text: renderStr(tmpl.body_text, vars),
     completes: COMPLETES_ON_SEND.has(milestone.stage_key),
     picker,
+    prefs,
   };
 }
 
@@ -203,7 +250,7 @@ async function rememberItems(db: SupabaseClient, entityId: string, picked: Picke
   }
 }
 
-const GENERIC_RECORDS = "Hi {{greeting}},\n\nHope you’re well. Could you send over the following when you get a chance?\n\n{{items}}\n\nUpload them to the portal or just reply to this email, whichever is easier.\n\nThanks,\n{{sender_first_name}}";
+const GENERIC_RECORDS = "Hi {{greeting}},\n\n{{opener}}Could you send over the following when you get a chance?\n\n{{items}}\n\nUpload them to the portal or just reply to this email, whichever is easier.\n\n{{signoff}}";
 
 export interface GenericOptions {
   entityId: string | null;
@@ -211,6 +258,7 @@ export interface GenericOptions {
   ownerId: string;
   taskLabel?: string | null;
   items?: PickedItem[] | null;
+  prefs?: unknown;   // unsaved draft-screen choices
 }
 
 export async function renderGeneric(db: SupabaseClient, o: GenericOptions): Promise<Rendered & { period_end: string | null }> {
@@ -249,9 +297,11 @@ export async function renderGeneric(db: SupabaseClient, o: GenericOptions): Prom
     }
   }
 
+  const prefs = await loadPrefs(db, o.ownerId, o.prefs);
+  const closing = await closingVars(db, o.ownerId, fromEmail, sender, prefs);
   if (o.kind === "blank") {
     const subject = [clientName, o.taskLabel].filter(Boolean).join(" – ");
-    return { kind: "blank", to: to || null, to_reason: toReason, greeting, from_email: fromEmail, from_name: fromName, subject, text: `Hi ${greeting},\n\n\n\nThanks,\n${sender}`, completes: false, picker: null, period_end: periodEnd };
+    return { kind: "blank", to: to || null, to_reason: toReason, greeting, from_email: fromEmail, from_name: fromName, subject, text: `Hi ${greeting},\n\n${closing.opener.trim()}${closing.opener ? "\n\n" : ""}\n\n${closing.signoff}`, completes: false, picker: null, period_end: periodEnd };
   }
 
   if (!o.entityId) throw new Error("A records request needs a client");
@@ -260,6 +310,7 @@ export async function renderGeneric(db: SupabaseClient, o: GenericOptions): Prom
   const { data: tmpl } = await db.from("comm_templates").select("subject, body_text").eq("comm_type", "job_plan").eq("kind", "records_request").maybeSingle();
   const useTemplate = !!(tmpl && periodEnd);
   const vars: Record<string, string> = {
+    ...closing,
     greeting, client_name: clientName, year_end: fmtLong(periodEnd),
     records_due: fmtLong(recordsDue || new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10)),
     sender_first_name: sender, items: itemsText(picked, picker),
@@ -323,6 +374,9 @@ export interface SendOptions {
   actorId?: string | null;     // staff id, null for the tick
   testOnly?: boolean;          // when true the milestone and the client memory are not touched
   items?: PickedItem[] | null; // the picker's ticks; undefined = remembered or defaults
+  prefs?: unknown;             // draft-screen choices (opener, sign-off, signature)
+  subjectOverride?: string | null; // the edited subject and text from the second screen
+  textOverride?: string | null;
 }
 
 /** Render, send through Gmail, log on the client, remember the items, stamp the milestone. */
@@ -335,9 +389,12 @@ export async function sendForMilestone(db: SupabaseClient, milestoneId: string, 
   if (m.status !== "pending") throw new Error("That stage is already closed");
   if (m.comms_sent_at && !opts.testOnly) throw new Error(`Already sent on ${String(m.comms_sent_at).slice(0, 10)}`);
 
-  const r = await renderForMilestone(db, m, plan, opts.items ?? null);
+  const r = await renderForMilestone(db, m, plan, opts.items ?? null, opts.prefs);
   const to = (opts.toOverride || "").trim() || r.to;
   if (!to) throw new Error("No email address on file for this client");
+  // What was on the screen is what goes.
+  if (opts.subjectOverride && opts.subjectOverride.trim()) r.subject = opts.subjectOverride.trim().slice(0, 200);
+  if (opts.textOverride && opts.textOverride.trim()) r.text = opts.textOverride.slice(0, 20000);
 
   // The owner's own mailbox when connected; otherwise the configured or
   // practice mailbox, with the owner's name on the From line.

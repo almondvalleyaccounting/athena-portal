@@ -5,6 +5,7 @@ import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import { callJobPlan } from '../plan/planQueries';
 import EmailModal from '../components/EmailModal';
+import SendStageModal from '../components/SendStageModal';
 import { useWorkPlanner } from '../WorkPlannerModule';
 
 // Overview — my committed job plans, one row per job (Bobby, 2026-09-26:
@@ -40,122 +41,6 @@ const pill = (r) => ({
 });
 // Stages that send an email to the client (sql/309).
 const COMMS_STAGES = new Set(['request_records', 'chase_1', 'chase_2', 'client_meeting', 'approval']);
-
-// Preview & send: the rendered email, the address it goes to (editable), a
-// copy-to-me test, and Send. Requests and chases close on send.
-const GRP_LABEL = { company: 'Company records', personal: 'Director’s personal tax', other: 'Other' };
-
-function SendModal({ milestone, onClose, onSent, myEmail }) {
-  const [preview, setPreview] = useState(null);
-  const [to, setTo] = useState('');
-  const [picker, setPicker] = useState(null); // [{ key, label, grp, ticked, remembered }]
-  const [custom, setCustom] = useState('');
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState(null);
-
-  const picked = () => (picker || []).filter((i) => i.ticked).map((i) => (i.key ? { key: i.key } : { text: i.label }));
-
-  const render = async (items) => {
-    const res = await callJobPlan({ action: 'preview_comms', milestone_id: milestone.id, ...(items ? { items } : {}) });
-    setPreview(res.preview);
-    if (!picker && res.preview.picker) setPicker(res.preview.picker);
-    if (!items) setTo(res.preview.to || '');
-    if (res.sent_at) setNote(`Already sent ${res.sent_at.slice(0, 10)} to ${res.sent_to}`);
-  };
-  useEffect(() => {
-    let cancelled = false;
-    render().catch((e) => { if (!cancelled) setError(e.message || String(e)); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [milestone.id]);
-
-  // Re-render the text as the ticks change, so what is shown is what goes.
-  const setTick = (idx, ticked) => {
-    const next = picker.map((i, n) => (n === idx ? { ...i, ticked } : i));
-    setPicker(next);
-    render(next.filter((i) => i.ticked).map((i) => (i.key ? { key: i.key } : { text: i.label }))).catch((e) => setError(e.message || String(e)));
-  };
-  const addCustom = () => {
-    const t = custom.trim();
-    if (!t) return;
-    const next = [...picker, { key: null, label: t, grp: 'other', ticked: true, remembered: false }];
-    setPicker(next); setCustom('');
-    render(next.filter((i) => i.ticked).map((i) => (i.key ? { key: i.key } : { text: i.label }))).catch((e) => setError(e.message || String(e)));
-  };
-
-  const send = async (test) => {
-    setBusy(true); setError(null);
-    try {
-      const res = await callJobPlan({
-        action: 'send_comms', milestone_id: milestone.id, test,
-        to: test ? myEmail : (to !== preview?.to ? to : undefined),
-        ...(picker ? { items: picked() } : {}),
-      });
-      if (test) setNote(`Test copy sent to ${res.to}.`);
-      else { onSent(); onClose(); }
-    } catch (e) { setError(e.message || String(e)); }
-    finally { setBusy(false); }
-  };
-  const p = milestone.job_plans;
-  const groups = picker ? ['company', 'personal', 'other'].filter((g) => picker.some((i) => i.grp === g)) : [];
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: picker ? 980 : 620, maxWidth: '96vw', maxHeight: '92vh', overflow: 'auto', padding: 18, fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>{milestone.label} · {p.entities?.name}</div>
-        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10 }}>
-          {preview?.from_email ? `Goes from your mailbox (${preview.from_email})` : `Goes from the practice mailbox with ${preview?.from_name ? `${preview.from_name}’s` : 'your'} name on it`}, plain text, and is logged on the client page.
-        </div>
-        {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13, marginBottom: 8 }}>{error}</div>}
-        {note && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#dcfce7', color: '#166534', fontSize: 13, marginBottom: 8 }}>{note}</div>}
-        {!preview ? <div style={{ color: '#94a3b8' }}>Rendering…</div> : (
-          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-            {picker && (
-              <div style={{ width: 330, flexShrink: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 4 }}>What to ask this client for</div>
-                <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 8 }}>
-                  {picker.some((i) => i.remembered) ? 'Pre-ticked from what we asked them for last time.' : 'Pre-ticked defaults for this kind of request.'} Your ticks are remembered for next year.
-                </div>
-                {groups.map((g) => (
-                  <div key={g} style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: '#475569', margin: '4px 0' }}>{GRP_LABEL[g]}</div>
-                    {picker.map((i, idx) => i.grp === g && (
-                      <label key={i.key || `c${idx}`} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, padding: '2px 0', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={i.ticked} onChange={(e) => setTick(idx, e.target.checked)} style={{ marginTop: 3 }} />
-                        <span>{i.label}{i.remembered && <span style={{ color: '#94a3b8' }}> · last year</span>}</span>
-                      </label>
-                    ))}
-                  </div>
-                ))}
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <input value={custom} onChange={(e) => setCustom(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addCustom(); }} placeholder="Something specific, e.g. the invoice for the new van" style={{ flex: 1, padding: '5px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }} />
-                  <button onClick={addCustom} style={BTN.secondary.sm}>Add</button>
-                </div>
-              </div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', width: 56 }}>To</span>
-              <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="No email address on file" style={{ flex: 1, padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }} />
-              {preview.to_reason && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{preview.to_reason}</span>}
-            </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', width: 56 }}>Subject</span>
-              <span style={{ fontSize: 13.5, fontWeight: 500 }}>{preview.subject}</span>
-            </div>
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: font, fontSize: 13.5, lineHeight: 1.5, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, margin: '0 0 12px' }}>{preview.text}</pre>
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button onClick={onClose} style={BTN.secondary.sm}>Cancel</button>
-              {myEmail && <button onClick={() => send(true)} disabled={busy} style={BTN.secondary.sm}>Send a copy to me</button>}
-              <button onClick={() => send(false)} disabled={busy || !to} style={{ ...BTN.primary.sm, opacity: busy || !to ? 0.5 : 1 }}>{busy ? 'Sending…' : `Send to client${preview.completes ? ' and mark done' : ''}`}</button>
-            </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function TodayView({ onOpenTask }) {
   const { profile } = useAuth();
@@ -279,7 +164,7 @@ export default function TodayView({ onOpenTask }) {
 
   return (
     <div style={{ padding: '12px 10px 0', fontFamily: font, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {sendFor && <SendModal milestone={sendFor} myEmail={profile?.email} onClose={() => setSendFor(null)} onSent={load} />}
+      {sendFor && <SendStageModal milestone={sendFor} myEmail={profile?.email} onClose={() => setSendFor(null)} onSent={load} />}
       {emailFor && <EmailModal ctx={emailFor} staffList={staffList} profile={profile} onClose={() => setEmailFor(null)} />}
       {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13.5 }}>{error}</div>}
       {loading ? (
