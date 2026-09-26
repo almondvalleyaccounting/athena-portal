@@ -371,19 +371,32 @@ Deno.serve(async (req) => {
     // Armed, and past the start date if one is set (sql/308): the team has a
     // deadline to commit their lists before anyone is chased.
     const nudgesLive = !!settings?.nudges_armed && (!settings?.nudges_from || today >= settings.nudges_from);
-    if (nudgesLive) {
+    // Self assessment jobs have their own switch (sql/325), off until armed.
+    const saNudgesLive = !!settings?.sa_nudges_armed && (!settings?.sa_nudges_from || today >= settings.sa_nudges_from);
+    if (nudgesLive || saNudgesLive) {
       // A month past the year end, month end to month end: YE 31 Jan is due a
       // nudge on 28 Feb, YE 30 Sep on 31 Oct — the same day Plan the Job shows
       // its nudge flag. The query takes anything 28+ days past (a superset)
       // and the filter decides. setUTCMonth(−1) on today used to roll 31 Mar
       // back to 3 Mar and 31 Oct to 1 Oct, a day or so off at month ends.
       const todayNoon = parseISO(today);
-      const { data: jobs, error: jErr } = await db.from("v_accounts_jobs")
-        .select("entity_id, client, period_end, ch_deadline, preparer_id, plan_status")
-        .lte("period_end", toISO(addDays(todayNoon, -28))).not("preparer_id", "is", null)
-        .order("ch_deadline").limit(500);
-      if (jErr) throw new Error(jErr.message);
-      const candidates = (jobs || []).filter((j) =>
+      const pastMonth = toISO(addDays(todayNoon, -28));
+      const jobs: Array<Record<string, any>> = [];
+      if (nudgesLive) {
+        const { data, error: jErr } = await db.from("v_accounts_jobs")
+          .select("entity_id, client, period_end, ch_deadline, preparer_id, plan_status")
+          .lte("period_end", pastMonth).not("preparer_id", "is", null).order("ch_deadline").limit(500);
+        if (jErr) throw new Error(jErr.message);
+        jobs.push(...(data || []).map((j) => ({ ...j, kind: "accounts" })));
+      }
+      if (saNudgesLive) {
+        const { data, error: sErr } = await db.from("v_sa_jobs")
+          .select("entity_id, client, period_end, ch_deadline, preparer_id, plan_status")
+          .lte("period_end", pastMonth).not("preparer_id", "is", null).order("ch_deadline").limit(500);
+        if (sErr) throw new Error(sErr.message);
+        jobs.push(...(data || []).map((j) => ({ ...j, kind: "sa" })));
+      }
+      const candidates = jobs.filter((j) =>
         j.plan_status !== "committed" && addMonths(parseISO(j.period_end), 1) <= todayNoon);
       const since = new Date(Date.now() - (settings.nudge_every_days || 7) * 86400000).toISOString();
       const { data: recent } = await db.from("job_plan_nudges").select("entity_id, period_end").gte("sent_at", since);
@@ -398,17 +411,23 @@ Deno.serve(async (req) => {
         if (!who?.email) continue;
         try {
           if (!token) token = await getValidGmailToken(settings.nudge_mailbox || undefined);
-          const link = `${APP_URL}/planner/plan/${j.entity_id}/${j.period_end}`;
+          const isSa = j.kind === "sa";
+          const link = `${APP_URL}/planner/plan/${j.entity_id}/${j.period_end}${isSa ? "?template=self_assessment" : ""}`;
           const ye = new Date(`${j.period_end}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-          const subject = `Plan the job: ${j.client}, year end ${ye}`;
+          const dl = j.ch_deadline ? new Date(`${j.ch_deadline}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "the statutory date";
+          const subject = `Plan the job: ${j.client}, ${isSa ? "period end" : "year end"} ${ye}`;
           const text = [
             `Hi ${(who.name || "").split(" ")[0]},`,
             "",
-            `${j.client}'s accounts for the year to ${ye} are a month past the year end and there's no plan on them yet.`,
+            isSa
+              ? `${j.client}'s self assessment for the period to ${ye} is a month past the period end and there's no plan on it yet.`
+              : `${j.client}'s accounts for the year to ${ye} are a month past the year end and there's no plan on them yet.`,
             "",
             `Open the job and confirm the chain (or change it): ${link}`,
             "",
-            `The default puts records in by month 3 and the filing by month 7; Companies House needs them by ${j.ch_deadline ? new Date(`${j.ch_deadline}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "the statutory date"}.`,
+            isSa
+              ? `The default puts records in by month 3 and the return filed by month 7; HMRC needs it by ${dl}.`
+              : `The default puts records in by month 3 and the filing by month 7; Companies House needs them by ${dl}.`,
             "",
             "Thanks",
           ].join("\n");

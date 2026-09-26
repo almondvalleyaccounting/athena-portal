@@ -13,6 +13,12 @@ import { longDate } from './repriceReasons';
 // pending_changes with no open fee change). A client shows once, at its
 // latest state. Both are fee-gated, so staff without fee access see nothing
 // and the panel hides itself.
+//
+// On the Quotes page fee reviews count in the pipeline alongside quotes:
+// each state maps to the quote stage it corresponds to (STAGE below), and
+// what a review adds to the pipeline is its DELTA — the pipeline shows what
+// happens to revenue if everything in it lands, and a fee review changes
+// an existing fee rather than adding a whole new one.
 
 const STATE = {
   unsent:    { label: 'Not sent', bg: '#fee2e2', fg: '#991b1b' },
@@ -24,11 +30,23 @@ const STATE = {
   withdrawn: { label: 'Withdrawn', bg: '#f1f5f9', fg: '#64748b' },
 };
 
-export default function FeeReviewsPanel({ search = '' }) {
-  const navigate = useNavigate();
-  const [rows, setRows] = useState(null);
-  const [showClosed, setShowClosed] = useState(false);
+// Review state → the quote status it counts as in the pipeline cards.
+// 'review_draft' has its own card (Draft (reviews)); withdrawn counts nowhere.
+export const STAGE = {
+  unsent: 'review_draft',
+  notice: 'sent',
+  awaiting: 'sent',
+  accepted: 'accepted',
+  pushed: 'committed',
+  declined: 'declined',
+};
 
+// Annual change in fees, net of VAT.
+export const annualDelta = (r) => ((Number(r.next) || 0) - (Number(r.current) || 0)) * 12;
+
+// Every client's fee review at its latest state, or null while loading.
+export function useFeeReviews() {
+  const [rows, setRows] = useState(null);
   useEffect(() => {
     let live = true;
     (async () => {
@@ -66,20 +84,27 @@ export default function FeeReviewsPanel({ search = '' }) {
           current, next, effectiveAt: eff, when,
         });
       }
-      setRows([...byEntity.values()].sort((a, b) => String(b.when || '').localeCompare(String(a.when || ''))));
+      setRows([...byEntity.values()]
+        .map((r) => ({ ...r, stage: STAGE[r.state] || null }))
+        .sort((a, b) => String(b.when || '').localeCompare(String(a.when || ''))));
     })();
     return () => { live = false; };
   }, []);
+  return rows;
+}
 
+// The fee reviews in the stages the selected card covers (`statuses`, the
+// same list the quote table filters on). Hidden when there are none.
+export default function FeeReviewsPanel({ rows, statuses, search = '' }) {
+  const navigate = useNavigate();
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (rows || [])
-      .filter((r) => showClosed || !['pushed', 'declined', 'withdrawn'].includes(r.state))
+      .filter((r) => r.stage && (!statuses || statuses.includes(r.stage)))
       .filter((r) => !q || r.name.toLowerCase().includes(q));
-  }, [rows, showClosed, search]);
+  }, [rows, statuses, search]);
 
-  if (!rows || rows.length === 0) return null;
-  const closed = rows.filter((r) => ['pushed', 'declined', 'withdrawn'].includes(r.state)).length;
+  if (visible.length === 0) return null;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 mb-4">
@@ -87,11 +112,6 @@ export default function FeeReviewsPanel({ search = '' }) {
         <div className="text-sm font-semibold text-ocean-700">
           Fee reviews <span className="text-xs font-normal text-gray-400">· fee changes for existing clients</span>
         </div>
-        {closed > 0 && (
-          <button onClick={() => setShowClosed((v) => !v)} className="text-xs text-ocean-600 hover:underline">
-            {showClosed ? 'Hide finished' : `Show finished (${closed})`}
-          </button>
-        )}
       </div>
       <table className="w-full text-sm">
         <thead>
@@ -132,9 +152,6 @@ export default function FeeReviewsPanel({ search = '' }) {
               </tr>
             );
           })}
-          {visible.length === 0 && (
-            <tr><td colSpan={6} className="px-3 py-3 text-xs text-gray-400">No fee reviews in progress.</td></tr>
-          )}
         </tbody>
       </table>
     </div>

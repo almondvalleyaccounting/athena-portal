@@ -6,15 +6,19 @@ import { downloadCSV } from '../lib/exportUtils';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import DataTable from '../components/DataTable';
 import { fetchAllRows } from '../lib/fetchAllRows';
-import FeeReviewsPanel from '../modules/billing/FeeReviewsPanel';
+import FeeReviewsPanel, { useFeeReviews, annualDelta } from '../modules/billing/FeeReviewsPanel';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired' };
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
 
-// Status card definitions — pipeline is the aggregate default
-const PIPELINE_STATUSES = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
+// Status card definitions — pipeline is the aggregate default.
+// Fee reviews for existing clients count too (FeeReviewsPanel STAGE): an
+// unsent one is 'review_draft' with its own card, and the rest fall in the
+// same stages as quotes. A review adds its annual DELTA, not its whole fee.
+const PIPELINE_STATUSES = ['draft', 'review_draft', 'pending_approval', 'approved', 'sent', 'accepted'];
 const STATUS_CARDS = [
-  { key: 'draft', label: 'Draft', statuses: ['draft'] },
+  { key: 'draft', label: 'Draft (new)', statuses: ['draft'] },
+  { key: 'review_draft', label: 'Draft (reviews)', statuses: ['review_draft'] },
   { key: 'pending_approval', label: 'Awaiting Approval', statuses: ['pending_approval'] },
   { key: 'approved', label: 'Approved', statuses: ['approved'] },
   { key: 'sent', label: 'Sent to Client', statuses: ['sent'] },
@@ -25,7 +29,7 @@ const STATUS_CARDS = [
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
 ];
 
-const VALID_CARDS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'pipeline_committed', 'declined'];
+const VALID_CARDS = ['draft', 'review_draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'pipeline_committed', 'declined'];
 
 // Whole-pound formatter for the status cards (no pennies).
 const fmtWhole = (n) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(n) || 0);
@@ -207,19 +211,23 @@ export default function QuotesPage() {
     const mult = mNet > 0 ? mGross / mNet : 1.2;
     return net * mult;
   };
+  const feeReviews = useFeeReviews();
   const cardData = useMemo(() => {
     const visible = quotes.filter(q => q.status !== 'deleted');
+    const vat = netGross === 'net' ? 1 : 1.2;
     const result = {};
     STATUS_CARDS.forEach(card => {
       const matching = visible.filter(q => card.statuses.includes(q.status));
+      const reviews = (feeReviews || []).filter(r => r.stage && card.statuses.includes(r.stage));
       result[card.key] = {
-        count: matching.length,
-        value: matching.reduce((s, q) => s + annualOf(q), 0),
+        count: matching.length + reviews.length,
+        value: matching.reduce((s, q) => s + annualOf(q), 0) + reviews.reduce((s, r) => s + annualDelta(r) * vat, 0),
+        reviews: reviews.length,
       };
     });
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotes, netGross]);
+  }, [quotes, netGross, feeReviews]);
 
   // ── Filtering (sorting is done by the table's headings) ──
   const filtered = useMemo(() => {
@@ -466,12 +474,9 @@ export default function QuotesPage() {
         </div>
       </div>
 
-      {/* Fee reviews for existing clients, beside the quotes for new work */}
-      <FeeReviewsPanel search={search} />
-
       {/* Status Cards */}
       <p className="text-[12px] text-gray-400 mb-1.5">
-        Card totals show annual value, {netGross === 'net' ? 'net of VAT' : 'gross (inc VAT)'}.
+        Card totals show annual value, {netGross === 'net' ? 'net of VAT' : 'gross (inc VAT)'}. Fee reviews count the change in fees, not the whole fee.
       </p>
       <div className="grid grid-cols-4 gap-2 mb-4">
         {STATUS_CARDS.map(card => {
@@ -501,6 +506,9 @@ export default function QuotesPage() {
           );
         })}
       </div>
+
+      {/* Fee reviews in the selected card's stages, above the quotes in them */}
+      <FeeReviewsPanel rows={feeReviews} statuses={STATUS_CARDS.find(c => c.key === activeCard)?.statuses} search={search} />
 
       {/* Batch action bar */}
       {selectMode && selected.size > 0 && (
