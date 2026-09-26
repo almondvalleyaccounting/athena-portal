@@ -27,6 +27,8 @@
 //   send_comms    { milestone_id, to?, test? }   send it; test=true with `to` sends a copy
 //                 to that address and leaves the stage untouched
 //   move_milestone { milestone_id, due_date, owner_id? }   the week planner's drag; pins the stage
+//   complete_bm_job { schedule_id, minutes?, note? }        a BM job done in Athena (sql/311)
+//   confirm_bm_completion { completion_id }                 ticked off in BrightManager by hand
 //   mark_done     { milestone_id, minutes?, note? }
 //                 the Done button on Today. Minutes > 0 also write a
 //                 timesheet_entries row against the job (source 'completed').
@@ -440,6 +442,58 @@ Deno.serve(async (req) => {
         const out = await sendForMilestone(db, id, { mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly, items });
         const { data: m } = await db.from("job_milestones").select("plan_id").eq("id", id).maybeSingle();
         return json({ success: true, ...out, plan: m ? await loadPlan(m.plan_id) : null, milestones: m ? await milestonesOf(m.plan_id) : [] });
+      }
+
+      // Right-click on the Calendar: a BrightManager job is done. Recorded
+      // with the minutes (straight to the timesheet), the matching plan
+      // stage closed, and the job put on the "update in BrightManager"
+      // list until the next import shows it gone or a person ticks it off.
+      case "complete_bm_job": {
+        const sid = uuid(p.schedule_id, "schedule_id");
+        const { data: row, error } = await db.from("bm_task_schedule").select("id, bm_task_id, entity_id, bm_task_name, service, bm_deadline, state").eq("id", sid).maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!row) throw new BadRequest("Job not found", 404);
+        const { data: open } = await db.from("bm_task_completions").select("id").eq("bm_task_schedule_id", sid).is("confirmed_at", null).maybeSingle();
+        if (open) throw new BadRequest("Already marked complete — it is on the update-in-BrightManager list");
+        const minutes = Number(p.minutes ?? 0);
+        let timesheetId: string | null = null;
+        if (Number.isFinite(minutes) && minutes > 0) {
+          const { data: ts, error: tErr } = await db.from("timesheet_entries").insert({
+            staff_id: me, entity_id: row.entity_id, service: row.service || "Other",
+            work_date: now.slice(0, 10), minutes: Math.round(minutes),
+            notes: row.bm_task_name, source: "completed", source_task_id: sid,
+          }).select("id").single();
+          if (tErr) throw new Error(tErr.message);
+          timesheetId = ts.id;
+        }
+        const { data: c, error: cErr } = await db.from("bm_task_completions").insert({
+          bm_task_schedule_id: sid, bm_task_id: row.bm_task_id, entity_id: row.entity_id,
+          bm_task_name: row.bm_task_name, service: row.service, completed_by: me,
+          minutes: Number.isFinite(minutes) ? Math.round(minutes) : null,
+          note: p.note ? String(p.note).slice(0, 1000) : null, timesheet_entry_id: timesheetId,
+        }).select("id").single();
+        if (cErr) throw new Error(cErr.message);
+
+        // Close the plan stage this job is, if the client has a committed plan.
+        const stageFor = /^Accounts Preparation/.test(row.bm_task_name || "") ? "prepare"
+          : /^Companies House Submission/.test(row.bm_task_name || "") ? "file_ch"
+          : /^CT600 Submission/.test(row.bm_task_name || "") ? "file_ct600" : null;
+        if (stageFor) {
+          const col = stageFor === "file_ct600" ? "ct_job_id" : stageFor === "file_ch" ? "ch_job_id" : "prep_job_id";
+          const { data: plan } = await db.from("job_plans").select("id").eq(col, sid).eq("status", "committed").maybeSingle();
+          if (plan) {
+            await db.from("job_milestones").update({ status: "done", done_at: now, done_signal: "manual", updated_at: now })
+              .eq("plan_id", plan.id).eq("stage_key", stageFor).eq("status", "pending");
+          }
+        }
+        return json({ success: true, completion_id: c.id, timesheet_id: timesheetId });
+      }
+
+      case "confirm_bm_completion": {
+        const id = uuid(p.completion_id, "completion_id");
+        const { error } = await db.from("bm_task_completions").update({ confirmed_at: now, confirmed_by: "staff" }).eq("id", id).is("confirmed_at", null);
+        if (error) throw new Error(error.message);
+        return json({ success: true });
       }
 
       // The week planner: drag a stage to another day (or person). The move

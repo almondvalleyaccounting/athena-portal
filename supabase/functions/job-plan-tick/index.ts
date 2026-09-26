@@ -216,6 +216,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── BM completions (sql/311): confirmed once the import shows the job gone ──
+    try {
+      const { data: openC } = await db.from("bm_task_completions").select("id, bm_task_schedule_id").is("confirmed_at", null).not("bm_task_schedule_id", "is", null).limit(1000);
+      const ids = (openC || []).map((c) => c.bm_task_schedule_id);
+      if (ids.length) {
+        const { data: gone } = await db.from("bm_task_schedule").select("id").in("id", ids).eq("state", "completed");
+        const goneIds = new Set((gone || []).map((g) => g.id));
+        const confirm = (openC || []).filter((c) => goneIds.has(c.bm_task_schedule_id)).map((c) => c.id);
+        if (confirm.length) {
+          await db.from("bm_task_completions").update({ confirmed_at: new Date().toISOString(), confirmed_by: "bm_import" }).in("id", confirm);
+          (stats as Record<string, unknown>).completionsConfirmed = confirm.length;
+        }
+      }
+    } catch (e) { stats.errors.push(`completions: ${(e as Error).message}`); }
+
     // ── Client comms (sql/309) ───────────────────────────────────────────
     // Armed and past the start date: send the comms stages that are due.
     // Requests and chases on their date; the meeting invite three weeks

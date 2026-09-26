@@ -29,6 +29,7 @@ import NewClientModal from '../../components/NewClientModal';
 import QuickTasksView from './views/QuickTasksView';
 import ScheduledView from './views/ScheduledView';
 import CalendarView from './views/CalendarView';
+import CalendarGuide from './components/CalendarGuide';
 import CompletedView from './views/CompletedView';
 import MyTasksView from './views/MyTasksView';
 import WaitingView from './views/WaitingView';
@@ -116,6 +117,7 @@ export default function WorkPlannerModule() {
   const [serviceFilter, setServiceFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [calendarView, setCalendarView] = useState('workweek');
+  const [guideOpen, setGuideOpen] = useState(false);
   const [anchor, setAnchor] = useState(new Date(today()));
   const [dueFilter, setDueFilter] = useState('month');
   const [sourceFilter, setSourceFilter] = useState('');
@@ -836,6 +838,11 @@ export default function WorkPlannerModule() {
           <div style={{ flex: 1 }} />
           {showNewBtn && (
             <div style={{ display: 'flex', gap: 6 }}>
+              {activeTab === 'calendar' && (
+                <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Calendar works">
+                  Guide
+                </button>
+              )}
               {activeTab === 'mytasks' && (
                 <button
                   onClick={() => setQuickModal({ _new: true })}
@@ -903,7 +910,14 @@ export default function WorkPlannerModule() {
               calendarView={calendarView}
               anchor={anchor}
               onOpen={handleOpen}
-              onPickDay={(d) => { setAnchor(new Date(d)); setCalendarView('workweek'); }}
+              onPickDay={(d) => { const dt = new Date(d); setAnchor(dt); setCalendarView(dt.getDay() === 0 || dt.getDay() === 6 ? 'week' : 'workweek'); }}
+              onQuickDone={(q) => handleStartComplete({ ...q, _isQuick: true })}
+              onQuickNotRequired={(q) => handleStartNotReq({ ...q, _isQuick: true })}
+              onQuickDelete={async (q) => {
+                if (!window.confirm(`Delete "${q.title}"?`)) return;
+                setQuickTasks((prev) => prev.filter((t) => t.id !== q.id));
+                await deleteQuickTaskDb(q.id);
+              }}
             />
           )}
           {activeTab === 'kanban' && (
@@ -997,6 +1011,8 @@ export default function WorkPlannerModule() {
           onClose={() => setQuickModal(null)}
         />
       )}
+
+      {guideOpen && <CalendarGuide onClose={() => setGuideOpen(false)} />}
 
       {/* Action Popover */}
       {popover != null && (

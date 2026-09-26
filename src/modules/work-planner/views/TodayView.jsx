@@ -164,6 +164,7 @@ export default function TodayView() {
   const [mins, setMins] = useState('');
   const [sendFor, setSendFor] = useState(null); // milestone with the send modal open
   const [busy, setBusy] = useState(false);
+  const [toUpdate, setToUpdate] = useState([]); // BM jobs done here, not yet confirmed in BM (sql/311)
   const today = todayISO();
 
   const load = useCallback(async () => {
@@ -183,6 +184,10 @@ export default function TodayView() {
       ]);
       if (mErr) throw mErr;
       if (aErr) throw aErr;
+      const { data: comps } = await supabase.from('bm_task_completions')
+        .select('id, bm_task_name, completed_at, minutes, entities(name)')
+        .eq('completed_by', profile.id).is('confirmed_at', null).order('completed_at', { ascending: false }).limit(200);
+      setToUpdate(comps || []);
       setStages(ms || []);
       const seen = new Set();
       setAttention((mine || []).filter((r) => (seen.has(r.plan_id) ? false : seen.add(r.plan_id))).map((r) => r.job_plans));
@@ -268,6 +273,22 @@ export default function TodayView() {
                   <span style={pill(RISK[p.risk] || RISK.slipped)}>{(RISK[p.risk] || RISK.slipped).label}</span>
                   <button onClick={() => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`)} style={{ background: 'none', border: 'none', padding: 0, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, fontSize: 13.5 }}>{p.entities?.name}</button>
                   <span style={{ color: '#64748b', fontSize: 12.5 }}>{p.risk_reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {toUpdate.length > 0 && (
+            <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 10, padding: '8px 12px' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#5b21b6', marginBottom: 2 }}>Completed in Athena, update in BrightManager · {toUpdate.length}</div>
+              <div style={{ fontSize: 12, color: '#6d28d9', marginBottom: 6 }}>Mark these complete in BM. They clear themselves when the next import shows the job gone, or tick them off here.</div>
+              {toUpdate.map((c) => (
+                <div key={c.id} style={{ fontSize: 13.5, display: 'flex', gap: 8, alignItems: 'center', padding: '3px 0' }}>
+                  <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span style={{ fontWeight: 500 }}>{c.entities?.name || 'Client'}</span>
+                    <span style={{ color: '#64748b' }}> · {c.bm_task_name}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 12 }}> · done {fmt(c.completed_at.slice(0, 10))}{c.minutes ? ` · ${c.minutes} min` : ''}</span>
+                  </span>
+                  <button onClick={() => act({ action: 'confirm_bm_completion', completion_id: c.id })} disabled={busy} style={BTN.secondary.sm}>Done in BM</button>
                 </div>
               ))}
             </div>
