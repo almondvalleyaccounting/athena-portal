@@ -156,7 +156,7 @@ export const BUILDERS = {
       { key: 'rate', label: 'Hourly rate £', default: D.bookkeeping_rate || 45, step: 1 },
     ],
     monthly: (v) => (Number(v.hours) || 0) * (Number(v.rate) || 0),
-    describe: (v) => `${v.hours} hours a month at ${gbp(v.rate)} an hour`,
+    describe: (v) => `${v.hours} ${Number(v.hours) === 1 ? 'hour' : 'hours'} a month at ${gbp(v.rate)} an hour`,
   },
   vat_returns: {
     fields: (D) => [

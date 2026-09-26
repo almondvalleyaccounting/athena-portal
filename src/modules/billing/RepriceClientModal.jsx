@@ -59,6 +59,21 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
   // preview on either step and by the email step's To list.
   const [recipient, setRecipient] = useState(null); // { contact, contactName, candidates }
   const [letterPreview, setLetterPreview] = useState(false);
+  // Two facts for the letter's opening that Athena doesn't otherwise hold:
+  // whether the client asked for the new services, and when we last
+  // reviewed their fees ('YYYY-MM'; prefilled from the last fee change we
+  // sent them, once there is one).
+  const [letterOpts, setLetterOpts] = useState({ clientRequested: false, lastReviewed: '' });
+  useEffect(() => {
+    let live = true;
+    supabase.from('fee_proposals').select('effective_at').eq('entity_id', entity.id)
+      .not('status', 'in', '(withdrawn,declined)').order('effective_at', { ascending: false }).limit(1)
+      .then(({ data }) => {
+        const last = data?.[0]?.effective_at;
+        if (live && last) setLetterOpts((o) => (o.lastReviewed ? o : { ...o, lastReviewed: String(last).slice(0, 7) }));
+      });
+    return () => { live = false; };
+  }, [entity.id]);
   useEffect(() => {
     let live = true;
     (async () => {
@@ -404,7 +419,7 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             <div style={{ padding: '8px 22px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
               Letter preview — from the prices on screen, unsaved. {pdfFilename(entity.name)}
             </div>
-            <PdfPreview build={() => buildRepricePdf({ kind, clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary })} buildKey={JSON.stringify([kind, recipient?.contactName, effectiveAt, summary, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
+            <PdfPreview build={() => buildRepricePdf({ kind, clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary, ...letterWords(letterOpts) })} buildKey={JSON.stringify([kind, recipient?.contactName, effectiveAt, summary, letterOpts, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
           </div>
         ) : step === 'price' ? (
           <PriceStep
@@ -463,6 +478,8 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             lines={letterLines}
             summary={summary}
             effectiveAt={effectiveAt}
+            letterOpts={letterOpts}
+            setLetterOpts={setLetterOpts}
             onBack={() => setStep('price')}
           />
         )}
@@ -961,7 +978,7 @@ function BuildFields({ serviceId, values, feeDefaults, onChange, compact }) {
 
 // ─── Step 2 ──────────────────────────────────────────────────────────
 
-function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, effectiveAt, onBack }) {
+function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, effectiveAt, letterOpts, setLetterOpts, onBack }) {
   // Which inbox it goes from: the shared inboxes and your own.
   const [mailboxes, setMailboxes] = useState([]);
   const [mailbox, setMailbox] = useState('');
@@ -989,20 +1006,24 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
 
   // First drafts once the contact is known, and again if the kind changes —
   // a notice and a proposal say different things.
+  const lastDefault = useRef(null);
   useEffect(() => {
     if (!info) return;
     setTo((t) => t || info.candidates[0]?.addr || '');
     setSubject(composeRepriceEmail({ kind, clientName: entity.name, coveringText: '', effectiveAt, summary }).subject);
-    setCovering(defaultCoveringText({ kind, contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary }));
+    const next = defaultCoveringText({ kind, contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary, ...letterWords(letterOpts) });
+    // A changed tick or date rewrites the note — unless staff have edited it.
+    setCovering((cur) => (lastDefault.current == null || cur === lastDefault.current ? next : cur));
+    lastDefault.current = next;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info, kind]);
+  }, [info, kind, letterOpts.clientRequested, letterOpts.lastReviewed]);
 
   const email = useMemo(
     () => composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl }),
     [kind, entity.name, covering, effectiveAt, summary, acceptUrl],
   );
 
-  const makePdf = (url = acceptUrl) => buildRepricePdf({ kind, clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary, acceptUrl: url });
+  const makePdf = (url = acceptUrl) => buildRepricePdf({ kind, clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary, acceptUrl: url, ...letterWords(letterOpts) });
 
   const download = async () => {
     setBusy('pdf');
@@ -1148,6 +1169,18 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
               <Field label="Subject">
                 <input value={subject} onChange={(e) => setSubject(e.target.value)} style={{ ...input, width: '100%' }} />
               </Field>
+              <Field label="Letter opening" hint="Only used where it's true: the thank-you when there are new services, the review date when there's an inflation rise.">
+                {kind === 'proposal' && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginBottom: 6 }}>
+                    <input type="checkbox" checked={letterOpts.clientRequested} onChange={(e) => setLetterOpts((o) => ({ ...o, clientRequested: e.target.checked }))} />
+                    The client asked for the new services
+                  </label>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  Fees last reviewed
+                  <input type="month" value={letterOpts.lastReviewed} onChange={(e) => setLetterOpts((o) => ({ ...o, lastReviewed: e.target.value }))} style={{ ...input, padding: '4px 8px' }} />
+                </label>
+              </Field>
               <Field label="Covering note" hint="The summary table, footnote and sign-off follow it automatically.">
                 <textarea value={covering} onChange={(e) => setCovering(e.target.value)} rows={14} style={{ ...input, width: '100%', resize: 'vertical', lineHeight: 1.5, fontFamily: font }} />
               </Field>
@@ -1188,7 +1221,7 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
           </div>
           {previewTab === 'email'
             ? <iframe title="Email preview" srcDoc={email.bodyHtml} sandbox="" style={{ flex: 1, width: '100%', border: 'none' }} />
-            : <PdfPreview build={makePdf} buildKey={JSON.stringify([kind, info?.contactName, effectiveAt, summary, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
+            : <PdfPreview build={makePdf} buildKey={JSON.stringify([kind, info?.contactName, effectiveAt, summary, letterOpts, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
         </div>
       </div>
 
@@ -1373,6 +1406,14 @@ function PdfPreview({ build, buildKey }) {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────
+
+// The letter options as the letter and covering note use them:
+// 'YYYY-MM' becomes "March 2024".
+function letterWords({ clientRequested, lastReviewed }) {
+  const m = /^(\d{4})-(\d{2})$/.exec(lastReviewed || '');
+  const month = m ? new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : null;
+  return { clientRequested: !!clientRequested, lastReviewed: month };
+}
 
 function initialLines(clientRows) {
   const out = [];

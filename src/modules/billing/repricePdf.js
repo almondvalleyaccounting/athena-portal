@@ -1,6 +1,6 @@
-// The fee-review letter for one client: a one-page PDF that explains
-// the change with a waterfall from the old monthly fee to the new one,
-// the service-by-service detail, and the VAT sum.
+// The fee-review letter for one client: a two-page PDF. Page 1 explains
+// the change with a waterfall from the old monthly fee to the new one and
+// the VAT sum; page 2 has the service-by-service detail.
 //
 // Figures are monthly and net of VAT throughout, with the year shown
 // alongside, and VAT only at the foot — the same presentation as the
@@ -9,8 +9,8 @@
 // jsPDF's built-in Helvetica is WinAnsi-encoded: "£" and "—" render,
 // the Unicode minus sign does not, so negatives use a plain hyphen.
 
-import { BUCKETS, OUR_FEES_FOOTNOTE, PART_TITLE, longDate, reasonText, summaryRows, partFor } from './repriceReasons';
-import { KIND_TITLE } from './composeRepriceEmail';
+import { BUCKETS, OUR_FEES_FOOTNOTE, PART_TITLE, longDate, summaryRows, partFor, componentsOf, changeLabel } from './repriceReasons';
+import { KIND_TITLE, hasInflationRise } from './composeRepriceEmail';
 
 const OCEAN_700 = [25, 58, 80];
 const OCEAN_600 = [30, 69, 96];
@@ -48,10 +48,18 @@ async function getLogo() {
 // Build the letter. Returns the jsPDF document; callers choose between
 // .save() (download) and base64 (email attachment).
 //
+// Page 1 is the letter: the opening, the headline figures, the waterfall
+// and the summary with VAT and how to accept — the whole story without
+// turning over. Page 2 is service by service.
+//
 // kind 'notice' tells the client what is changing. kind 'proposal' also
 // proposes new services: Part 1 is the changes we're making, Part 2 the
 // new services for the client to accept.
-export async function buildRepricePdf({ kind = 'notice', clientName, contactName, effectiveAt, lines, summary, acceptUrl = null }) {
+//
+// clientRequested adds a thank-you for asking (proposals only);
+// lastReviewed ("March 2024") adds when we last reviewed their fees, when
+// there's an inflation rise to explain.
+export async function buildRepricePdf({ kind = 'notice', clientName, contactName, effectiveAt, lines, summary, acceptUrl = null, clientRequested = false, lastReviewed = null }) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF('p', 'mm', 'a4');
   const pw = 210, margin = 18, cw = pw - margin * 2;
@@ -62,127 +70,74 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
   const newPage = () => { footer(doc, pw, margin, cw); doc.addPage(); y = margin; };
   const need = (h) => { if (y + h > 268) newPage(); };
 
-  // ── Header ──
+  // ── Letterhead: logo and date on the right, who and what on the left ──
   const logo = await getLogo();
-  if (logo) doc.addImage(logo, 'JPEG', pw - margin - 26, margin - 2, 26, 26);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(...OCEAN_700);
-  doc.text(clientName || 'Client', margin, y + 7, { maxWidth: cw - 32 });
-  y += 14;
-  doc.setFontSize(13);
-  doc.setTextColor(...OCEAN_600);
-  doc.text(KIND_TITLE[kind] || KIND_TITLE.notice, margin, y);
-  y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(...GRAY);
-  doc.text(`${longDate(new Date().toISOString())}  ·  New fees from ${when}`, margin, y);
-  y += 7;
+  if (logo) doc.addImage(logo, 'JPEG', pw - margin - 24, margin - 4, 24, 24);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
+  doc.text(longDate(new Date().toISOString()), pw - margin, margin + 25, { align: 'right' });
 
-  // ── Intro ──
-  doc.setFontSize(10);
-  doc.setTextColor(...DARK);
-  const greeting = contactName ? `Dear ${contactName}, ` : '';
-  const intro = proposal
-    ? `${greeting}from ${when} we're making some changes to your fees (Part 1), and we'd like to add some new services (Part 2). If you accept, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)}, plus VAT.`
-    : `${greeting}from ${when}, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)}, plus VAT. Here's what is changing and why.`;
-  const introLines = doc.splitTextToSize(intro.charAt(0).toUpperCase() + intro.slice(1), cw);
-  doc.text(introLines, margin, y);
-  y += introLines.length * 4.6 + 4;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...OCEAN_700);
+  const nameLines = doc.splitTextToSize(clientName || 'Client', cw - 40);
+  doc.text(nameLines, margin, y + 5);
+  y += 5 + nameLines.length * 6;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(...OCEAN_600);
+  doc.text(KIND_TITLE[kind] || KIND_TITLE.notice, margin, y);
+  y = Math.max(y + 6, margin + 32);
+
+  // ── The letter: greeting on its own line, then short paragraphs ──
+  const para = (text, gap = 3.2) => {
+    const ls = doc.splitTextToSize(text, cw);
+    doc.text(ls, margin, y);
+    y += ls.length * 4.8 + gap;
+  };
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...DARK);
+  para(contactName ? `Dear ${contactName},` : 'Dear client,', 2.2);
+  const hasInflation = hasInflationRise(lines);
+  const hasNew = (summary.buckets.newService || 0) !== 0;
+  if (proposal && hasNew && clientRequested) {
+    para('Thank you for asking us to take on some extra work. The new services, and what they cost, are in Part 2.');
+  }
+  if (hasInflation && lastReviewed) {
+    para(`We last reviewed your fees in ${lastReviewed}. Our costs have risen with inflation since then, so from ${when} we are making the changes in Part 1.`);
+  } else if (proposal) {
+    para(`From ${when} we are making the changes to your fees in Part 1.`);
+  }
+  para(proposal
+    ? `If you accept the new services, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)} plus VAT.`
+    : `From ${when}, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)} plus VAT.`, 5);
 
   // ── Headline tiles ──
-  const tileW = (cw - 8) / 3, tileH = 18;
+  const tileW = (cw - 8) / 3, tileH = 17;
   const tiles = [
     { label: 'Current monthly fee', value: money(summary.current), sub: `excl. VAT · ${money(summary.current * 12)} a year` },
-    { label: 'New monthly fee', value: money(summary.next), sub: `excl. VAT · ${money(summary.next * 12)} a year` },
+    { label: proposal ? 'New monthly fee if you accept' : 'New monthly fee', value: money(summary.next), sub: `excl. VAT · ${money(summary.next * 12)} a year` },
     { label: 'Change', value: signed(summary.delta), sub: `${signed(summary.delta * 12)} a year` },
   ];
   tiles.forEach((t, i) => {
     const x = margin + i * (tileW + 4);
-    doc.setFillColor(...SLATE_50);
-    doc.setDrawColor(...RULE);
+    doc.setFillColor(...SLATE_50); doc.setDrawColor(...RULE);
     doc.roundedRect(x, y, tileW, tileH, 2, 2, 'FD');
     doc.setFontSize(7.5); doc.setTextColor(...GRAY); doc.setFont('helvetica', 'normal');
     doc.text(t.label, x + 4, y + 5);
     doc.setFontSize(13); doc.setTextColor(...OCEAN_700); doc.setFont('helvetica', 'bold');
-    doc.text(t.value, x + 4, y + 11.5);
+    doc.text(t.value, x + 4, y + 11);
     doc.setFontSize(7.5); doc.setTextColor(...GRAY); doc.setFont('helvetica', 'normal');
-    doc.text(t.sub, x + 4, y + 15.5);
+    doc.text(t.sub, x + 4, y + 15);
   });
-  y += tileH + 6;
+  y += tileH + 7;
 
   // ── Waterfall ──
-  y = waterfall(doc, { x: margin, y, w: cw, h: 52, summary });
-  y += 6;
+  y = waterfall(doc, { x: margin, y, w: cw, h: 46, summary });
+  y += 8;
 
-  // ── Line by line ──
-  const col = { svc: margin + 2, why: margin + 62, old: margin + cw - 40, neu: margin + cw - 20, chg: margin + cw - 2 };
-  const head = () => {
-    doc.setFillColor(...OCEAN_100);
-    doc.rect(margin, y, cw, 6.5, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...OCEAN_700);
-    doc.text('Service', col.svc, y + 4.4);
-    doc.text('Reason', col.why, y + 4.4);
-    doc.text('Current', col.old, y + 4.4, { align: 'right' });
-    doc.text('New', col.neu, y + 4.4, { align: 'right' });
-    doc.text('Change', col.chg, y + 4.4, { align: 'right' });
-    y += 6.5;
-  };
-  const table = (title, rows) => {
-    need(24);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...OCEAN_700);
-    doc.text(title, margin, y); y += 5;
-    head();
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-    for (const l of rows) {
-      const changed = Number(l.current) !== Number(l.next);
-      const svc = doc.splitTextToSize(serviceName(l.serviceId), col.why - col.svc - 4);
-      // How a quantity-priced service was built, e.g. "Quarterly management
-      // accounts: 4 sets a year at £158.00" — under the service name.
-      doc.setFontSize(7.5);
-      const built = l.build?.description ? doc.splitTextToSize(l.build.description, col.why - col.svc - 4) : [];
-      doc.setFontSize(8.5);
-      const why = doc.splitTextToSize(changed ? reasonText(l) : 'No change', col.old - 19 - col.why - 2);
-      const h = Math.max(svc.length * 3.8 + built.length * 3.3, why.length * 3.8) + 3;
-      if (y + h > 268) { newPage(); head(); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); }
-      doc.setTextColor(...DARK);
-      doc.text(svc, col.svc, y + 4);
-      if (built.length) {
-        doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-        doc.text(built, col.svc, y + 4 + svc.length * 3.8);
-        doc.setFontSize(8.5);
-      }
-      doc.setTextColor(...(changed ? DARK : GRAY));
-      doc.text(why, col.why, y + 4);
-      doc.setTextColor(...GRAY);
-      doc.text(money(l.current), col.old, y + 4, { align: 'right' });
-      doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold');
-      doc.text(money(l.next), col.neu, y + 4, { align: 'right' });
-      const d = Number(l.next) - Number(l.current);
-      doc.setTextColor(...(d > 0 ? RISE : d < 0 ? FALL : GRAY));
-      doc.text(d === 0 ? '—' : signed(d), col.chg, y + 4, { align: 'right' });
-      doc.setFont('helvetica', 'normal');
-      y += h;
-      doc.setDrawColor(...RULE); doc.setLineWidth(0.2);
-      doc.line(margin, y, margin + cw, y);
-    }
-    y += 6;
-  };
-  if (proposal) {
-    const p1 = lines.filter((l) => partFor(l) === 1);
-    const p2 = lines.filter((l) => partFor(l) === 2);
-    if (p1.length) table(PART_TITLE[1], p1);
-    if (p2.length) table(PART_TITLE[2], p2);
-  } else {
-    table("What's changing", lines);
-  }
-
-  // ── Summary with VAT ──
-  // Table on the right; the footnote and next step share the left column.
-  const rows = summaryRows(summary, kind);
+  // ── Summary with VAT, on page 1: the whole story without turning over ──
+  const rows = summaryRows(summary, kind).filter((r) => r.type !== 'step' || r.v !== 0);
+  // A part with nothing in it loses its heading (and Part 1 its subtotal).
+  const tidy = rows.filter((r, i) => r.type !== 'section' || (rows[i + 1] && rows[i + 1].type === 'step'));
+  const p1Empty = !tidy.some((r) => r.type === 'section' && r.label.startsWith('Part 1'));
+  const finalRows = p1Empty ? tidy.filter((r) => r.type !== 'subtotal') : tidy;
   const rowH = 5.4;
-  need(rows.length * rowH + 14);
+  need(finalRows.length * rowH + 14);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...OCEAN_700);
   doc.text('Summary', margin, y); y += 5;
   const sx = margin + cw * 0.42, mR = margin + cw - 28, aR = margin + cw - 2, sw = margin + cw - sx;
@@ -191,7 +146,7 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
   doc.text('Per month', mR, y, { align: 'right' });
   doc.text('Per year', aR, y, { align: 'right' });
   y += 2;
-  for (const r of rows) {
+  for (const r of finalRows) {
     if (r.type === 'section') {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...OCEAN_700);
       doc.text(r.label, sx + 2, y + 4);
@@ -204,7 +159,7 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
     doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.5);
     doc.setTextColor(...(fill ? [255, 255, 255] : DARK));
     doc.text(`${r.type === 'step' ? '   ' : ''}${r.label}${r.star ? ' *' : ''}`, sx + 2, y + 4);
-    const fmt = (v) => (r.type === 'step' ? (v === 0 ? '—' : signed(v)) : money(v));
+    const fmt = (v) => (r.type === 'step' ? signed(v) : money(v));
     doc.text(fmt(r.v), mR, y + 4, { align: 'right' });
     doc.text(fmt(r.v * 12), aR, y + 4, { align: 'right' });
     y += rowH;
@@ -216,26 +171,140 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
   let ly = top + 2;
   if (proposal) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...OCEAN_700);
-    const accept = doc.splitTextToSize(`To accept the new services in Part 2, click Review and accept in our email${acceptUrl ? ', or use the link below' : ''}. The changes in Part 1 go ahead from ${when} either way.`, lw);
+    const accept = doc.splitTextToSize(`To accept the new services, click Review and accept in our email${acceptUrl ? ', or use the button below' : ''}. The changes in Part 1 go ahead from ${when} either way.`, lw);
     doc.text(accept, margin, ly); ly += accept.length * 4 + 2;
+    // The accept link as a button, the one thing on the page to click.
+    // Before the letter is sent there is no link yet, so the preview shows
+    // where it will go.
+    const bh = 10, bw = Math.min(lw, 70);
     if (acceptUrl) {
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(30, 69, 96);
-      doc.textWithLink('Review and accept online', margin, ly + 3, { url: acceptUrl });
-      ly += 8;
+      doc.setFillColor(...OCEAN_700);
+      doc.roundedRect(margin, ly, bw, bh, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(255, 255, 255);
+      doc.text('Review and accept online', margin + bw / 2, ly + 6.6, { align: 'center' });
+      doc.link(margin, ly, bw, bh, { url: acceptUrl });
     } else {
-      ly += 2;
+      doc.setDrawColor(...GRAY); doc.setLineWidth(0.3);
+      doc.setLineDashPattern([1.2, 1.2], 0);
+      doc.roundedRect(margin, ly, bw, bh, 2, 2, 'S');
+      doc.setLineDashPattern([], 0);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
+      doc.text('Accept button: added when sent', margin + bw / 2, ly + 6.3, { align: 'center' });
     }
+    ly += bh + 5;
   }
-  doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
-  const fn = doc.splitTextToSize(`* ${OUR_FEES_FOOTNOTE}`, lw);
-  doc.text(fn, margin, ly); ly += fn.length * 3.3 + 4;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+  const over = doc.splitTextToSize('The detail for each service is overleaf.', lw);
+  doc.text(over, margin, ly); ly += over.length * 3.8 + 3;
   const close = doc.splitTextToSize('Any questions? Reply to our email or call us on 0141 471 4255.', lw);
-  doc.text(close, margin, ly); ly += close.length * 3.8;
+  doc.text(close, margin, ly); ly += close.length * 3.8 + 4;
+  if (finalRows.some((r) => r.star)) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+    const fn = doc.splitTextToSize(`* ${OUR_FEES_FOOTNOTE}`, lw);
+    doc.text(fn, margin, ly); ly += fn.length * 3.3;
+  }
   y = Math.max(tableEnd, ly);
+
+  // ── Page 2: service by service ──
+  newPage();
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...OCEAN_700);
+  doc.text('Service by service', margin, y + 4);
+  y += 9.5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...GRAY);
+  doc.text('Monthly fees, excluding VAT.', margin, y + 1);
+  y += 8;
+
+  const col = { svc: margin + 2, why: margin + 58, old: margin + cw - 40, neu: margin + cw - 20, chg: margin + cw - 2 };
+  const head = () => {
+    doc.setFillColor(...OCEAN_100);
+    doc.rect(margin, y, cw, 6.5, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...OCEAN_700);
+    doc.text('Service', col.svc, y + 4.4);
+    doc.text('Reason', col.why, y + 4.4);
+    doc.text('Current', col.old, y + 4.4, { align: 'right' });
+    doc.text('New', col.neu, y + 4.4, { align: 'right' });
+    doc.text('Change', col.chg, y + 4.4, { align: 'right' });
+    y += 6.5;
+  };
+  // One reason per line; the amount beside it only when a line has several.
+  const reasonLines = (l) => {
+    const comps = componentsOf(l);
+    if (Number(l.current) === Number(l.next) || comps.length === 0) return [{ t: 'No change' }];
+    if (comps.length === 1) return [{ t: changeLabel(comps[0]) }];
+    return comps.map((c) => ({ t: changeLabel(c), a: c.amount }));
+  };
+  const whyW = col.old - 16 - col.why;
+  const table = (title, rowsIn) => {
+    need(24);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...OCEAN_700);
+    doc.text(title, margin, y); y += 5;
+    head();
+    for (const l of rowsIn) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+      const changed = Number(l.current) !== Number(l.next);
+      const svc = doc.splitTextToSize(clientServiceName(l.serviceId), col.why - col.svc - 4);
+      doc.setFontSize(7.5);
+      const built = l.build?.description ? doc.splitTextToSize(tidyBuild(l.build.description), col.why - col.svc - 4) : [];
+      doc.setFontSize(8.5);
+      const reasons = reasonLines(l).map((r) => ({ ...r, ls: doc.splitTextToSize(r.t, r.a != null ? whyW - 15 : whyW) }));
+      const whyH = reasons.reduce((t, r) => t + r.ls.length * 3.8, 0) + (reasons.length - 1) * 1;
+      const h = Math.max(svc.length * 3.8 + built.length * 3.3, whyH) + 3.5;
+      if (y + h > 268) { newPage(); head(); }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
+      doc.text(svc, col.svc, y + 4);
+      if (built.length) {
+        doc.setFontSize(7.5); doc.setTextColor(...GRAY);
+        doc.text(built, col.svc, y + 4 + svc.length * 3.8);
+        doc.setFontSize(8.5);
+      }
+      let ry = y + 4;
+      for (const r of reasons) {
+        doc.setTextColor(...(changed ? DARK : GRAY));
+        doc.text(r.ls, col.why, ry);
+        if (r.a != null) {
+          doc.setTextColor(...GRAY);
+          doc.text(signed(r.a), col.old - 16, ry, { align: 'right' });
+        }
+        ry += r.ls.length * 3.8 + 1;
+      }
+      doc.setTextColor(...GRAY);
+      doc.text(money(l.current), col.old, y + 4, { align: 'right' });
+      doc.setTextColor(...DARK); doc.setFont('helvetica', 'bold');
+      doc.text(money(l.next), col.neu, y + 4, { align: 'right' });
+      const d = Number(l.next) - Number(l.current);
+      doc.setTextColor(...(d > 0 ? RISE : d < 0 ? FALL : GRAY));
+      doc.text(d === 0 ? '—' : signed(d), col.chg, y + 4, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      y += h;
+      doc.setDrawColor(...RULE); doc.setLineWidth(0.2);
+      doc.line(margin, y, margin + cw, y);
+    }
+    y += 8;
+  };
+  if (proposal) {
+    const p1 = lines.filter((l) => partFor(l) === 1);
+    const p2 = lines.filter((l) => partFor(l) === 2);
+    if (p1.length) table(PART_TITLE[1], p1);
+    if (p2.length) table(PART_TITLE[2], p2);
+  } else {
+    table("What's changing", lines);
+  }
 
   footer(doc, pw, margin, cw);
   return doc;
+}
+
+// "1 hours a month" → "1 hour a month".
+function tidyBuild(s) {
+  return String(s).replace(/\b1 (hours|sets|returns|meetings)\b/g, (_, w) => `1 ${w.replace(/s$/, '')}`);
+}
+
+// Service names as the client reads them: the QBO leaf name, except where
+// that isn't client language. The modal keeps the QBO name (serviceName).
+const CLIENT_NAMES = { 'Tax Returns - Individual': 'Personal tax return' };
+export function clientServiceName(serviceId) {
+  const leaf = serviceName(serviceId);
+  return CLIENT_NAMES[leaf] || leaf;
 }
 
 // "Accounts:Business Accounts and…" → "Business Accounts and…". QBO

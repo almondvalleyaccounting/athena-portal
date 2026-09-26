@@ -8,7 +8,7 @@
 // note (editable) and the summary table from summaryRows(), so the two
 // can't disagree. Returns { subject, body, bodyHtml }.
 
-import { OUR_FEES_FOOTNOTE, longDate, reasonText, summaryRows } from './repriceReasons';
+import { OUR_FEES_FOOTNOTE, componentsOf, longDate, reasonText, summaryRows } from './repriceReasons';
 
 const money = (n) => `£${Math.abs(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const signed = (n) => (Number(n) > 0 ? `+${money(n)}` : Number(n) < 0 ? `−${money(n)}` : '—');
@@ -23,19 +23,35 @@ export const KIND_TITLE = {
   proposal: 'Proposed changes to your services',
 };
 
+// Does any line carry an inflation rise? The "we last reviewed your fees"
+// sentence only makes sense when one does.
+export function hasInflationRise(lines) {
+  return (lines || []).some((l) => componentsOf(l).some((c) => c.reasonKey === 'inflation' && c.amount > 0));
+}
+
 // A first draft of the covering note. Staff edit it in the modal.
-export function defaultCoveringText({ kind = 'notice', contactName, clientName, effectiveAt, lines, summary }) {
+// clientRequested: the client asked for the new services (a thank-you).
+// lastReviewed: "March 2024", when we last reviewed their fees.
+export function defaultCoveringText({ kind = 'notice', contactName, clientName, effectiveAt, lines, summary, clientRequested = false, lastReviewed = null }) {
   const when = effectiveAt ? longDate(effectiveAt) : 'next month';
   const from = money(summary.current);
   const to = money(summary.next);
   const reasons = [...new Set(lines.filter((l) => Number(l.current) !== Number(l.next)).map(reasonText).filter(Boolean))];
   const paras = [`Dear ${contactName || clientName},`];
+  const reviewed = lastReviewed && hasInflationRise(lines)
+    ? `We last reviewed your fees in ${lastReviewed}. Our costs have risen with inflation since then`
+    : null;
 
   if (kind === 'proposal') {
-    paras.push(`From ${when} we're making some changes to your fees (Part 1), and we'd like to add some new services (Part 2). If you accept, your monthly fee will go from ${from} to ${to}, plus VAT.`);
+    if (clientRequested) paras.push('Thank you for asking us to take on some extra work. The new services, and what they cost, are in Part 2 of the attached letter.');
+    paras.push(reviewed
+      ? `${reviewed}, so from ${when} we're making the changes in Part 1.`
+      : `From ${when} we're making some changes to your fees (Part 1)${clientRequested ? '' : ", and we'd like to add some new services (Part 2)"}.`);
+    paras.push(`If you accept the new services, your monthly fee will go from ${from} to ${to}, plus VAT.`);
     paras.push('The table below sums it up and the attached letter has the detail.');
     paras.push("To accept the new services, click Review and accept below. We won't add them until you do. The changes in Part 1 go ahead either way.");
   } else {
+    if (reviewed) paras.push(`${reviewed}.`);
     paras.push(`From ${when}, your monthly fee will go from ${from} to ${to}, plus VAT.`);
     if (reasons.length === 1) paras.push(`This is because of: ${reasons[0].charAt(0).toLowerCase()}${reasons[0].slice(1)}.`);
     else if (reasons.length > 1) paras.push(`This is because of:\n${reasons.map((r) => `• ${r}`).join('\n')}`);
