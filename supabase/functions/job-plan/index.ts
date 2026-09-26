@@ -81,6 +81,15 @@ function isoDate(v: unknown, field: string): string {
   if (!ISO.test(s) || Number.isNaN(new Date(`${s}T12:00:00Z`).getTime())) throw new BadRequest(`${field} must be YYYY-MM-DD`);
   return s;
 }
+// The picker's ticks: [{ key }] for catalogue items, [{ text }] for free text.
+function pickedItems(v: unknown[]): Array<{ key?: string | null; text?: string | null }> {
+  return v.slice(0, 60).map((x) => {
+    const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const key = o.key ? String(o.key).slice(0, 60) : null;
+    const text = o.text ? String(o.text).slice(0, 300) : null;
+    return key ? { key } : { text };
+  }).filter((x) => x.key || (x.text && x.text.trim()));
+}
 function optBool(v: unknown): boolean | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "boolean") return v;
@@ -412,8 +421,11 @@ Deno.serve(async (req) => {
         const { data: m, error } = await db.from("job_milestones").select("*, job_plans(*)").eq("id", id).maybeSingle();
         if (error) throw new Error(error.message);
         if (!m) throw new BadRequest("Stage not found", 404);
-        const r = await renderForMilestone(db, m, m.job_plans as Record<string, unknown>, []);
-        return json({ success: true, preview: { ...r, html: undefined }, sent_at: m.comms_sent_at, sent_to: m.comms_to });
+        // items: the picker's current ticks, so the preview re-renders as
+        // the sender changes them; omitted = remembered or defaults.
+        const items = Array.isArray(p.items) ? pickedItems(p.items) : null;
+        const r = await renderForMilestone(db, m, m.job_plans as Record<string, unknown>, items);
+        return json({ success: true, preview: r, sent_at: m.comms_sent_at, sent_to: m.comms_to });
       }
 
       case "send_comms": {
@@ -423,7 +435,8 @@ Deno.serve(async (req) => {
         if (toOverride && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toOverride)) throw new BadRequest("That does not look like an email address");
         const testOnly = p.test === true;
         if (testOnly && !toOverride) throw new BadRequest("A test send needs an address");
-        const out = await sendForMilestone(db, id, { mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly });
+        const items = Array.isArray(p.items) ? pickedItems(p.items) : undefined;
+        const out = await sendForMilestone(db, id, { mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly, items });
         const { data: m } = await db.from("job_milestones").select("plan_id").eq("id", id).maybeSingle();
         return json({ success: true, ...out, plan: m ? await loadPlan(m.plan_id) : null, milestones: m ? await milestonesOf(m.plan_id) : [] });
       }
