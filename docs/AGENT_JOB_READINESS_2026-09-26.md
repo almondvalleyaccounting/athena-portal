@@ -53,7 +53,17 @@ The pilot is year-end accounts for a QBO limited-company client, starting with A
 - Nothing leaves the firm: no client email, no chasers, no writes to QBO or Companies House, no filing.
 - Going live is a flag change, not a re-build.
 
+## Agent identity
+
+- Each agent runs as its own Google Cloud service account and calls Athena with a short-lived **Google-signed identity token**.
+- Athena's edge functions verify the signature against Google's public keys, then look the service account up in Athena's agent register for what it may do.
+- No shared secret is stored anywhere. Switching an agent off is one row in Athena, or disabling the account in Google.
+- An agent is its own kind of principal: never staff, never `service_role`, only the capabilities listed against it.
+
 ## Athena changes needed
+
+- An agent register: service account, name, capabilities, active flag, test/live mode.
+- Shared token verification in `_shared/` for agent-facing edge functions, alongside `require-staff.ts`.
 
 - A test flag on every table an agent writes to, respected by every team-facing view and the queue.
 - A comparison view: agent output vs the real outcome, per job.
