@@ -1,5 +1,6 @@
 import { getServiceClient, qboFetch, recurringInner, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { monthlyFactor, perInvoiceFor, annualFromInvoice } from "../_shared/billing-interval.ts";
 
 // Push staged fee uplifts (pending_monthly_amount on each service)
 // out to the corresponding QBO RecurringTransaction template. We
@@ -210,7 +211,6 @@ Deno.serve(async (req) => {
       const schedule = (recurringInfo.ScheduleInfo as Record<string, unknown> | undefined)
         || (template.ScheduleInfo as Record<string, unknown> | undefined);
       const factor = monthlyFactor(schedule);
-      const reverseFactor = 1 / factor; // monthly → per-occurrence
 
       // 2b. Timing. A new fee takes effect from a date; the template's last
       //     invoice at the old price must already have been raised before we
@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
         if (!hit) return line;
 
         const newMonthly = Number(hit.s.pending_monthly_amount);
-        const newPerOccurrence = Math.round(newMonthly * reverseFactor * 100) / 100;
+        const newPerOccurrence = perInvoiceFor(newMonthly, factor, hit.s.pending_per_invoice_amount);
         committed.add(hit.i);
         matchLog.push({
           action: "repriced",
@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
         } else if (!taxRef) {
           blocked.push(`${prefix}, and neither the template nor the QuickBooks connection carries a VAT code — a line without one bills zero VAT`);
         } else {
-          const perOccurrence = Math.round(monthly * reverseFactor * 100) / 100;
+          const perOccurrence = perInvoiceFor(monthly, factor, s.pending_per_invoice_amount);
           takenItemIds.add(String(mapping.qbo_item_id));
           committed.add(i);
           newLines.push({
@@ -415,10 +415,14 @@ Deno.serve(async (req) => {
       const newServices = services.map((s, i) => {
         if (s.pending_monthly_amount == null || !committed.has(i)) return s;
         const newMonthly = Number(s.pending_monthly_amount);
+        // Exactly what went onto the template (see the reprice above).
+        const perInvoice = perInvoiceFor(newMonthly, factor, s.pending_per_invoice_amount);
         return {
           ...s,
           monthly_amount: newMonthly,
-          annual_amount: Math.round(newMonthly * 12 * 100) / 100,
+          annual_amount: annualFromInvoice(perInvoice, factor),
+          per_invoice_amount: perInvoice,
+          pending_per_invoice_amount: null,
           last_uplift_at: s.pending_uplift_staged_at || new Date().toISOString(),
           last_uplift_reason: s.pending_uplift_reason || null,
           last_uplift_pushed_at: new Date().toISOString(),
@@ -569,16 +573,4 @@ function mappingFor(
   };
 }
 
-// Same factor logic as qbo-pull — keep in lockstep.
-function monthlyFactor(schedule: Record<string, unknown> | undefined): number {
-  if (!schedule) return 1;
-  const type = String(schedule.IntervalType || "Monthly");
-  const n = Math.max(1, Number(schedule.NumInterval || 1));
-  switch (type) {
-    case "Daily":  return (365 / 12) / n;
-    case "Weekly": return (52 / 12) / n;
-    case "Yearly": return 1 / (12 * n);
-    case "Monthly":
-    default:       return 1 / n;
-  }
-}
+// monthlyFactor(): ../_shared/billing-interval.ts, shared with qbo-pull.

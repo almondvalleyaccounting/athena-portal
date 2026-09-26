@@ -1,5 +1,6 @@
 import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { monthlyFactor, monthlyFromInvoice, annualFromInvoice } from "../_shared/billing-interval.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -229,27 +230,7 @@ Deno.serve(async (req) => {
       duplicates_cancelled: 0,
     };
 
-    // ScheduleInfo → monthly factor. Any QBO recurring template stores
-    // an amount *per-occurrence*; to normalise to a monthly figure we
-    // divide by "occurrences per month" (inverted: multiply by months
-    // per occurrence, then invert when summing).
-    //   Monthly,  N=1  → monthly = total / 1
-    //   Monthly,  N=3  → quarterly: monthly = total / 3
-    //   Yearly,   N=1  → annual:    monthly = total / 12
-    //   Weekly,   N=1  → monthly = total * 52/12
-    //   Daily,    N=1  → monthly = total * 365/12
-    const monthlyFactor = (schedule: Record<string, unknown> | undefined): number => {
-      if (!schedule) return 1;
-      const type = String(schedule.IntervalType || "Monthly");
-      const n = Math.max(1, Number(schedule.NumInterval || 1));
-      switch (type) {
-        case "Daily":   return (365 / 12) / n;
-        case "Weekly":  return (52 / 12) / n;
-        case "Yearly":  return 1 / (12 * n);
-        case "Monthly":
-        default:        return 1 / n;
-      }
-    };
+    // ScheduleInfo → monthly factor: monthlyFactor() in ../_shared/billing-interval.ts.
 
     // ──────────────────────────────────────────────────────────
     // 5. Process recurring transactions. Entity resolution now
@@ -426,6 +407,7 @@ Deno.serve(async (req) => {
           "duplicate_acknowledged_by",
           "duplicate_acknowledged_at",
           "pending_monthly_amount",
+          "pending_per_invoice_amount",
           "pending_effective_at",
           "pending_uplift_reason",
           "pending_uplift_staged_at",
@@ -443,7 +425,7 @@ Deno.serve(async (req) => {
           const detail = l.SalesItemLineDetail as Record<string, unknown> | undefined;
           const itemRef = detail?.ItemRef as Record<string, unknown> | undefined;
           const perOccurrence = Number(l.Amount) || 0;
-          const monthly = Math.round(perOccurrence * factor * 100) / 100;
+          const monthly = monthlyFromInvoice(perOccurrence, factor);
           const sid = itemRef ? String(itemRef.name || "service") : "service";
           const prior = priorTplServicesById.get(sid);
           const preserved: Record<string, unknown> = {};
@@ -458,7 +440,12 @@ Deno.serve(async (req) => {
             cadence: tplCadence,
             cadence_months: tplCadenceMonths,
             monthly_amount: monthly,
-            annual_amount: Math.round(monthly * 12 * 100) / 100,
+            // From the invoice amount, not the rounded monthly: a £500 yearly
+            // template is £500 a year, not £41.67 × 12 = £500.04.
+            annual_amount: annualFromInvoice(perOccurrence, factor),
+            // What one invoice on the template bills, so a push can put back
+            // exactly this rather than monthly × interval.
+            per_invoice_amount: perOccurrence,
             approval_status: "approved" as const,
             approved_by: "system:qbo_template",
             approved_at: now,
