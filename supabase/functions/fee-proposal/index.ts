@@ -56,6 +56,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { signFeeAcceptToken, feeAcceptUrl } from "../_shared/fee-accept-token.ts";
+import { missedInvoices, catchupPeriod, catchupFor, catchupInvoiceLines } from "../_shared/catchup.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -324,22 +325,7 @@ const CATCHUP_REASON_LABEL: Record<string, string> = {
   other: "other",
 };
 
-// Invoices the template has already raised on or after the go-live date:
-// step back a month at a time from its next run. Recurring templates here
-// are monthly (qbo-pull stores monthly amounts); a missing next run means
-// the template can't be read, so nothing is assumed missed.
-function missedInvoices(nextRun: string | null, goLiveDate: string): string[] {
-  if (!nextRun || !ISO_DATE.test(nextRun)) return [];
-  const out: string[] = [];
-  const d = new Date(`${nextRun}T00:00:00Z`);
-  for (let i = 0; i < 36; i++) {
-    d.setUTCMonth(d.getUTCMonth() - 1);
-    const iso = d.toISOString().slice(0, 10);
-    if (iso < goLiveDate) break;
-    out.unshift(iso);
-  }
-  return out;
-}
+// missedInvoices() and the catch-up amounts: ../_shared/catchup.ts
 
 async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null, commit: boolean) {
   const billingId = String(b.billing_id || "");
@@ -379,14 +365,8 @@ async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null,
     return hit ? String(hit.service_id) : (name.includes(":") ? name.slice(name.lastIndexOf(":") + 1) : name);
   };
   const r2 = (n: number) => Math.round(n * 100) / 100;
-  const fmtMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-  const period = missed.length ? (missed.length === 1 ? fmtMonth(missed[0]) : `${fmtMonth(missed[0])} to ${fmtMonth(missed[missed.length - 1])}`) : "";
-  const lines = missed.length ? staged.map((s) => {
-    const delta = r2((Number(s.pending_monthly_amount) || 0) - (Number(s.monthly_amount) || 0));
-    return { service: labelFor(s), delta, net: r2(delta * missed.length) };
-  }).filter((l) => l.net !== 0) : [];
-  const net = r2(lines.reduce((t, l) => t + l.net, 0));
-  const vat = r2(net * 0.2);
+  const period = catchupPeriod(missed);
+  const { lines, net, vat } = catchupFor(staged, missed.length, labelFor);
   const catchup = { next_run: nextRun, missed_invoices: missed, period, lines, net, vat, gross: r2(net + vat) };
 
   if (!commit) return json({ success: true, catchup });
@@ -415,16 +395,7 @@ async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null,
     if (!(net > 0)) return json({ success: false, error: "Nothing was under-billed, so there is no catch-up to raise" }, 400);
     const { data: ent } = await sb.from("entities").select("qbo_customer_id").eq("id", row.entity_id).maybeSingle();
     const why = reason === "other" ? note : CATCHUP_REASON_LABEL[reason];
-    const itemLines = lines.filter((l) => l.net > 0).map((l) => {
-      const lv = r2(l.net * 0.2);
-      return {
-        service: l.service,
-        description: `${l.service}: new fee from ${period} (${missed.length} month${missed.length === 1 ? "" : "s"} at +£${l.delta.toFixed(2)}), not yet billed — ${why}`,
-        net: l.net, vat: lv, gross: r2(l.net + lv), qty: 1, rate: l.net,
-      };
-    });
-    const inet = r2(itemLines.reduce((t, l) => t + l.net, 0));
-    const ivat = r2(itemLines.reduce((t, l) => t + l.vat, 0));
+    const { itemLines, net: inet, vat: ivat } = catchupInvoiceLines(lines, period, missed.length, why);
     const { data: bi, error: biErr } = await sb.from("billing_items").insert({
       entity_id: row.entity_id,
       service: itemLines.length > 1 ? `${itemLines[0].service} +${itemLines.length - 1} more` : itemLines[0].service,
