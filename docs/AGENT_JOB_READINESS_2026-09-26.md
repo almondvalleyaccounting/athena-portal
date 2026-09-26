@@ -44,7 +44,19 @@ Blocking is not a severity level. Every concern carries a verdict — **holds up
 3. **The preparer may overturn a "holds up"** with a written reason. The reviewer sees it at review.
 4. Overturns that repeat become new sufficiency rules.
 
+## Test mode
+
+The pilot is year-end accounts for a QBO limited-company client, starting with AVA's own (YE 30/09/2025). The work is done manually; agents run alongside in test mode and their output is compared with what was actually done. Each difference becomes a test case.
+
+- Test-mode agents write to **the same Athena tables, flagged as test**. New rows only; a test run never edits a real row.
+- The team's queue and job views ignore test rows. A comparison view shows them against the real outcome.
+- Nothing leaves the firm: no client email, no chasers, no writes to QBO or Companies House, no filing.
+- Going live is a flag change, not a re-build.
+
 ## Athena changes needed
+
+- A test flag on every table an agent writes to, respected by every team-facing view and the queue.
+- A comparison view: agent output vs the real outcome, per job.
 
 - A received state on each requested item: evidence link, marked by (agent or person), concerns with verdict and reason.
 - An edge function for the agent to record that.
