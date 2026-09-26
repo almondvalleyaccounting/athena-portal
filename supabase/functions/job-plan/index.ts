@@ -29,7 +29,7 @@
 //   move_milestone { milestone_id, due_date, owner_id? }   the week planner's drag; pins the stage
 //   preview_email { entity_id?, kind: blank|records_request, task_label?, items? }  an email from a task
 //   send_email    { entity_id?, to, subject, text, kind, items?, period_end?, test?, task?, task_label?, to_staff_id? }
-//   add_comment   { task: { type, id, occurrence_date? }, body, entity_id?, task_label? }   notifies the thread (sql/315)
+//   add_comment   { task: { type, id, occurrence_date? }, body, entity_id?, task_label?, mentions?: [staff id] }   notifies the thread and the mentioned (sql/315, 318)
 //   set_day_order { day, keys[] }                           Day Plan tile order (sql/313)
 //   save_holiday / delete_holiday / handover_preview        holidays and handover drafts (sql/317)
 //   complete_bm_job { schedule_id, minutes?, note? }        a BM job done in Athena (sql/311)
@@ -531,14 +531,21 @@ Deno.serve(async (req) => {
         if (!body) throw new BadRequest("Nothing to say");
         const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
         const label = p.task_label ? String(p.task_label).slice(0, 160) : null;
+        // @mentions (sql/318): ids the picker inserted, checked against staff.
+        const mentionIds = [...new Set((Array.isArray(p.mentions) ? p.mentions : []).map((x: unknown) => String(x)).filter((x: string) => UUID.test(x) && x !== me))].slice(0, 20);
         const { data: row, error } = await db.from("task_comments").insert({
-          task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, entity_id: entityId, task_label: label, author_id: me, body, kind: "comment",
+          task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, entity_id: entityId, task_label: label, author_id: me, body, kind: "comment", mentions: mentionIds,
         }).select("id").single();
         if (error) throw new Error(error.message);
 
-        const { data: thread } = await db.from("task_comments").select("author_id, to_staff_id").eq("task_type", task.type).eq("task_id", task.id);
+        const { data: thread } = await db.from("task_comments").select("author_id, to_staff_id, mentions").eq("task_type", task.type).eq("task_id", task.id);
         const others = new Set<string>();
-        (thread || []).forEach((c) => { if (c.author_id && c.author_id !== me) others.add(c.author_id); if (c.to_staff_id && c.to_staff_id !== me) others.add(c.to_staff_id); });
+        (thread || []).forEach((c) => {
+          if (c.author_id && c.author_id !== me) others.add(c.author_id);
+          if (c.to_staff_id && c.to_staff_id !== me) others.add(c.to_staff_id);
+          (c.mentions || []).forEach((id: string) => { if (id !== me) others.add(id); });
+        });
+        const mentioned = new Set(mentionIds);
         let notified = 0;
         if (others.size) {
           const [{ data: people }, { data: meRow }, { data: ent }] = await Promise.all([
@@ -548,10 +555,12 @@ Deno.serve(async (req) => {
           ]);
           const { data: settings } = await db.from("job_plan_settings").select("comms_mailbox").eq("id", true).maybeSingle();
           const myFirst = String(meRow?.name || "").split(" ")[0] || "A colleague";
-          const subject = `Re: ${[ent?.name, label].filter(Boolean).join(" – ") || "a task"}`;
+          const what = [ent?.name, label].filter(Boolean).join(" – ") || "a task";
           for (const person of people || []) {
             if (!person.email) continue;
-            const text = `Hi ${String(person.name || "").split(" ")[0]},\n\n${myFirst} replied on ${label || "the task"}${ent?.name ? ` (${ent.name})` : ""} in Athena:\n\n${body}\n\n—\nReply in Athena: ${taskUrl(task)}`;
+            const isMention = mentioned.has(person.id);
+            const subject = isMention ? `${myFirst} mentioned you on ${what}` : `Re: ${what}`;
+            const text = `Hi ${String(person.name || "").split(" ")[0]},\n\n${myFirst} ${isMention ? "mentioned you" : "replied"} on ${label || "the task"}${ent?.name ? ` (${ent.name})` : ""} in Athena:\n\n${body}\n\n—\nReply in Athena: ${taskUrl(task)}`;
             try {
               await sendGeneric(db, { entityId: null, to: person.email, subject, text, ownerId: me, mailbox: settings?.comms_mailbox || null });
               notified++;

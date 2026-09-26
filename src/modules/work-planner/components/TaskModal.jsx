@@ -35,6 +35,8 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
   const [comments, setComments] = useState([]);
   const [legacyNotes, setLegacyNotes] = useState([]);
   const [text, setText] = useState('');
+  const [mentions, setMentions] = useState([]); // staff ids picked with @
+  const [mentionQ, setMentionQ] = useState(null); // text after the @ being typed, null when closed
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [ask, setAsk] = useState(null);
@@ -83,12 +85,28 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
     if (!body) return;
     setBusy(true); setError(null);
     try {
-      const res = await callJobPlan({ action: 'add_comment', task: { type, id, occurrence_date: occ || null }, body, entity_id: entityId, task_label: label });
-      setText('');
+      const kept = mentions.filter((m) => body.includes(`@${(staffMap?.[m]?.name || '').split(' ')[0]}`));
+      const res = await callJobPlan({ action: 'add_comment', task: { type, id, occurrence_date: occ || null }, body, entity_id: entityId, task_label: label, mentions: kept });
+      setText(''); setMentions([]); setMentionQ(null);
       await load();
       if (res.notified) setError(null);
     } catch (e) { setError(e.message || String(e)); }
     finally { setBusy(false); }
+  };
+
+  // @ in the comment box offers the team; picking one inserts @First and
+  // remembers who, so they get the comment by email (sql/318).
+  const onTextChange = (v) => {
+    setText(v);
+    const m = v.slice(0, v.length).match(/(?:^|\s)@([A-Za-z]*)$/);
+    setMentionQ(m ? m[1] : null);
+  };
+  const mentionOptions = mentionQ === null ? [] : (staffList || []).filter((s) => s.id !== profile?.id && s.work_planner !== false && (s.name || '').toLowerCase().startsWith(mentionQ.toLowerCase())).slice(0, 8);
+  const pickMention = (s) => {
+    const first = (s.name || '').split(' ')[0];
+    setText((t) => t.replace(/@[A-Za-z]*$/, `@${first} `));
+    setMentions((m) => (m.includes(s.id) ? m : [...m, s.id]));
+    setMentionQ(null);
   };
 
   const thread = useMemo(() => {
@@ -221,12 +239,27 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'flex-start' }}>
-              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="Add a comment — everyone on this thread gets it by email"
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) post(); }}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'flex-start', position: 'relative' }}>
+              <textarea value={text} onChange={(e) => onTextChange(e.target.value)} rows={2} placeholder="Add a comment — @ someone to bring them in; everyone on the thread gets it by email"
+                onKeyDown={(e) => {
+                  if (mentionOptions.length && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); pickMention(mentionOptions[0]); return; }
+                  if (e.key === 'Escape' && mentionQ !== null) { setMentionQ(null); return; }
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) post();
+                }}
                 style={{ flex: 1, padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, resize: 'vertical' }} />
+              {mentionOptions.length > 0 && (
+                <div style={{ position: 'absolute', left: 0, bottom: '100%', marginBottom: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: 4, zIndex: 5, minWidth: 200 }}>
+                  {mentionOptions.map((s) => (
+                    <div key={s.id} onMouseDown={(e) => { e.preventDefault(); pickMention(s); }} style={{ padding: '5px 10px', fontSize: 13, cursor: 'pointer', borderRadius: 6 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+                      {s.name}
+                    </div>
+                  ))}
+                </div>
+              )}
               <button onClick={post} disabled={busy || !text.trim()} style={BTN.primary.sm}>{busy ? 'Posting…' : 'Post'}</button>
             </div>
+            {mentions.length > 0 && <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>Will be emailed: {mentions.map((m) => (staffMap?.[m]?.name || '').split(' ')[0]).join(', ')}</div>}
           </>
         )}
       </div>
