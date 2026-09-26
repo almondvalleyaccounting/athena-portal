@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../../shell/AppShell';
+import { supabase } from '../../../lib/supabase';
 import { BTN } from '../../../lib/buttonStyles';
 import {
   fetchAccountsJobs, fetchAccountsJob, fetchPlan, fetchActiveStaff, callJobPlan,
@@ -81,6 +82,7 @@ export default function PlanJobModule() {
   return (
     <Routes>
       <Route path="/" element={<PlanList />} />
+      <Route path="/review" element={<ReviewDrafts />} />
       <Route path="/:entityId/:periodEnd" element={<PlanEditor />} />
     </Routes>
   );
@@ -135,19 +137,24 @@ function PlanList() {
   const selectable = rows.filter((j) => j.plan_status !== 'committed');
   const allSelected = selectable.length > 0 && selectable.every((j) => selected.has(keyOf(j)));
 
-  const commitDefaults = async () => {
-    const items = rows.filter((j) => selected.has(keyOf(j))).map((j) => ({ entity_id: j.entity_id, period_end: j.period_end }));
-    if (!items.length) return;
-    if (!window.confirm(`Commit ${items.length} job${items.length === 1 ? '' : 's'} with the default plan? Each gets the standard chain from its year end, owners from the allocations, and no meeting unless the client has the service.`)) return;
+  // Propose drafts for the selection, then go and review them together.
+  const proposeDefaults = async () => {
+    const items = rows.filter((j) => selected.has(keyOf(j)) && !j.plan_status).map((j) => ({ entity_id: j.entity_id, period_end: j.period_end }));
+    const already = rows.filter((j) => selected.has(keyOf(j)) && j.plan_status === 'draft').length;
+    if (!items.length && !already) return;
     setBusy(true); setBatchResult(null); setError(null);
     try {
-      const res = await callJobPlan({ action: 'batch_commit', items });
-      setBatchResult(res);
+      if (items.length) {
+        const res = await callJobPlan({ action: 'batch_propose', items });
+        const failed = res.results.filter((r) => !r.ok);
+        if (failed.length) setBatchResult({ committed: res.proposed, results: res.results, verb: 'Proposed' });
+      }
       setSelected(new Set());
-      await load();
+      navigate('/planner/plan/review');
     } catch (e) { setError(e.message || String(e)); }
     finally { setBusy(false); }
   };
+  const draftCount = rows.filter((j) => j.plan_status === 'draft').length;
 
   return (
     <div style={{ padding: '16px 20px', fontFamily: font, display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'auto' }}>
@@ -171,19 +178,23 @@ function PlanList() {
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Client…" style={{ ...selStyle, minWidth: 200 }} />
         <div style={{ flex: 1 }} />
         <button onClick={load} style={BTN.secondary.sm}>Refresh</button>
+        {draftCount > 0 && (
+          <button onClick={() => navigate('/planner/plan/review')} style={BTN.secondary.sm}>Review drafts ({draftCount})</button>
+        )}
         <button
-          onClick={commitDefaults}
+          onClick={proposeDefaults}
           disabled={busy || selected.size === 0}
           style={{ ...BTN.primary.sm, opacity: busy || selected.size === 0 ? 0.5 : 1 }}
+          title="Draft the default chain for the selected jobs, then review them together before committing"
         >
-          {busy ? 'Committing…' : `Commit ${selected.size || ''} with defaults`}
+          {busy ? 'Proposing…' : `Propose defaults for ${selected.size || ''}`}
         </button>
       </div>
 
       {error && <div style={banner('#fee2e2', '#991b1b', '#fca5a5')}>{error}</div>}
       {batchResult && (
         <div style={banner('#dcfce7', '#166534', '#86efac')}>
-          Committed {batchResult.committed} of {batchResult.results.length}.
+          {batchResult.verb || 'Committed'} {batchResult.committed} of {batchResult.results.length}.
           {batchResult.results.filter((r) => !r.ok).map((r) => (
             <div key={`${r.entity_id}|${r.period_end}`} style={{ fontSize: 12.5, marginTop: 2 }}>
               {jobs.find((j) => j.entity_id === r.entity_id && j.period_end === r.period_end)?.client || r.entity_id}: {r.error}
@@ -276,6 +287,157 @@ function PlanList() {
 const activeBtn = { ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' };
 const banner = (bg, fg, border) => ({ padding: '8px 12px', borderRadius: 8, background: bg, color: fg, border: `1px solid ${border}`, fontSize: 13.5 });
 
+// What committing does, and does not yet do. Kept honest: the client-facing
+// emails are the playbook phase and are not sent today.
+const COMMIT_CONSEQUENCES = (n) => [
+  `Commit ${n} plan${n === 1 ? '' : 's'}?`,
+  '',
+  'From tonight:',
+  '• Each stage lands on its owner’s Today list on its date, and the nightly tick moves the dates as records arrive or slip.',
+  '• Requests and chases are skipped automatically once BrightManager shows Records Received.',
+  '',
+  'Not yet, until the client-comms playbooks are switched on:',
+  '• Clients with a meeting will get a meeting invite request for the date shown.',
+  '• Clients whose records are outstanding will get a year-end paperwork request — a gap request where our VAT returns already cover the year.',
+  '',
+  'Any plan can be taken back to draft from its page.',
+].join('\n');
+
+// ── Review drafts together ───────────────────────────────────────────────────
+
+const KEY_STAGES = [
+  { key: 'request_records', label: 'Request' },
+  { key: 'records_in|close_books', label: 'Records in' },
+  { key: 'prepare', label: 'Prepare' },
+  { key: 'internal_review', label: 'Review' },
+  { key: 'client_meeting|send_for_approval', label: 'Meeting / send' },
+  { key: 'file_ch', label: 'File' },
+];
+
+function ReviewDrafts() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [jobs, setJobs] = useState([]);
+  const [stages, setStages] = useState(new Map()); // plan_id -> { stage_key -> milestone }
+  const [mine, setMine] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const all = await fetchAccountsJobs();
+      const drafts = all.filter((j) => j.plan_status === 'draft');
+      setJobs(drafts);
+      const map = new Map();
+      const ids = drafts.map((j) => j.plan_id);
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data, error: e } = await supabase.from('job_milestones')
+          .select('plan_id, stage_key, label, due_date, status, owner_id').in('plan_id', ids.slice(i, i + 150));
+        if (e) throw e;
+        for (const m of data || []) {
+          if (!map.has(m.plan_id)) map.set(m.plan_id, {});
+          map.get(m.plan_id)[m.stage_key] = m;
+        }
+      }
+      setStages(map);
+    } catch (e) { setError(e.message || String(e)); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const rows = useMemo(() => (mine && profile?.id ? jobs.filter((j) => j.preparer_id === profile.id) : jobs), [jobs, mine, profile]);
+  const stageDate = (j, keys) => {
+    const s = stages.get(j.plan_id) || {};
+    for (const k of keys.split('|')) if (s[k] && s[k].status !== 'removed') return s[k].due_date;
+    return null;
+  };
+  const hasMeeting = (j) => !!(stages.get(j.plan_id) || {}).client_meeting && (stages.get(j.plan_id) || {}).client_meeting.status !== 'removed';
+
+  const commitAll = async () => {
+    if (!rows.length) return;
+    if (!window.confirm(COMMIT_CONSEQUENCES(rows.length))) return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const res = await callJobPlan({ action: 'batch_commit', items: rows.map((j) => ({ entity_id: j.entity_id, period_end: j.period_end })) });
+      setResult(res);
+      await load();
+    } catch (e) { setError(e.message || String(e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ padding: '16px 20px', fontFamily: font, display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <button onClick={() => navigate('/planner/plan')} style={{ ...BTN.secondary.sm, marginBottom: 8 }}>← All jobs</button>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Review drafts</div>
+          <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+            What the default plan schedules for each job. Open any row to adjust it; commit the rest together.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button onClick={() => setMine(true)} style={mine ? activeBtn : BTN.secondary.sm}>My jobs</button>
+          <button onClick={() => setMine(false)} style={!mine ? activeBtn : BTN.secondary.sm}>Everyone</button>
+          <button onClick={load} style={BTN.secondary.sm}>Refresh</button>
+          <button onClick={commitAll} disabled={busy || rows.length === 0} style={{ ...BTN.primary.sm, opacity: busy || rows.length === 0 ? 0.5 : 1 }}>
+            {busy ? 'Committing…' : `Commit these ${rows.length}`}
+          </button>
+        </div>
+      </div>
+
+      {error && <div style={banner('#fee2e2', '#991b1b', '#fca5a5')}>{error}</div>}
+      {result && (
+        <div style={banner('#dcfce7', '#166534', '#86efac')}>
+          Committed {result.committed} of {result.results.length}.
+          {result.results.filter((r) => !r.ok).map((r) => (
+            <div key={`${r.entity_id}|${r.period_end}`} style={{ fontSize: 12.5, marginTop: 2 }}>{r.entity_id}: {r.error}</div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto' }}>
+        {loading ? <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>Loading…</div>
+        : rows.length === 0 ? <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No drafts to review. Select jobs on the list and propose defaults first.</div>
+        : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={th}>Client</th>
+                <th style={th}>Year end</th>
+                <th style={th}>Meeting</th>
+                <th style={th} title="A VAT return we prepare ends at or within two months of the year end, so the request is for the gaps">Records</th>
+                {KEY_STAGES.map((s) => <th key={s.key} style={th}>{s.label}</th>)}
+                <th style={th}>Companies House</th>
+                {!mine && <th style={th}>Preparer</th>}
+                <th style={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((j) => (
+                <tr key={j.plan_id}>
+                  <td style={{ ...td, fontWeight: 500 }}>{j.client}</td>
+                  <td style={td}>{fmtDate(j.period_end)}</td>
+                  <td style={td}>{hasMeeting(j) ? <span style={pill('#ede9fe', '#5b21b6')}>Yes</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                  <td style={td}>{j.vat_covers_year_end ? <span style={pill('#dcfce7', '#166534')} title="Gap request">via VAT</span> : <span style={{ color: '#64748b' }}>full request</span>}</td>
+                  {KEY_STAGES.map((s) => <td key={s.key} style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(stageDate(j, s.key)) || <span style={{ color: '#cbd5e1' }}>—</span>}</td>)}
+                  <td style={{ ...td, color: '#64748b' }}>{fmtDate(j.ch_deadline)}</td>
+                  {!mine && <td style={td}>{j.preparer_name}</td>}
+                  <td style={{ ...td, textAlign: 'right' }}>
+                    <button onClick={() => navigate(`/planner/plan/${j.entity_id}/${j.period_end}`)} style={BTN.secondary.sm}>Open</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Editor ───────────────────────────────────────────────────────────────────
 
 function PlanEditor() {
@@ -350,6 +512,7 @@ function PlanEditor() {
     run({ action: 'propose', entity_id: entityId, period_end: periodEnd, replan: true }, 'Chain recomputed.');
   };
   const commit = async () => {
+    if (!window.confirm(COMMIT_CONSEQUENCES(1))) return;
     if (dirty) { await save(); }
     run({ action: 'commit', plan_id: plan.id }, 'Plan committed.');
   };

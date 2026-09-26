@@ -15,9 +15,11 @@
 //                 unpinned milestones.
 //   commit        { plan_id }
 //   uncommit      { plan_id }        back to draft
+//   batch_propose { items: [{ entity_id, period_end }] }
+//                 draft the default chain for many jobs, to review together
 //   batch_commit  { items: [{ entity_id, period_end }] }
-//                 propose with defaults then commit, for the jobs that take
-//                 the template unchanged.
+//                 commit reviewed drafts as they stand; a job with no plan
+//                 yet gets the default proposed first.
 //   set_client_meeting { entity_id, has_meeting (true|false|null), basis?, note? }
 //                 the client-level answer (sql/306); null clears it back to
 //                 what the billing says.
@@ -46,6 +48,18 @@ function json(data: unknown, status = 200) {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// When a VAT return we prepare ends at or within two months of the year end
+// we already hold most of the paperwork, so the request is for the gaps.
+// Bobby, 2026-09-26. The list is the stage's note so it lands on Today.
+const GAP_REQUEST_LABEL = "Request year-end gaps (VAT covers the year)";
+const GAP_REQUEST_NOTE = [
+  "Most records are already with us via the VAT returns. Ask only for the gaps:",
+  "• loan statements at the year end; any new HP or finance agreements",
+  "• payroll figures if payroll is not ours (P32s, P11Ds)",
+  "• director's personal tax: P60/P45/P11D, savings interest, rental income, home-office costs, dividends from other companies, trust income, state pension, child benefit, student loan balance",
+  "• free-form: specific invoices, explanations of unusual items (e.g. material donations)",
+].join("\n");
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const TEMPLATE_KEY = "annual_accounts";
 
@@ -186,14 +200,17 @@ Deno.serve(async (req) => {
       const { error } = await db.from("job_milestones").delete().in("id", gone);
       if (error) throw new Error(error.message);
     }
+    const viaVat = !!job.vat_covers_year_end;
     const rows = chain.filter((m) => !keep.has(m.stage_key)).map((m) => {
       const prior = existing.find((x) => x.stage_key === m.stage_key);
+      const gap = viaVat && m.stage_key === "request_records";
       return {
-        plan_id: plan.id, stage_key: m.stage_key, seq: m.seq, label: m.label, kind: m.kind, hours: m.hours,
+        plan_id: plan.id, stage_key: m.stage_key, seq: m.seq,
+        label: gap ? GAP_REQUEST_LABEL : m.label, kind: m.kind, hours: m.hours,
         owner_role: m.owner_role,
         owner_id: prior?.owner_id ?? m.owner_id,
         due_date: m.due_date, planned_date: m.planned_date,
-        status: "pending", note: prior?.note ?? null, updated_at: now,
+        status: "pending", note: prior?.note ?? (gap ? GAP_REQUEST_NOTE : null), updated_at: now,
       };
     });
     if (rows.length) {
@@ -204,6 +221,7 @@ Deno.serve(async (req) => {
       has_meeting: plan.has_meeting ?? null, books_with_us: plan.books_with_us ?? null,
       prep_job_id: job.prep_job_id ?? null, ch_job_id: job.ch_job_id ?? null, ct_job_id: job.ct_job_id ?? null,
       ch_deadline: job.ch_deadline ?? null, ct_deadline: job.ct_deadline ?? null,
+      records_via_vat: viaVat,
       planned_by: me, planned_at: now, updated_at: now,
     }).eq("id", plan.id);
     if (pErr) throw new Error(pErr.message);
@@ -317,6 +335,27 @@ Deno.serve(async (req) => {
         return json({ success: true, plan: await loadPlan(plan.id), milestones: await milestonesOf(plan.id) });
       }
 
+      // Draft the default chain for many jobs at once so a preparer can review
+      // the whole list before committing it. Existing drafts are rebuilt
+      // (pins kept); committed plans are left alone.
+      case "batch_propose": {
+        const items: Array<Record<string, unknown>> = Array.isArray(p.items) ? p.items : [];
+        if (!items.length) throw new BadRequest("items required");
+        if (items.length > 200) throw new BadRequest("At most 200 jobs per batch");
+        const results: Array<{ entity_id: string; period_end: string; ok: boolean; error?: string }> = [];
+        for (const it of items) {
+          const entityId = uuid(it.entity_id, "entity_id");
+          const periodEnd = isoDate(it.period_end, "period_end");
+          try {
+            await propose(entityId, periodEnd, null, null, false);
+            results.push({ entity_id: entityId, period_end: periodEnd, ok: true });
+          } catch (e) {
+            results.push({ entity_id: entityId, period_end: periodEnd, ok: false, error: (e as Error).message });
+          }
+        }
+        return json({ success: true, proposed: results.filter((r) => r.ok).length, results });
+      }
+
       case "batch_commit": {
         const items: Array<Record<string, unknown>> = Array.isArray(p.items) ? p.items : [];
         if (!items.length) throw new BadRequest("items required");
@@ -326,8 +365,11 @@ Deno.serve(async (req) => {
           const entityId = uuid(it.entity_id, "entity_id");
           const periodEnd = isoDate(it.period_end, "period_end");
           try {
-            const { plan } = await propose(entityId, periodEnd, null, null, false);
-            await commit(plan.id as string);
+            // A reviewed draft commits as it stands; only a job with no plan
+            // yet gets the default proposed first.
+            const { data: found } = await db.from("job_plans").select("id, status").eq("entity_id", entityId).eq("period_end", periodEnd).maybeSingle();
+            const planId = found?.status === "draft" ? (found.id as string) : (await propose(entityId, periodEnd, null, null, false)).plan.id as string;
+            await commit(planId);
             results.push({ entity_id: entityId, period_end: periodEnd, ok: true });
           } catch (e) {
             results.push({ entity_id: entityId, period_end: periodEnd, ok: false, error: (e as Error).message });
