@@ -71,11 +71,14 @@ Deno.serve(async (req) => {
 
   try {
     // ── Load everything once ─────────────────────────────────────────────
-    const { data: tmpl, error: tErr } = await db.from("workflow_templates").select("id").eq("key", "annual_accounts").maybeSingle();
-    if (tErr) throw new Error(tErr.message);
-    const { data: stagesRaw, error: sErr } = await db.from("workflow_stages").select("*").eq("template_id", tmpl?.id).order("seq");
+    // Every active template's stages, keyed by template (sql/304, sql/322).
+    const { data: stagesRaw, error: sErr } = await db.from("workflow_stages").select("*").order("seq");
     if (sErr) throw new Error(sErr.message);
-    const stages = (stagesRaw || []) as StageRule[];
+    const stagesByTemplate = new Map<string, StageRule[]>();
+    for (const s of (stagesRaw || []) as Array<StageRule & { template_id: string }>) {
+      if (!stagesByTemplate.has(s.template_id)) stagesByTemplate.set(s.template_id, []);
+      stagesByTemplate.get(s.template_id)!.push(s);
+    }
 
     const { data: plans, error: pErr } = await db.from("job_plans").select("*").eq("status", "committed");
     if (pErr) throw new Error(pErr.message);
@@ -109,6 +112,7 @@ Deno.serve(async (req) => {
     for (const plan of plans || []) {
       stats.plans++;
       try {
+        const stages = stagesByTemplate.get(plan.template_id) || [];
         const ms = milestonesByPlan.get(plan.id) || [];
         const prep = plan.prep_job_id ? bmRows.get(plan.prep_job_id) : null;
         const ch = plan.ch_job_id ? bmRows.get(plan.ch_job_id) : null;
@@ -191,14 +195,14 @@ Deno.serve(async (req) => {
 
         // 3. Risk
         let risk = "none"; let reason: string | null = null;
-        const fileCh = byKey.get("file_ch");
+        const fileCh = byKey.get("file_ch") || byKey.get("file_sa");
         const limit = plan.ch_deadline ? toISO(minusWorkingDays(parseISO(plan.ch_deadline), 10)) : null;
         const lateExternal = ms.find((m) => externalOverdue(m));
         const lateStaff = ms.filter((m) => m.status === "pending" && !EXTERNAL_GATES.has(m.stage_key) && m.owner_role !== "client" && m.due_date < today);
         const unasked = ms.find((m) => m.stage_key === "records_in" && m.status === "pending" && m.due_date < today && !externalOverdue(m));
         const daysLate = (iso: string) => Math.round((parseISO(today).getTime() - parseISO(iso).getTime()) / 86400000);
         if (fileCh && fileCh.status === "pending" && limit && today > limit) {
-          risk = "urgent"; reason = `Inside the Companies House buffer (deadline ${plan.ch_deadline})`;
+          risk = "urgent"; reason = `Inside the statutory buffer (deadline ${plan.ch_deadline})`;
         } else if (fileCh && fileCh.status === "pending" && limit && fileCh.due_date >= limit) {
           risk = "at_risk"; reason = lateExternal
             ? `${lateExternal.label} ${daysLate(lateExternal.due_date)} days late; filing pushed to the buffer`
@@ -293,6 +297,7 @@ Deno.serve(async (req) => {
       const inviteFrom = toISO(new Date(parseISO(today).getTime() + 21 * 86400000));
       let sentThisRun = 0;
       for (const plan of plans || []) {
+        const stages = stagesByTemplate.get(plan.template_id) || [];
         const ms = milestonesByPlan.get(plan.id) || [];
         const byKey = new Map(ms.map((m) => [m.stage_key, m]));
         const gateDone = (m: Record<string, any>) => {

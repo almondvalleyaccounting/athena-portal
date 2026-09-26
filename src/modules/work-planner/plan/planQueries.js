@@ -4,23 +4,24 @@ import { fetchAllRows } from '../../../lib/fetchAllRows';
 // Reads are direct (RLS: active staff). Every write goes through the
 // job-plan edge function — the browser holds SELECT only on these tables.
 
+// Accounts jobs (sql/304) and self assessment jobs (sql/322) share one row
+// shape; `template_key` says which chain a row takes.
 export async function fetchAccountsJobs() {
-  return fetchAllRows(() => supabase
-    .from('v_accounts_jobs')
-    .select('*')
-    .order('ch_deadline', { ascending: true, nullsFirst: false })
-    .order('entity_id'));
+  const [acc, sa] = await Promise.all([
+    fetchAllRows(() => supabase.from('v_accounts_jobs').select('*').order('ch_deadline', { ascending: true, nullsFirst: false }).order('entity_id')),
+    fetchAllRows(() => supabase.from('v_sa_jobs').select('*').order('ch_deadline', { ascending: true, nullsFirst: false }).order('entity_id')),
+  ]);
+  return [...acc.map((j) => ({ ...j, template_key: 'annual_accounts' })), ...sa];
 }
 
-export async function fetchAccountsJob(entityId, periodEnd) {
-  const { data, error } = await supabase
-    .from('v_accounts_jobs')
-    .select('*')
-    .eq('entity_id', entityId)
-    .eq('period_end', periodEnd)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+export async function fetchAccountsJob(entityId, periodEnd, templateKey) {
+  const views = templateKey === 'self_assessment' ? ['v_sa_jobs', 'v_accounts_jobs'] : ['v_accounts_jobs', 'v_sa_jobs'];
+  for (const v of views) {
+    const { data, error } = await supabase.from(v).select('*').eq('entity_id', entityId).eq('period_end', periodEnd).maybeSingle();
+    if (error) throw error;
+    if (data) return { ...data, template_key: data.template_key || 'annual_accounts' };
+  }
+  return null;
 }
 
 export async function fetchPlan(planId) {

@@ -50,6 +50,13 @@ function todayISO() {
 // when the statutory date is inside seven months. Both only while not committed.
 // The seven months clamp like the SQL interval behind the Team count; the month
 // after a year end stays on a month end (YE 31 Jan → 28 Feb, not 3 March).
+// "2025/26" from the tax year end (5 April 2026).
+function taxYearLabel(tye) {
+  if (!tye) return '';
+  const y = Number(String(tye).slice(0, 4));
+  return `tax year ${y - 1}/${String(y).slice(2)}`;
+}
+
 function flagsFor(job, today) {
   if (job.plan_status === 'committed') return [];
   const out = [];
@@ -99,6 +106,7 @@ function PlanList() {
   const [error, setError] = useState(null);
   const [mine, setMine] = useState(true);
   const [status, setStatus] = useState('all'); // all | none | draft | committed | flagged
+  const [kind, setKind] = useState('annual_accounts'); // annual_accounts | self_assessment | all
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
@@ -115,6 +123,7 @@ function PlanList() {
 
   const rows = useMemo(() => {
     let list = jobs.map((j) => ({ ...j, flags: flagsFor(j, today) }));
+    if (kind !== 'all') list = list.filter((j) => (j.template_key || 'annual_accounts') === kind);
     if (mine && profile?.id) list = list.filter((j) => j.preparer_id === profile.id);
     if (status === 'none') list = list.filter((j) => !j.plan_status);
     else if (status === 'draft') list = list.filter((j) => j.plan_status === 'draft');
@@ -125,7 +134,7 @@ function PlanList() {
       list = list.filter((j) => (j.client || '').toLowerCase().includes(s));
     }
     return list;
-  }, [jobs, mine, status, q, profile, today]);
+  }, [jobs, mine, status, q, profile, today, kind]);
 
   const counts = useMemo(() => ({
     none: rows.filter((j) => !j.plan_status).length,
@@ -134,13 +143,14 @@ function PlanList() {
     flagged: rows.filter((j) => j.flags.length).length,
   }), [rows]);
 
-  const keyOf = (j) => `${j.entity_id}|${j.period_end}`;
+  const keyOf = (j) => `${j.entity_id}|${j.period_end}|${j.template_key || 'annual_accounts'}`;
+  const itemOf = (j) => ({ entity_id: j.entity_id, period_end: j.period_end, template: j.template_key || 'annual_accounts' });
   const selectable = rows.filter((j) => j.plan_status !== 'committed');
   const allSelected = selectable.length > 0 && selectable.every((j) => selected.has(keyOf(j)));
 
   // Propose drafts for the selection, then go and review them together.
   const proposeDefaults = async () => {
-    const items = rows.filter((j) => selected.has(keyOf(j)) && !j.plan_status).map((j) => ({ entity_id: j.entity_id, period_end: j.period_end }));
+    const items = rows.filter((j) => selected.has(keyOf(j)) && !j.plan_status).map(itemOf);
     const already = rows.filter((j) => selected.has(keyOf(j)) && j.plan_status === 'draft').length;
     if (!items.length && !already) return;
     setBusy(true); setBatchResult(null); setError(null);
@@ -162,13 +172,17 @@ function PlanList() {
       <div>
         <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Plan the Job</div>
         <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
-          Every planned set of accounts, worked back from its year end. The preparer confirms the chain; the jobs that take the default can be committed together.
+          Every planned set of accounts and self assessment, worked back from its year end. The preparer confirms the chain; the jobs that take the default can be committed together.
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => setMine(true)} style={mine ? activeBtn : BTN.secondary.sm}>My jobs</button>
         <button onClick={() => setMine(false)} style={!mine ? activeBtn : BTN.secondary.sm}>Everyone</button>
+        <span style={{ width: 8 }} />
+        <button onClick={() => setKind('annual_accounts')} style={kind === 'annual_accounts' ? activeBtn : BTN.secondary.sm}>Accounts</button>
+        <button onClick={() => setKind('self_assessment')} style={kind === 'self_assessment' ? activeBtn : BTN.secondary.sm}>Self assessment</button>
+        <button onClick={() => setKind('all')} style={kind === 'all' ? activeBtn : BTN.secondary.sm}>Both</button>
         <select value={status} onChange={(e) => setStatus(e.target.value)} style={selStyle}>
           <option value="all">All plans</option>
           <option value="flagged">Flagged ({counts.flagged})</option>
@@ -209,7 +223,7 @@ function PlanList() {
           <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>Loading…</div>
         ) : rows.length === 0 ? (
           <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
-            No accounts jobs match. {mine && 'Try "Everyone".'}
+            No jobs match. {mine && 'Try "Everyone".'}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -224,8 +238,8 @@ function PlanList() {
                   />
                 </th>
                 <th style={th}>Client</th>
-                <th style={th}>Year end</th>
-                <th style={th}>Companies House</th>
+                <th style={th}>{kind === 'self_assessment' ? 'Period end' : 'Year end'}</th>
+                <th style={th}>{kind === 'self_assessment' ? 'Return due' : kind === 'all' ? 'Deadline' : 'Companies House'}</th>
                 <th style={th}>Preparer</th>
                 <th style={th}>BM status</th>
                 <th style={th} title="Annual review meeting, and why">Meeting</th>
@@ -250,7 +264,7 @@ function PlanList() {
                     <td style={td}>
                       <Link to={`/clients/${j.entity_id}`} style={{ color: '#0e7fe0', textDecoration: 'none', fontWeight: 500 }}>{j.client}</Link>
                     </td>
-                    <td style={td}>{fmtDate(j.period_end)}</td>
+                    <td style={td}>{fmtDate(j.period_end)}{j.template_key === 'self_assessment' && j.tax_year_end ? <span style={{ color: '#94a3b8', fontSize: 11.5 }}> · {taxYearLabel(j.tax_year_end)}</span> : ''}</td>
                     <td style={td}>{fmtDate(j.ch_deadline)}</td>
                     <td style={td}>{j.preparer_name || <span style={{ color: '#94a3b8' }}>Unassigned</span>}</td>
                     <td style={{ ...td, color: '#64748b' }}>{j.bm_status}</td>
@@ -270,7 +284,7 @@ function PlanList() {
                       </span>
                     </td>
                     <td style={{ ...td, textAlign: 'right' }}>
-                      <button onClick={() => navigate(`/planner/plan/${j.entity_id}/${j.period_end}`)} style={j.plan_status === 'committed' ? BTN.secondary.sm : BTN.primary.sm}>
+                      <button onClick={() => navigate(`/planner/plan/${j.entity_id}/${j.period_end}${j.template_key === 'self_assessment' ? '?template=self_assessment' : ''}`)} style={j.plan_status === 'committed' ? BTN.secondary.sm : BTN.primary.sm}>
                         {j.plan_status === 'committed' ? 'Open' : j.plan_status === 'draft' ? 'Continue' : 'Plan'}
                       </button>
                     </td>
@@ -331,6 +345,7 @@ function ReviewDrafts() {
     try {
       const all = await fetchAccountsJobs();
       const drafts = all.filter((j) => j.plan_status === 'draft');
+      // fetchPlan needs the plan id only; batch commits carry the template.
       setJobs(drafts);
       const map = new Map();
       const ids = drafts.map((j) => j.plan_id);
@@ -433,7 +448,7 @@ function ReviewDrafts() {
                   <td style={{ ...td, color: '#64748b' }}>{fmtDate(j.ch_deadline)}</td>
                   {!mine && <td style={td}>{j.preparer_name}</td>}
                   <td style={{ ...td, textAlign: 'right' }}>
-                    <button onClick={() => navigate(`/planner/plan/${j.entity_id}/${j.period_end}`)} style={BTN.secondary.sm}>Open</button>
+                    <button onClick={() => navigate(`/planner/plan/${j.entity_id}/${j.period_end}${j.template_key === 'self_assessment' ? '?template=self_assessment' : ''}`)} style={BTN.secondary.sm}>Open</button>
                   </td>
                 </tr>
               ))}
@@ -473,16 +488,17 @@ function PlanEditor() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [j, s] = await Promise.all([fetchAccountsJob(entityId, periodEnd), fetchActiveStaff()]);
+      const tKey = new URLSearchParams(window.location.search).get('template') || null;
+      const [j, s] = await Promise.all([fetchAccountsJob(entityId, periodEnd, tKey), fetchActiveStaff()]);
       setStaff(s);
-      if (!j) throw new Error('No planned accounts job for this client and year end.');
+      if (!j) throw new Error('No planned accounts or self assessment job for this client and period end.');
       setJob(j);
       if (j.plan_id) {
         const { plan: p, milestones: ms } = await fetchPlan(j.plan_id);
         setPlan(p); setMilestones(ms); setNote(p?.note || '');
       } else {
         // First visit: propose the default chain so there is something to adjust.
-        const res = await callJobPlan({ action: 'propose', entity_id: entityId, period_end: periodEnd });
+        const res = await callJobPlan({ action: 'propose', entity_id: entityId, period_end: periodEnd, template: j.template_key });
         applyResult(res);
       }
     } catch (e) { setError(e.message || String(e)); }
@@ -533,11 +549,12 @@ function PlanEditor() {
         <div style={{ flex: 1, minWidth: 260 }}>
           <button onClick={() => navigate('/planner/plan')} style={{ ...BTN.secondary.sm, marginBottom: 8 }}>← All jobs</button>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>
-            {job?.client} <span style={{ color: '#64748b', fontWeight: 500 }}>· year end {fmtDate(periodEnd)}</span>
+            {job?.client} <span style={{ color: '#64748b', fontWeight: 500 }}>· {job?.template_key === 'self_assessment' ? `${taxYearLabel(job.tax_year_end)} · period end` : 'year end'} {fmtDate(periodEnd)}</span>
           </div>
           <div style={{ fontSize: 13, color: '#64748b', marginTop: 2, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <span>Companies House by <b>{fmtDate(job?.ch_deadline) || '—'}</b></span>
-            <span>CT600 by <b>{fmtDate(job?.ct_deadline) || '—'}</b></span>
+            {job?.template_key === 'self_assessment'
+              ? <span>Return due <b>{fmtDate(job?.ch_deadline) || '—'}</b></span>
+              : <><span>Companies House by <b>{fmtDate(job?.ch_deadline) || '—'}</b></span><span>CT600 by <b>{fmtDate(job?.ct_deadline) || '—'}</b></span></>}
             <span>Preparer <b>{job?.preparer_name || 'Unassigned'}</b></span>
             <span>BM status <b>{job?.bm_status || '—'}</b></span>
             {plan && <span style={PLAN_PILL[plan.status]}>{plan.status}</span>}

@@ -232,20 +232,33 @@ Deno.serve(async (req) => {
     await sendGeneric(db, { entityId: null, to: who.email, subject: `Handover update – ${h.date_from} to ${h.date_to}`, text: `Hi ${String(who.name || "").split(" ")[0]},\n\nA change to my handover:\n\n• ${line}\n\nThanks,\n${first}`, ownerId: me, mailbox: settings?.comms_mailbox || null });
   }
 
-  async function template() {
-    const { data: t, error } = await db.from("workflow_templates").select("id, key").eq("key", TEMPLATE_KEY).eq("active", true).maybeSingle();
+  // Templates by key (annual_accounts, self_assessment — sql/304, sql/322)
+  // or by the id a plan already carries.
+  async function template(keyOrId?: string | null) {
+    const byId = !!keyOrId && UUID.test(keyOrId);
+    let q = db.from("workflow_templates").select("id, key").eq("active", true);
+    q = byId ? q.eq("id", keyOrId!) : q.eq("key", keyOrId || TEMPLATE_KEY);
+    const { data: t, error } = await q.maybeSingle();
     if (error) throw new Error(error.message);
-    if (!t) throw new BadRequest("Annual accounts template is not set up", 500);
+    if (!t) throw new BadRequest("That workflow template is not set up", 500);
     const { data: stages, error: sErr } = await db.from("workflow_stages").select("*").eq("template_id", t.id).order("seq");
     if (sErr) throw new Error(sErr.message);
-    return { id: t.id as string, stages: (stages || []) as StageRule[] };
+    return { id: t.id as string, key: t.key as string, stages: (stages || []) as StageRule[] };
   }
 
-  async function accountsJob(entityId: string, periodEnd: string) {
-    const { data, error } = await db.from("v_accounts_jobs").select("*").eq("entity_id", entityId).eq("period_end", periodEnd).maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) throw new BadRequest("No planned accounts job for that client and year end", 404);
-    return data;
+  /** The job at (client, period end): a set of accounts, or a self assessment. */
+  async function accountsJob(entityId: string, periodEnd: string, templateKey?: string | null) {
+    const tryView = async (view: string) => {
+      const { data, error } = await db.from(view).select("*").eq("entity_id", entityId).eq("period_end", periodEnd).maybeSingle();
+      if (error) throw new Error(error.message);
+      return data;
+    };
+    const order = templateKey === "self_assessment" ? ["v_sa_jobs", "v_accounts_jobs"] : ["v_accounts_jobs", "v_sa_jobs"];
+    for (const v of order) {
+      const data = await tryView(v);
+      if (data) return { ...data, template_key: data.template_key || "annual_accounts" };
+    }
+    throw new BadRequest("No planned accounts or self assessment job for that client and period end", 404);
   }
 
   async function loadPlan(planId: string) {
@@ -310,7 +323,7 @@ Deno.serve(async (req) => {
    * them back deliberately).
    */
   async function rebuild(plan: Record<string, unknown>, job: Record<string, unknown>) {
-    const t = await template();
+    const t = await template((plan.template_id as string) || (job.template_key as string));
     const ctx0 = await resolveContext(plan.entity_id as string, job, plan as { has_meeting: boolean | null; books_with_us: boolean | null });
     const existing = await milestonesOf(plan.id as string);
     const keep = new Map(existing.filter((m) => m.pinned_by || m.status === "done").map((m) => [m.stage_key, m]));
@@ -361,9 +374,9 @@ Deno.serve(async (req) => {
     return { defaults: { has_meeting: ctx0.meetingDefault, meeting_basis: ctx0.meetingBasis, books_with_us: ctx0.booksDefault, owners: ctx0.owners } };
   }
 
-  async function propose(entityId: string, periodEnd: string, hasMeeting: boolean | null, booksWithUs: boolean | null, replan: boolean) {
-    const job = await accountsJob(entityId, periodEnd);
-    const t = await template();
+  async function propose(entityId: string, periodEnd: string, hasMeeting: boolean | null, booksWithUs: boolean | null, replan: boolean, templateKey?: string | null) {
+    const job = await accountsJob(entityId, periodEnd, templateKey);
+    const t = await template(job.template_key as string);
     let plan: Record<string, unknown>;
     const { data: found, error } = await db.from("job_plans").select("*")
       .eq("entity_id", entityId).eq("period_end", periodEnd).eq("template_id", t.id).maybeSingle();
@@ -406,7 +419,7 @@ Deno.serve(async (req) => {
       case "propose": {
         const out = await propose(
           uuid(p.entity_id, "entity_id"), isoDate(p.period_end, "period_end"),
-          optBool(p.has_meeting), optBool(p.books_with_us), p.replan === true,
+          optBool(p.has_meeting), optBool(p.books_with_us), p.replan === true, p.template ? String(p.template) : null,
         );
         return json({ success: true, ...out });
       }
@@ -450,7 +463,7 @@ Deno.serve(async (req) => {
         }
 
         if (variantChanged) {
-          const job = await accountsJob(plan.entity_id, plan.period_end);
+          const job = await accountsJob(plan.entity_id, plan.period_end, (await template(plan.template_id)).key);
           await rebuild({ ...plan, has_meeting: hasMeeting, books_with_us: booksWithUs }, job);
         }
         return json({ success: true, plan: await loadPlan(plan.id), milestones: await milestonesOf(plan.id) });
@@ -480,7 +493,7 @@ Deno.serve(async (req) => {
           const entityId = uuid(it.entity_id, "entity_id");
           const periodEnd = isoDate(it.period_end, "period_end");
           try {
-            await propose(entityId, periodEnd, null, null, false);
+            await propose(entityId, periodEnd, null, null, false, it.template ? String(it.template) : null);
             results.push({ entity_id: entityId, period_end: periodEnd, ok: true });
           } catch (e) {
             results.push({ entity_id: entityId, period_end: periodEnd, ok: false, error: (e as Error).message });
@@ -500,8 +513,11 @@ Deno.serve(async (req) => {
           try {
             // A reviewed draft commits as it stands; only a job with no plan
             // yet gets the default proposed first.
-            const { data: found } = await db.from("job_plans").select("id, status").eq("entity_id", entityId).eq("period_end", periodEnd).maybeSingle();
-            const planId = found?.status === "draft" ? (found.id as string) : (await propose(entityId, periodEnd, null, null, false)).plan.id as string;
+            const tKey = it.template ? String(it.template) : null;
+            let fq = db.from("job_plans").select("id, status").eq("entity_id", entityId).eq("period_end", periodEnd);
+            if (tKey) fq = fq.eq("template_id", (await template(tKey)).id);
+            const { data: found } = await fq.maybeSingle();
+            const planId = found?.status === "draft" ? (found.id as string) : (await propose(entityId, periodEnd, null, null, false, tKey)).plan.id as string;
             await commit(planId);
             results.push({ entity_id: entityId, period_end: periodEnd, ok: true });
           } catch (e) {
@@ -701,7 +717,7 @@ Deno.serve(async (req) => {
         // The job: meeting on, chain rebuilt, the date pinned if known.
         if (planId) {
           const plan = await loadPlan(planId);
-          const job = await accountsJob(plan.entity_id, plan.period_end);
+          const job = await accountsJob(plan.entity_id, plan.period_end, (await template(plan.template_id)).key);
           await db.from("job_plans").update({ has_meeting: true, updated_at: now }).eq("id", planId);
           await rebuild({ ...plan, has_meeting: true }, job);
           if (meetingDate) await db.from("job_milestones").update({ due_date: meetingDate, pinned_by: me, pinned_at: now, updated_at: now }).eq("plan_id", planId).eq("stage_key", "client_meeting");
