@@ -113,13 +113,17 @@ Deno.serve(async (req) => {
 
   /** Owners by role, and the variant defaults, from the allocations data. */
   async function resolveContext(entityId: string, job: Record<string, unknown>, plan: { has_meeting: boolean | null; books_with_us: boolean | null } | null) {
-    const [inferred, alloc, reviewers, services] = await Promise.all([
+    const [inferred, alloc, reviewers, services, fees] = await Promise.all([
       db.from("v_inferred_allocations").select("canonical_service_id, assignee_id").eq("entity_id", entityId),
       db.from("client_service_allocations").select("service_id, fee_earner_id, fee_earner_manager_id").eq("entity_id", entityId),
       db.from("service_reviewers").select("canonical_service_id, reviewer_id").eq("entity_id", entityId),
       db.from("services").select("canonical_service_id, service_name, status").eq("entity_id", entityId),
+      // The fee engine's live fees: a client with the Review Meetings line
+      // (service_id review_meetings, QBO item "Review Meetings") gets the
+      // meeting stages by default. Bobby, 2026-09-26.
+      db.from("entity_fees").select("service_id").eq("entity_id", entityId).eq("service_id", "review_meetings").limit(1),
     ]);
-    for (const r of [inferred, alloc, reviewers, services]) if (r.error) throw new Error(r.error.message);
+    for (const r of [inferred, alloc, reviewers, services, fees]) if (r.error) throw new Error(r.error.message);
     const inf = (k: string) => inferred.data?.find((x) => x.canonical_service_id === k)?.assignee_id ?? null;
     const al = (k: string) => alloc.data?.find((x) => x.service_id === k) ?? null;
 
@@ -128,7 +132,8 @@ Deno.serve(async (req) => {
     const reviewer = reviewers.data?.find((x) => x.canonical_service_id === "accounts_preparation")?.reviewer_id ?? clientManager;
     const bookkeeper = inf("bookkeeping") ?? al("bookkeeping_vat")?.fee_earner_id ?? preparer;
 
-    const meetingDefault = !!al("review_meetings")
+    const meetingDefault = (fees.data?.length ?? 0) > 0
+      || !!al("review_meetings")
       || !!services.data?.some((s) => s.canonical_service_id === "review_meetings"
         || /meeting/i.test(String(s.service_name ?? "")) && String(s.status ?? "active") === "active");
     const booksDefault = !!inf("bookkeeping") || !!al("bookkeeping_vat");
