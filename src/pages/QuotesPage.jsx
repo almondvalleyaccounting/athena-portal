@@ -624,7 +624,9 @@ export default function QuotesPage() {
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
           <p className="text-sm text-gray-400 mb-3">
-            {quotes.length === 0 ? 'No quotes yet. Create your first quote to get started.' : 'No quotes match your filters.'}
+            {quotes.length === 0 ? 'No quotes yet. Create your first quote to get started.'
+              : (cardData[activeCard]?.reviews || 0) > 0 ? 'No quotes at this stage — the fee reviews at this stage are listed above.'
+              : 'No quotes match your filters.'}
           </p>
           {quotes.length === 0 && <Btn onClick={() => navigate('/manage/quotes/new')}>New Quote</Btn>}
         </div>
