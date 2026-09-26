@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../../lib/supabase';
 import { BTN } from '../../../lib/buttonStyles';
+import { addMonthsClamped } from '../../../lib/monthMath';
 
 // Team — one row per person, the signals a practice director asked for:
 // unplanned jobs, slipped and upcoming stages, plans waiting on the client or
@@ -14,7 +15,6 @@ function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-function addMonthsISO(iso, n) { const d = new Date(`${iso}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 10); }
 function addDaysISO(iso, n) { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function fmt(iso) { return iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
 function ago(ts) {
@@ -58,7 +58,7 @@ export default function TeamView() {
     try {
       if (col.key === 'unplanned_jobs') {
         const { data } = await supabase.from('v_accounts_jobs').select('entity_id, client, period_end, ch_deadline, plan_status')
-          .eq('preparer_id', staff.staff_id).lte('ch_deadline', addMonthsISO(today, 7)).order('ch_deadline').limit(200);
+          .eq('preparer_id', staff.staff_id).lte('ch_deadline', addMonthsClamped(today, 7)).order('ch_deadline').limit(200);
         items = (data || []).filter((j) => j.plan_status !== 'committed').map((j) => ({
           key: `${j.entity_id}|${j.period_end}`, title: j.client, sub: `Year end ${fmt(j.period_end)} · Companies House ${fmt(j.ch_deadline)} · ${j.plan_status || 'not planned'}`,
           go: () => navigate(`/planner/plan/${j.entity_id}/${j.period_end}`),

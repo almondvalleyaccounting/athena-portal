@@ -25,19 +25,9 @@
 
 import { supabase } from '../../../lib/supabase';
 import { fetchAllRows } from '../../../lib/fetchAllRows';
+import { addMonthsClamped } from '../../../lib/monthMath';
 
 // ── Date helpers (all in UTC to avoid DST headaches) ────────────
-
-function addMonths(date, n) {
-  const d = new Date(date);
-  const day = d.getUTCDate();
-  d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + n);
-  // Clamp to last day of resulting month if original day overshoots
-  const lastDayOfNewMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  d.setUTCDate(Math.min(day, lastDayOfNewMonth));
-  return d;
-}
 
 // Returns a Date for the Monday of the Nth Mon–Fri block of the given
 // month. weekIndex 1..4 = explicit, 5 = last Monday in the month.
@@ -75,10 +65,9 @@ function isoDate(d) {
 
 export function computeScheduledDate({ deadlineISO, offsetMonths, weekOfMonth, clientCadence }) {
   if (!deadlineISO) return null;
-  // Anchor the deadline at UTC noon so month arithmetic never drifts
-  // across timezone boundaries.
-  const deadline = new Date(deadlineISO + 'T12:00:00Z');
-  const target = addMonths(deadline, offsetMonths || 0);
+  // Only the target month is used, so clamping vs keeping a month end
+  // makes no difference here; what matters is never rolling into the next.
+  const target = new Date(addMonthsClamped(deadlineISO, offsetMonths || 0) + 'T12:00:00Z');
   let week = weekOfMonth || 2;
   if (clientCadence === 'early') week = Math.max(1, week - 1);
   else if (clientCadence === 'late') week = Math.min(5, week + 1);
@@ -156,7 +145,7 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
 
   const cycleId = (crypto?.randomUUID && crypto.randomUUID()) || fallbackUUID();
   const now = new Date();
-  const horizonEnd = addMonths(now, horizonMonths);
+  const horizonEnd = addMonthsClamped(isoDate(now), horizonMonths);
 
   const summary = {
     cycleId,
@@ -194,8 +183,7 @@ export async function runPlanner({ horizonMonths = 9 } = {}) {
     });
     if (!scheduledISO) { summary.noDeadline++; continue; }
 
-    const scheduledDate = new Date(scheduledISO + 'T12:00:00Z');
-    if (scheduledDate > horizonEnd) { summary.outOfHorizon++; continue; }
+    if (scheduledISO > horizonEnd) { summary.outOfHorizon++; continue; }
 
     const { error: uErr } = await supabase
       .from('bm_task_schedule')

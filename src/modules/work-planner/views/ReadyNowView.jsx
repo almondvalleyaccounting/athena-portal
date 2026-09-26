@@ -8,6 +8,7 @@ import {
   markChangeRequestApplied, cancelChangeRequest, reconcilePendingChangeRequests,
 } from '../lib/readyNowChanges';
 import { BTN } from '../../../lib/buttonStyles';
+import { addMonthsKeepMonthEnd } from '../../../lib/monthMath';
 
 const font = "'Outfit', sans-serif";
 
@@ -49,7 +50,6 @@ function todayUTC() {
 function isoDate(d) { return d.toISOString().slice(0, 10); }
 function parseISO(s) { return new Date(s + 'T00:00:00Z'); }
 function addDays(d, n) { const o = new Date(d); o.setUTCDate(o.getUTCDate() + n); return o; }
-function subMonths(d, n) { const o = new Date(d); o.setUTCMonth(o.getUTCMonth() - n); return o; }
 function fmt(d) {
   return new Date(d.getTime() + d.getTimezoneOffset() * 60000)
     .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -58,7 +58,8 @@ function fmt(d) {
 // Period end derivation. Prefer parsing the task name (BM always embeds the
 // precise period end in the title) since `bm_deadline − 9 months` overflows
 // on YE 29/30/31 of a short month (e.g. YE 28/02 → BM deadline 30/11 → naive
-// subMonths gives 2 Mar instead of 28 Feb).
+// setUTCMonth gave 2 Mar instead of 28 Feb). The fallback now keeps month
+// ends on month ends, so it agrees with the name for every month-end YE.
 function parsePeriodEndFromTaskName(service, name) {
   if (!name) return null;
   if (service === 'Annual Accounts') {
@@ -76,7 +77,7 @@ function derivePeriodEnd(service, bmDeadlineISO, taskName) {
   if (fromName) return fromName;
   if (!bmDeadlineISO) return null;
   const d = parseISO(bmDeadlineISO);
-  if (service === 'Annual Accounts') return subMonths(d, 9);
+  if (service === 'Annual Accounts') return parseISO(addMonthsKeepMonthEnd(bmDeadlineISO, -9));
   if (service === 'Self Assessment') return new Date(Date.UTC(d.getUTCFullYear() - 1, 3, 5));
   return null;
 }

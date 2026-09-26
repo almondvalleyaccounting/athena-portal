@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../../shell/AppShell';
 import { supabase } from '../../../lib/supabase';
 import { BTN } from '../../../lib/buttonStyles';
+import { addMonthsClamped, addMonthsKeepMonthEnd } from '../../../lib/monthMath';
 import {
   fetchAccountsJobs, fetchAccountsJob, fetchPlan, fetchActiveStaff, callJobPlan,
 } from './planQueries';
@@ -37,11 +38,6 @@ function fmtDate(iso) {
   const d = new Date(`${iso}T12:00:00Z`);
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
-function addMonthsISO(iso, n) {
-  const d = new Date(`${iso}T12:00:00Z`);
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d.toISOString().slice(0, 10);
-}
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -49,11 +45,13 @@ function todayISO() {
 
 // The two backstops from the design: nudge at YE + 1 month, unplanned flag
 // when the statutory date is inside seven months. Both only while not committed.
+// The seven months clamp like the SQL interval behind the Team count; the month
+// after a year end stays on a month end (YE 31 Jan → 28 Feb, not 3 March).
 function flagsFor(job, today) {
   if (job.plan_status === 'committed') return [];
   const out = [];
-  if (job.ch_deadline && job.ch_deadline <= addMonthsISO(today, 7)) out.push('unplanned');
-  else if (job.period_end && addMonthsISO(job.period_end, 1) <= today) out.push('nudge');
+  if (job.ch_deadline && job.ch_deadline <= addMonthsClamped(today, 7)) out.push('unplanned');
+  else if (job.period_end && addMonthsKeepMonthEnd(job.period_end, 1) <= today) out.push('nudge');
   return out;
 }
 
