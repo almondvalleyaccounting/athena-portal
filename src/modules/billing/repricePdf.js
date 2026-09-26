@@ -11,6 +11,10 @@
 
 import { BUCKETS, OUR_FEES_FOOTNOTE, PART_TITLE, longDate, summaryRows, partFor, componentsOf, changeLabel } from './repriceReasons';
 import { KIND_TITLE, hasInflationRise, proposalOpening } from './composeRepriceEmail';
+import { serviceName, clientServiceName } from './repriceReasons';
+
+// Kept exported from here for existing callers.
+export { serviceName, clientServiceName };
 
 const OCEAN_700 = [25, 58, 80];
 const OCEAN_600 = [30, 69, 96];
@@ -301,21 +305,7 @@ function tidyBuild(s) {
   return String(s).replace(/\b1 (hours|sets|returns|meetings)\b/g, (_, w) => `1 ${w.replace(/s$/, '')}`);
 }
 
-// Service names as the client reads them: the QBO leaf name, except where
-// that isn't client language. The modal keeps the QBO name (serviceName).
-const CLIENT_NAMES = { 'Tax Returns - Individual': 'Personal tax return' };
-export function clientServiceName(serviceId) {
-  const leaf = serviceName(serviceId);
-  return CLIENT_NAMES[leaf] || leaf;
-}
 
-// "Accounts:Business Accounts and…" → "Business Accounts and…". QBO
-// item names carry their category as a prefix the client never sees.
-export function serviceName(serviceId) {
-  const s = String(serviceId || 'Service');
-  const i = s.lastIndexOf(':');
-  return i >= 0 ? s.slice(i + 1).trim() : s;
-}
 
 // Waterfall from the current fee to the new one. Zero-based axis —
 // starting the axis above zero would make a 9% rise look like a

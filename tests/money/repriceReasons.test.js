@@ -105,3 +105,14 @@ describe('firstOfNextMonth', () => {
     expect(firstOfNextMonth(new Date(2026, 0, 31))).toBe('2026-02-01');
   });
 });
+
+describe('work we already do, now billed (2026-09-27)', () => {
+  it('a line from £0 with this reason is a fee change, not a new service', () => {
+    const line = { current: 0, next: 10, reasonKey: 'already_provided', serviceId: 'Company Secretarial:Registered Office' };
+    expect(componentsOf(line)[0]).toMatchObject({ bucket: 'nowBilled', amount: 10, needsAcceptance: false });
+    expect(lineNeedsAcceptance(line)).toBe(false);
+    const s = summarise([line]);
+    expect(s.buckets.nowBilled).toBe(10);
+    expect(s.needsAcceptance).toBe(false);
+  });
+});

@@ -417,9 +417,15 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
           // screen — nothing needs saving first.
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#f3f5f8' }}>
             <div style={{ padding: '8px 22px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
-              Letter preview — from the prices on screen, unsaved. {pdfFilename(entity.name)}
+              {kind === 'proposal'
+                ? <>Letter preview — from the prices on screen, unsaved. {pdfFilename(entity.name)}</>
+                : <>Email preview — from the prices on screen, unsaved. A fee review goes as an email with no attachment.</>}
             </div>
-            <PdfPreview build={() => buildRepricePdf({ kind, clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary, ...letterWords(letterOpts) })} buildKey={JSON.stringify([kind, recipient?.contactName, effectiveAt, summary, letterOpts, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
+            {kind === 'proposal'
+              ? <PdfPreview build={() => buildRepricePdf({ kind, clientName: entity.name, contactName: recipient?.contactName, effectiveAt, lines: letterLines, summary, ...letterWords(letterOpts) })} buildKey={JSON.stringify([kind, recipient?.contactName, effectiveAt, summary, letterOpts, letterLines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />
+              : <iframe title="Email preview" sandbox="" style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }}
+                  srcDoc={composeRepriceEmail({ kind, clientName: entity.name, effectiveAt, summary, lines: letterLines, senderName: profile?.name,
+                    coveringText: defaultCoveringText({ kind, contactName: recipient?.contactName, clientName: entity.name, effectiveAt, lines: letterLines, summary, ...letterWords(letterOpts) }) }).bodyHtml} />}
           </div>
         ) : step === 'price' ? (
           <PriceStep
@@ -489,16 +495,16 @@ export default function RepriceClientModal({ entity, rows, profile, onSaveRow, o
             <span style={{ flex: '1 1 260px', fontSize: 12, color: error ? '#b91c1c' : '#64748b' }}>
               {error ? `Save failed: ${error}` : missingReason
                 ? 'Give the "Other" reason some words — the client reads it.'
-                : `${changedCount} change${changedCount === 1 ? '' : 's'} · nothing can be approved or pushed until the letter has been sent to the client${kind === 'proposal' ? ', and new services wait for their written acceptance' : ''}.`}
+                : `${changedCount} change${changedCount === 1 ? '' : 's'} · nothing can be approved or pushed until it has been sent to the client${kind === 'proposal' ? ', and new services wait for their written acceptance' : ''}.`}
             </span>
             <div style={{ flex: 1 }} />
             <button
               onClick={() => setLetterPreview((v) => !v)}
               disabled={changedCount === 0 && !letterPreview}
-              title={changedCount === 0 ? 'Change a fee first' : 'See the letter the client would get'}
+              title={changedCount === 0 ? 'Change a fee first' : kind === 'proposal' ? 'See the letter the client would get' : 'See the email the client would get'}
               style={{ ...BTN.secondary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: changedCount === 0 && !letterPreview ? 0.5 : 1 }}
             >
-              {letterPreview ? <><ArrowLeft size={14} /> Back to prices</> : <><FileText size={14} /> Preview letter</>}
+              {letterPreview ? <><ArrowLeft size={14} /> Back to prices</> : <><FileText size={14} /> {kind === 'proposal' ? 'Preview letter' : 'Preview email'}</>}
             </button>
             <button onClick={requestClose} disabled={saving} style={BTN.secondary.md}>Cancel</button>
             <button onClick={save} disabled={saving || !dirty || missingReason} style={{ ...BTN.secondary.md, opacity: (!dirty || missingReason) ? 0.5 : 1 }}>
@@ -854,7 +860,7 @@ function SummaryTable({ summary }) {
 function MiniWaterfall({ summary }) {
   const steps = [
     { label: 'Now', total: true, v: summary.current },
-    ...BUCKETS.filter((b) => summary.buckets[b.key] !== 0).map((b) => ({ label: b.label.replace('Increases in our fees', 'Our fees*').replace('Reductions in our fees', 'Reductions').replace('Fees split into separate services', 'Split out'), v: summary.buckets[b.key] })),
+    ...BUCKETS.filter((b) => summary.buckets[b.key] !== 0).map((b) => ({ label: b.label.replace('Increases in our fees', 'Our fees*').replace('Reductions in our fees', 'Reductions').replace('Fees split into separate services', 'Split out').replace('Services we already provide, now billed', 'Now billed'), v: summary.buckets[b.key] })),
     { label: 'New', total: true, v: summary.next },
   ];
   let run = 0, peak = 0;
@@ -1010,7 +1016,7 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
   useEffect(() => {
     if (!info) return;
     setTo((t) => t || info.candidates[0]?.addr || '');
-    setSubject(composeRepriceEmail({ kind, clientName: entity.name, coveringText: '', effectiveAt, summary }).subject);
+    setSubject(composeRepriceEmail({ kind, clientName: entity.name, coveringText: '', effectiveAt, summary, lines }).subject);
     const next = defaultCoveringText({ kind, contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary, ...letterWords(letterOpts) });
     // A changed tick or date rewrites the note — unless staff have edited it.
     setCovering((cur) => (lastDefault.current == null || cur === lastDefault.current ? next : cur));
@@ -1019,8 +1025,8 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
   }, [info, kind, letterOpts.clientRequested, letterOpts.lastReviewed]);
 
   const email = useMemo(
-    () => composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl }),
-    [kind, entity.name, covering, effectiveAt, summary, acceptUrl],
+    () => composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl, lines, senderName: profile?.name }),
+    [kind, entity.name, covering, effectiveAt, summary, acceptUrl, lines, profile?.name],
   );
 
   const makePdf = (url = acceptUrl) => buildRepricePdf({ kind, clientName: entity.name, contactName: info?.contactName, effectiveAt, lines, summary, acceptUrl: url, ...letterWords(letterOpts) });
@@ -1094,14 +1100,17 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
 
   const draft = async (send = false) => {
     if (!to) { setError('Pick or type a recipient first.'); return; }
-    if (send && !window.confirm(`Send this to ${to} now, from ${mailbox}?\n\nIt goes straight to the client, with the letter attached.`)) return;
+    if (send && !window.confirm(`Send this to ${to} now, from ${mailbox}?\n\nIt goes straight to the client${kind === 'proposal' ? ', with the letter attached' : ''}.`)) return;
     setBusy(send ? 'send' : 'draft');
     setError(null);
     let issuedNow = null;
     try {
       issuedNow = issued ? { id: issued, url: acceptUrl } : await issue();
-      const mail = composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl: issuedNow.url });
-      const doc = await makePdf(issuedNow.url);
+      const mail = composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl: issuedNow.url, lines, senderName: profile?.name });
+      // A fee review is just the email; a proposal carries its letter.
+      const attachments = kind === 'proposal'
+        ? [{ filename: pdfFilename(entity.name), mime_type: 'application/pdf', content_base64: pdfBase64(await makePdf(issuedNow.url)) }]
+        : [];
       const { data, error: fnErr } = await supabase.functions.invoke('gmail-create-draft', {
         body: {
           billing_id: billingId,
@@ -1109,7 +1118,7 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
           subject,
           body_text: mail.body,
           body_html: mail.bodyHtml,
-          attachments: [{ filename: pdfFilename(entity.name), mime_type: 'application/pdf', content_base64: pdfBase64(doc) }],
+          attachments,
           mailbox: mailbox || undefined,
           send,
         },
@@ -1173,7 +1182,7 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
               <Field label="Subject">
                 <input value={subject} onChange={(e) => setSubject(e.target.value)} style={{ ...input, width: '100%' }} />
               </Field>
-              <Field label="Letter opening" hint="Only used where it's true: that they asked about the new services, and the review date when there's an inflation rise.">
+              <Field label="Opening" hint={kind === 'proposal' ? "Only used where it's true: that they asked about the new services, and the review date when there's an inflation rise." : 'The review date goes into the reason paragraph ("since we last reviewed them in …").'}>
                 {kind === 'proposal' && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginBottom: 6 }}>
                     <input type="checkbox" checked={letterOpts.clientRequested} onChange={(e) => setLetterOpts((o) => ({ ...o, clientRequested: e.target.checked }))} />
@@ -1198,14 +1207,14 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
                   </div>
                 </Field>
               )}
-              <Field label="Attachment">
+              {kind === 'proposal' && <Field label="Attachment">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#f8fafc' }}>
                   <FileText size={16} style={{ color: '#b91c1c', flexShrink: 0 }} />
                   <span style={{ fontSize: 12.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdfFilename(entity.name)}</span>
                   <button onClick={view} disabled={!!busy} style={BTN.secondary.sm}>{busy === 'view' ? '…' : 'View'}</button>
                   <button onClick={download} disabled={!!busy} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={12} />{busy === 'pdf' ? '…' : 'Save'}</button>
                 </div>
-              </Field>
+              </Field>}
             </>
           )}
         </div>
@@ -1213,8 +1222,8 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
         {/* Preview */}
         <div style={{ flex: '999 1 420px', minWidth: 0, minHeight: 520, height: '100%', display: 'flex', flexDirection: 'column', background: '#f3f5f8' }}>
           <div style={{ padding: '6px 14px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <PreviewTabs value={previewTab} onChange={setPreviewTab} />
-            {previewTab === 'email' ? (
+            {kind === 'proposal' && <PreviewTabs value={previewTab} onChange={setPreviewTab} />}
+            {previewTab === 'email' || kind !== 'proposal' ? (
               <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <strong style={{ color: '#0f172a' }}>{subject}</strong>
                 <span style={{ marginLeft: 8 }}>→ {to || 'no recipient'}</span>
@@ -1223,7 +1232,7 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
               <span>{pdfFilename(entity.name)} — as attached to the email</span>
             )}
           </div>
-          {previewTab === 'email'
+          {previewTab === 'email' || kind !== 'proposal'
             ? <iframe title="Email preview" srcDoc={email.bodyHtml} sandbox="" style={{ flex: 1, width: '100%', border: 'none' }} />
             : <PdfPreview build={makePdf} buildKey={JSON.stringify([kind, info?.contactName, effectiveAt, summary, letterOpts, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
         </div>

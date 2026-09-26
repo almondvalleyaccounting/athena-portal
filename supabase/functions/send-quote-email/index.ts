@@ -33,7 +33,6 @@ import {
   GroupCompany,
   LineItem,
   money,
-  renderBreakdownHtml,
   renderGroupBreakdownHtml,
 } from "../_shared/email-format.ts";
 
@@ -107,123 +106,106 @@ function jsonResponse(data: unknown, status = 200) {
 // Accept-token signing lives in _shared/accept-token.ts so verify-accept-token
 // and accept-quote functions share the same HMAC key and payload schema.
 
+// The single-quote email (2026-09-27 redesign): a greeting and one line
+// (the staff-editable message), then ONE table — each service per month,
+// VAT and the monthly Direct Debit — with the 12 x DD line under it so the
+// annual always reconciles, one-off fees in their own small table, the
+// accept button with the expiry, and a short close signed by the sender.
+//
+// quotes.annual_total is NET and monthly_gross is the DD. The service rows
+// come from the line items; if they don't add up to the quote's net (a
+// rounding or a manual adjustment) an "Adjustment" row makes the table
+// reconcile rather than leaving the client to find the gap.
 function renderEmailHtml(opts: {
-  messageHtml: string;
+  messageText: string;
   quote: Record<string, unknown>;
   lineItems: LineItem[];
   acceptUrl: string | null;
+  senderName: string | null;
+  hasPdf: boolean;
 }): string {
-  const { messageHtml, quote, lineItems, acceptUrl } = opts;
+  const { messageText, quote, lineItems, acceptUrl, senderName, hasPdf } = opts;
 
-  const ref = escapeHtml(String(quote.quote_ref ?? ""));
-  const client = escapeHtml(String(quote.relationship_group ?? "Client"));
   const validUntil = formatDateGB(quote.valid_until as string);
-  const breakdownBlock = renderBreakdownHtml(lineItems);
-
-  // quotes.annual_total is NET. It was previously labelled "Annual total (inc
-  // VAT)", which made the monthly DD look like it was over 10 months or
-  // carrying interest (12 x DD did not equal the stated annual). Show the net
-  // annual, the VAT, and the gross annual as three separate lines, and derive
-  // the gross annual from the DD so 12 x DD always reconciles exactly.
   const monthlyGross = Number(quote.monthly_gross) || 0;
   const annualNet = Number(quote.annual_total) || 0;
+  const monthlyNet = money(annualNet / 12);
+  const monthlyVat = money(monthlyGross - monthlyNet);
   const annualGross = money(monthlyGross * 12);
-  const annualVat = money(annualGross - annualNet);
-  const monthly = formatGBP(monthlyGross);
 
-  const acceptBlock = acceptUrl
-    ? `
-      <tr>
-        <td style="padding:24px 0 0 0;">
-          <a href="${escapeHtml(acceptUrl)}"
-             style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;
-                    padding:12px 22px;border-radius:10px;font-weight:600;font-size:14px;
-                    font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-            Review &amp; accept this quote
-          </a>
-          <div style="font-size:11px;color:#94a3b8;margin-top:10px;">
-            Link expires in ${ACCEPT_TOKEN_TTL_DAYS} days.
-          </div>
-        </td>
-      </tr>`
-    : "";
+  const recurring = lineItems.filter((l) => l.is_recurring && Number(l.annual_amount) !== 0);
+  const oneOff = lineItems.filter((l) => !l.is_recurring && Number(l.annual_amount) !== 0);
+  const lineMonthly = recurring.map((l) => ({ label: l.description || "Service", monthly: money((Number(l.annual_amount) || 0) / 12) }));
+  const gap = money(monthlyNet - lineMonthly.reduce((t, l) => t + l.monthly, 0));
+  if (Math.abs(gap) >= 0.01 && lineMonthly.length) lineMonthly.push({ label: "Adjustment", monthly: gap });
+
+  const td = "padding:9px 12px;font-size:14px;border-bottom:1px solid #eef2f6;vertical-align:top;";
+  const num = "text-align:right;white-space:nowrap;";
+  const th = "padding:9px 12px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e5e9ef;";
+  const para = (t: string) =>
+    `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#1f2937;">${escapeHtml(t).replace(/\n/g, "<br>")}</p>`;
+  const message = messageText.trim().split(/\n{2,}/).filter(Boolean).map(para).join("");
+
+  const serviceRows = lineMonthly.map((l) => `<tr>
+      <td style="${td}color:#1f2937;">${escapeHtml(l.label)}</td>
+      <td style="${td}${num}color:#0f172a;">${formatGBP(l.monthly)}</td>
+    </tr>`).join("");
+  const servicesTable = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid #e5e9ef;">
+      <thead><tr style="background:#f8fafc;"><th align="left" style="${th}">Service</th><th align="right" style="${th}">Per month</th></tr></thead>
+      <tbody>
+        ${serviceRows}
+        <tr style="background:#f4f8fb;"><td style="${td}font-weight:700;color:#0f172a;">Monthly fee (excl. VAT)</td><td style="${td}${num}font-weight:700;color:#0f172a;">${formatGBP(monthlyNet)}</td></tr>
+        <tr><td style="${td}color:#475569;">VAT at 20%</td><td style="${td}${num}color:#475569;">${formatGBP(monthlyVat)}</td></tr>
+        <tr style="background:#193a50;"><td style="${td}font-weight:700;color:#ffffff;border-bottom:none;">Monthly Direct Debit</td><td style="${td}${num}font-weight:700;color:#ffffff;border-bottom:none;">${formatGBP(monthlyGross)}</td></tr>
+      </tbody>
+    </table>
+    <p style="margin:10px 0 0;font-size:12px;line-height:1.55;color:#64748b;">
+      12 equal monthly payments: 12 &times; ${formatGBP(monthlyGross)} = ${formatGBP(annualGross)} a year including VAT. Nothing extra is added for paying monthly.
+    </p>`;
+
+  const oneOffTable = oneOff.length ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid #e5e9ef;margin-top:18px;">
+      <thead><tr style="background:#f8fafc;"><th align="left" style="${th}">One-off</th><th align="right" style="${th}">Amount</th></tr></thead>
+      <tbody>${oneOff.map((l) => `<tr>
+        <td style="${td}color:#1f2937;">${escapeHtml(l.description || "One-off fee")}</td>
+        <td style="${td}${num}color:#0f172a;">${formatGBP(Number(l.annual_amount) || 0)} + VAT</td>
+      </tr>`).join("")}</tbody>
+    </table>` : "";
+
+  const acceptBlock = acceptUrl ? `
+    <tr><td align="center" style="padding:22px 28px 4px;">
+      <a href="${escapeHtml(acceptUrl)}" style="display:inline-block;background:#193a50;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 28px;border-radius:8px;">Review and accept your quote</a>
+      <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">${validUntil ? `This quote is valid until ${escapeHtml(validUntil)}.` : `The link works for ${ACCEPT_TOKEN_TTL_DAYS} days.`}</p>
+    </td></tr>` : "";
+
+  const close = `${hasPdf ? "The full quote, with what each service covers, is attached. " : ""}If you have any questions, just reply to this email.`;
 
   return `<!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#fafafa;font-family:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1e293b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="560" cellpadding="0" cellspacing="0"
-                 style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:32px;">
-            <tr>
-              <td style="font-size:14px;line-height:1.6;color:#1e293b;">${messageHtml}</td>
-            </tr>
-            <tr>
-              <td style="padding-top:24px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                       style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;font-size:13px;">
-                  <tr style="background:#f8fafc;">
-                    <td colspan="2" style="padding:10px 14px;font-weight:600;color:#0f172a;">
-                      Quote summary
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Reference</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${ref}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Client</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${client}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Annual total (net)</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualNet)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">VAT at 20%</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${formatGBP(annualVat)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Annual total (inc VAT)</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${formatGBP(annualGross)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Monthly Direct Debit (inc VAT)<div style="font-size:11px;color:#94a3b8;margin-top:2px;">12 instalments of ${monthly}</div></td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;font-weight:600;">${monthly}</td>
-                  </tr>
-                  ${
-                    validUntil
-                      ? `<tr>
-                    <td style="padding:10px 14px;color:#64748b;border-top:1px solid #f1f5f9;">Valid until</td>
-                    <td style="padding:10px 14px;color:#0f172a;border-top:1px solid #f1f5f9;text-align:right;">${escapeHtml(validUntil)}</td>
-                  </tr>`
-                      : ""
-                  }
-                </table>
-                <div style="font-size:12px;color:#64748b;line-height:1.5;margin-top:10px;">
-                  Your fee is collected in <strong>12 equal monthly instalments</strong> by Direct Debit:
-                  12 &times; ${monthly} = ${formatGBP(annualGross)}, the annual total including VAT.
-                  Paying monthly costs no more than paying annually &mdash; no interest, credit charge or
-                  instalment fee is added.
-                </div>
-              </td>
-            </tr>
-            ${breakdownBlock}
-            <tr>
-              <td style="padding-top:16px;font-size:12px;color:#64748b;">
-                Your full quote is attached as a PDF.
-              </td>
-            </tr>
-            ${acceptBlock}
-            <tr>
-              <td style="padding-top:32px;border-top:1px solid #f1f5f9;margin-top:24px;font-size:11px;color:#94a3b8;text-align:center;">
-                Almond Valley Accounting &middot; ${escapeHtml(PORTAL_PUBLIC_URL.replace(/^https?:\/\//, ""))}
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
+  <body style="margin:0;padding:0;background:#f3f5f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f5f8;padding:24px 12px;">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e5e9ef;border-radius:12px;overflow:hidden;">
+          <tr><td style="padding:18px 28px;border-bottom:3px solid #193a50;">
+            <img src="${escapeHtml(PORTAL_PUBLIC_URL)}/ava-logo.jpg" width="38" height="38" alt="" style="vertical-align:middle;border-radius:6px;" />
+            <span style="vertical-align:middle;margin-left:10px;font-size:13px;font-weight:600;letter-spacing:0.08em;color:#193a50;">ALMOND VALLEY ACCOUNTING</span>
+          </td></tr>
+          <tr><td style="padding:24px 28px 4px;">${message}</td></tr>
+          <tr><td style="padding:0 28px;">${servicesTable}${oneOffTable}</td></tr>
+          ${acceptBlock}
+          <tr><td style="padding:18px 28px 4px;">${para(close)}</td></tr>
+          <tr><td style="padding:0 28px 24px;">
+            <p style="margin:0;font-size:15px;color:#1f2937;">Kind regards,</p>
+            ${senderName ? `<p style="margin:0;font-size:15px;color:#1f2937;font-weight:600;">${escapeHtml(senderName)}</p>` : ""}
+            <p style="margin:0;font-size:13px;color:#64748b;">Almond Valley Accounting</p>
+          </td></tr>
+          <tr><td style="background:#f8fafc;padding:12px 28px;border-top:1px solid #eef2f6;font-size:11px;color:#94a3b8;line-height:1.5;">
+            Almond Valley Accounting Limited &middot; 14 Ellismuir House, Ellismuir Way, Tannochside, G71 5PW<br>
+            info@almondvalleyaccounting.co.uk &middot; 0141 471 4255
+          </td></tr>
+        </table>
+      </td></tr>
     </table>
   </body>
 </html>`;
@@ -616,8 +598,11 @@ Deno.serve(async (req) => {
     }
 
     // 7. Build HTML
-    const messageHtml = escapeHtml(messageText).replace(/\n/g, "<br>");
-    const html = renderEmailHtml({ messageHtml, quote, lineItems, acceptUrl });
+    const html = renderEmailHtml({
+      messageText, quote, lineItems, acceptUrl,
+      senderName: (callerProfile.name as string | null) || null,
+      hasPdf: !!pdfBase64,
+    });
 
     // 8. Build Resend payload
     const filename = (explicitFilename || `${quote.quote_ref || "quote"}.pdf`)

@@ -15,6 +15,8 @@
 //   split        a fee split out into separate services: the old line comes
 //                down and the new lines take up the difference, so they
 //                share one row rather than reading as a cut plus new services
+//   nowBilled    a service we already provide but haven't been billing
+//                monthly — a fee change, not a new service (2026-09-27)
 //   newService   a service the client did not have before
 //   removed      a service the client no longer takes
 //   passedOn     a cost we pay for them, charged at cost
@@ -37,6 +39,7 @@ export const BUCKETS = [
   { key: 'ourFees',    label: 'Increases in our fees', star: true, part: 1 },
   { key: 'reductions', label: 'Reductions in our fees', optional: true, part: 1 },
   { key: 'split',      label: 'Fees split into separate services', optional: true, part: 1 },
+  { key: 'nowBilled',  label: 'Services we already provide, now billed', optional: true, part: 1 },
   { key: 'removed',    label: 'Services removed', part: 1 },
   { key: 'passedOn',   label: 'Costs passed on', part: 1 },
   { key: 'other',      label: 'Other', part: 1 },
@@ -50,6 +53,8 @@ export const REASONS = [
   { key: 'employees',     bucket: 'ourFees',    label: 'More employees on the payroll' },
   { key: 'transactions',  bucket: 'ourFees',    label: 'More transactions to process' },
   { key: 'complexity',    bucket: 'ourFees',    label: 'Your affairs have become more complex' },
+  { key: 'vat_registered', bucket: 'ourFees',   label: 'Now VAT registered' },
+  { key: 'paye_registered', bucket: 'ourFees',  label: 'Now registered for PAYE' },
   { key: 'less_work',     bucket: 'reductions', label: 'Less work is needed than before' },
   { key: 'turnover_down', bucket: 'reductions', label: 'Your turnover has fallen' },
   { key: 'fewer_employees', bucket: 'reductions', label: 'Fewer employees on the payroll' },
@@ -57,6 +62,7 @@ export const REASONS = [
   { key: 'standard_rate', bucket: 'reductions', label: 'Brought into line with our standard fees' },
   { key: 'goodwill',      bucket: 'reductions', label: 'Goodwill reduction' },
   { key: 'split',         bucket: 'split',      label: 'Fee split out into separate services' },
+  { key: 'already_provided', bucket: 'nowBilled', label: 'A service we already provide, now billed monthly' },
   { key: 'new_service',   bucket: 'newService', label: 'New service added' },
   { key: 'removed',       bucket: 'removed',    label: 'Service no longer required' },
   { key: 'ch_fee',        bucket: 'passedOn',   label: 'Companies House fee increase' },
@@ -94,6 +100,8 @@ export function componentsOf(line) {
     .map((c) => {
       let bucket;
       if (c.reasonKey === 'split') bucket = 'split';
+      // Work we already do, now billed: a fee change even from £0.
+      else if (c.reasonKey === 'already_provided') bucket = 'nowBilled';
       else if (c.primary && cur === 0 && neu > 0) bucket = 'newService';
       else if (c.primary && cur > 0 && neu === 0) bucket = 'removed';
       else {
@@ -291,4 +299,20 @@ export function longDate(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// "Accounts:Business Accounts and…" → "Business Accounts and…". QBO
+// item names carry their category as a prefix the client never sees.
+export function serviceName(serviceId) {
+  const s = String(serviceId || 'Service');
+  const i = s.lastIndexOf(':');
+  return i >= 0 ? s.slice(i + 1).trim() : s;
+}
+
+// Service names as the client reads them: the QBO leaf name, except where
+// that isn't client language. The modal keeps the QBO name (serviceName).
+const CLIENT_NAMES = { 'Tax Returns - Individual': 'Personal tax return' };
+export function clientServiceName(serviceId) {
+  const leaf = serviceName(serviceId);
+  return CLIENT_NAMES[leaf] || leaf;
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { resolveQuoteRecipients } from '../lib/quoteRecipients';
+import { resolvePrimaryContact, firstNameOf } from '../modules/billing/recipients';
 import { Btn } from './ui';
 
 // A quote regularly goes to two directors, so both the To and CC boxes take a
@@ -32,16 +33,37 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
   const [prefill, setPrefill] = useState(null);
   const [prefillLoading, setPrefillLoading] = useState(true);
   const [prefillEdited, setPrefillEdited] = useState(false);
-  const [subject, setSubject] = useState(`Services Quote: ${quote.relationship_group || 'Client'}`);
+  const client = quote.relationship_group || 'Client';
+  const [subject, setSubject] = useState(groupId ? `Services Quote: ${client}` : `Your quote from Almond Valley Accounting — ${client}`);
   const expiryStr = quote.valid_until ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   // Lead with the instalment arithmetic. The annual figure held on the quote is
   // NET, so quoting it next to a gross Direct Debit without spelling out the
   // VAT step reads as though the monthly amount carries interest.
   const monthlyGross = Number(quote.monthly_gross) || 0;
   const annualGross = Math.round(monthlyGross * 12 * 100) / 100;
-  const [message, setMessage] = useState(
-    `Dear Client,\n\nPlease find attached your services quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: \u00A3${monthlyGross.toFixed(2)} (inc VAT)\nThis is 12 equal monthly instalments \u2014 12 \u00D7 \u00A3${monthlyGross.toFixed(2)} = \u00A3${annualGross.toFixed(2)} a year including VAT. Nothing extra is added for paying monthly.${expiryStr ? `\n\nThis quote is valid until ${expiryStr}.` : ''}\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
-  );
+  // A single quote's email (send-quote-email) lays out the table, the Direct
+  // Debit, the accept button, the close and the sign-off itself, so the
+  // message is just the greeting and one line. A group email still carries
+  // its figures and sign-off in the message.
+  const singleMessage = (name) => `Dear ${name || client},\n\nThank you for considering us. Here is our quote for ${client}.`;
+  const [message, setMessage] = useState(groupId
+    ? `Dear Client,\n\nPlease find attached your services quote from Almond Valley Accounting.\n\nQuote Reference: ${quote.quote_ref}\nMonthly Direct Debit: \u00A3${monthlyGross.toFixed(2)} (inc VAT)\nThis is 12 equal monthly instalments \u2014 12 \u00D7 \u00A3${monthlyGross.toFixed(2)} = \u00A3${annualGross.toFixed(2)} a year including VAT. Nothing extra is added for paying monthly.${expiryStr ? `\n\nThis quote is valid until ${expiryStr}.` : ''}\n\nPlease don't hesitate to get in touch if you have any questions.\n\nKind regards,\n${profile?.name || 'Almond Valley Accounting'}`
+    : singleMessage(null));
+  // Greet the client's primary contact by first name when we hold one; only
+  // while the message is still the untouched default.
+  useEffect(() => {
+    if (groupId || !quote.entity_id) return;
+    let live = true;
+    supabase.from('entities')
+      .select('id, name, billing_email, entity_people(is_primary_contact, person:people(id, name, first_name, preferred_name, email)), qbo_customer_mappings(qbo_email, role)')
+      .eq('id', quote.entity_id).maybeSingle()
+      .then(({ data }) => {
+        const first = data ? firstNameOf(resolvePrimaryContact(data)) : null;
+        if (live && first) setMessage((m) => (m === singleMessage(null) ? singleMessage(first) : m));
+      });
+    return () => { live = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote.entity_id, groupId]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
