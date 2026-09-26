@@ -7,6 +7,7 @@ import { addMonthsClamped, addMonthsKeepMonthEnd } from '../../../lib/monthMath'
 import {
   fetchAccountsJobs, fetchAccountsJob, fetchPlan, fetchActiveStaff, callJobPlan,
 } from './planQueries';
+import EmailModal from '../components/EmailModal';
 
 // Plan the Job — docs/WORKFLOW_TEMPLATE_ACCOUNTS_2026-09-25.md §5.
 //
@@ -27,6 +28,8 @@ const MEETING_BASIS = {
   included_in_accounts: 'included in the accounts fee',
   manual: 'set by the team',
   none: 'not billed',
+  proposed: 'proposed to the client',
+  declined: 'declined by the client',
 };
 const ROLE_LABEL = {
   client_manager: 'Client manager', preparer: 'Preparer', reviewer: 'Reviewer',
@@ -567,6 +570,10 @@ function PlanEditor() {
             disabled={committed || busy}
             onChange={(v) => setVariant('has_meeting', v)}
           />
+          <MeetingCrossSell job={job} plan={plan} entityId={entityId} periodEnd={periodEnd} busy={busy}
+            effective={plan.has_meeting ?? job?.meeting_default ?? defaults?.has_meeting ?? milestones.some((m) => m.stage_key === 'client_meeting')}
+            onChanged={async (res) => { const j = await fetchAccountsJob(entityId, periodEnd); if (j) setJob(j); if (res?.plan) applyResult(res); setInfo('Recorded for this client.'); }}
+            onError={setError} />
           {plan.has_meeting != null && !committed && (
             <RememberForClient
               entityId={entityId}
@@ -709,6 +716,74 @@ function RememberForClient({ entityId, hasMeeting, busy, onSaved, onError }) {
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={{ ...selStyle, width: 160 }} />
       <button onClick={save} disabled={saving} style={BTN.primary.sm}>{saving ? 'Saving…' : 'Save'}</button>
       <button onClick={() => setOpen(false)} style={BTN.secondary.sm}>Cancel</button>
+    </span>
+  );
+}
+
+// The review-meeting cross-sell (sql/321): when a client has no meeting,
+// propose a chargeable one; record the answer; agreed switches the stage on,
+// pins the date and raises a draft bill.
+function MeetingCrossSell({ job, plan, entityId, periodEnd, busy, effective, onChanged, onError }) {
+  const { profile } = useAuth();
+  const [fee, setFee] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [email, setEmail] = useState(null);
+  const [agree, setAgree] = useState(null); // { date, fee }
+  const [saving, setSaving] = useState(false);
+  const basis = job?.meeting_basis;
+  const staffListForModal = [];
+  if (effective && basis !== 'proposed') return null;
+  const propose = () => {
+    const n = Number(fee);
+    if (!Number.isFinite(n) || n <= 0) { onError('Suggest a net fee first'); return; }
+    setEmail({ mode: 'client', kind: 'meeting_proposal', fee: n, task_label: 'Review meeting proposal' });
+    setAsking(false);
+  };
+  const agreed = async () => {
+    setSaving(true);
+    try {
+      const res = await callJobPlan({ action: 'meeting_agreed', entity_id: entityId, plan_id: plan?.id || null, meeting_date: agree.date || null, fee_net: Number(agree.fee) || 0 });
+      setAgree(null); await onChanged(res);
+    } catch (e) { onError(e.message || String(e)); }
+    finally { setSaving(false); }
+  };
+  const declined = async () => {
+    if (!window.confirm('Record that the client declined a review meeting?')) return;
+    try { await callJobPlan({ action: 'meeting_declined', entity_id: entityId }); await onChanged(); }
+    catch (e) { onError(e.message || String(e)); }
+  };
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      {basis === 'proposed' ? (
+        <>
+          <span style={{ fontSize: 12.5, color: '#9a3412', fontWeight: 600 }}>Meeting proposed{job?.meeting_fee ? ` at £${Number(job.meeting_fee)}` : ''}</span>
+          {agree ? (
+            <>
+              <input type="date" value={agree.date} onChange={(e) => setAgree({ ...agree, date: e.target.value })} style={selStyle} title="Meeting date, if known" />
+              <input type="number" min={0} step={5} value={agree.fee} onChange={(e) => setAgree({ ...agree, fee: e.target.value })} placeholder="Net fee" style={{ ...selStyle, width: 90 }} />
+              <button onClick={agreed} disabled={saving} style={BTN.primary.sm}>{saving ? 'Saving…' : 'Book & bill'}</button>
+              <button onClick={() => setAgree(null)} style={BTN.secondary.sm}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setAgree({ date: '', fee: job?.meeting_fee != null ? String(Number(job.meeting_fee)) : '' })} disabled={busy} style={BTN.primary.sm}>Client agreed…</button>
+              <button onClick={declined} disabled={busy} style={BTN.secondary.sm}>Declined</button>
+            </>
+          )}
+        </>
+      ) : asking ? (
+        <>
+          <span style={{ fontSize: 12.5, color: '#64748b' }}>Suggest a net fee</span>
+          <input type="number" min={0} step={5} value={fee} onChange={(e) => setFee(e.target.value)} placeholder="£" autoFocus style={{ ...selStyle, width: 90 }} onKeyDown={(e) => { if (e.key === 'Enter') propose(); }} />
+          <button onClick={propose} style={BTN.primary.sm}>Draft the email</button>
+          <button onClick={() => setAsking(false)} style={BTN.secondary.sm}>Cancel</button>
+        </>
+      ) : (
+        <button onClick={() => setAsking(true)} disabled={busy || basis === 'declined'} style={BTN.secondary.sm} title={basis === 'declined' ? 'The client declined a meeting' : 'Propose a chargeable review meeting to this client'}>
+          {basis === 'declined' ? 'Meeting declined' : 'Propose a review meeting…'}
+        </button>
+      )}
+      {email && <EmailModal ctx={{ entity_id: entityId, entity_name: job?.client, task_label: email.task_label, task: null }} preset={email} staffList={staffListForModal} profile={profile} onClose={() => setEmail(null)} onSent={() => onChanged()} />}
     </span>
   );
 }

@@ -124,10 +124,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/admin/import/*" element={<DataImportModule />} />
           {/* Legacy Workflow / Staging routes redirect to the new Waiting area. */}
-          <Route path="/admin/workflow" element={<Navigate to="/planner/waiting" replace />} />
-          <Route path="/admin/workflow/*" element={<Navigate to="/planner/waiting" replace />} />
-          <Route path="/workflow" element={<Navigate to="/planner/waiting" replace />} />
-          <Route path="/workflow/*" element={<Navigate to="/planner/waiting" replace />} />
+          {/* Waiting and Estimates retired 2026-09-26: old links land on the Planner. */}
+          <Route path="/admin/workflow" element={<Navigate to="/planner/calendar" replace />} />
+          <Route path="/admin/workflow/*" element={<Navigate to="/planner/calendar" replace />} />
+          <Route path="/workflow" element={<Navigate to="/planner/calendar" replace />} />
+          <Route path="/workflow/*" element={<Navigate to="/planner/calendar" replace />} />
+          <Route path="/planner/waiting" element={<Navigate to="/planner/calendar" replace />} />
+          <Route path="/planner/estimates" element={<Navigate to="/planner/capacity" replace />} />
           <Route path="/clients" element={<ClientsPage />} />
           <Route path="/clients/qbo-mapping" element={<QboMappingPage />} />
           <Route path="/manage/billing/qbo-mapping" element={<QboMappingPage />} />

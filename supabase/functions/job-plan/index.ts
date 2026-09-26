@@ -581,9 +581,9 @@ Deno.serve(async (req) => {
       // a records request for a client with no plan stage to hang it on.
       case "preview_email": {
         const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
-        const kind = p.kind === "records_request" ? "records_request" : "blank";
+        const kind = p.kind === "records_request" ? "records_request" : p.kind === "meeting_proposal" ? "meeting_proposal" : "blank";
         const items = Array.isArray(p.items) ? pickedItems(p.items) : null;
-        const r = await renderGeneric(db, { entityId, kind, ownerId: me, taskLabel: p.task_label ? String(p.task_label).slice(0, 160) : null, items, prefs: p.prefs ?? undefined });
+        const r = await renderGeneric(db, { entityId, kind, ownerId: me, taskLabel: p.task_label ? String(p.task_label).slice(0, 160) : null, items, prefs: p.prefs ?? undefined, fee: p.fee != null ? Number(p.fee) : null });
         return json({ success: true, preview: r });
       }
 
@@ -605,6 +605,11 @@ Deno.serve(async (req) => {
           entityId: toStaff ? null : entityId, to, subject, text, ownerId: me, mailbox: settings?.comms_mailbox || null,
           testOnly: p.test === true, remember, periodEnd: p.period_end ? isoDate(p.period_end, "period_end") : null,
         });
+        // A meeting proposal is recorded on the client (sql/321).
+        if (p.kind === "meeting_proposal" && entityId && p.test !== true) {
+          const fee = p.fee != null && Number.isFinite(Number(p.fee)) ? Number(p.fee) : null;
+          await db.from("client_review_meetings").upsert({ entity_id: entityId, has_meeting: false, basis: "proposed", proposed_at: now, meeting_fee: fee, note: `Review meeting proposed${fee ? ` at £${fee}` : ""}`, set_by: me, set_at: now }, { onConflict: "entity_id" });
+        }
         if (task && p.test !== true) {
           await db.from("task_comments").insert({
             task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, entity_id: entityId,
@@ -662,6 +667,52 @@ Deno.serve(async (req) => {
           if (notified) await db.from("task_comments").update({ notified_at: now }).eq("id", row.id);
         }
         return json({ success: true, id: row.id, notified });
+      }
+
+      // The client's answer to a review-meeting proposal (sql/321).
+      case "meeting_declined": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const { error } = await db.from("client_review_meetings").upsert({ entity_id: entityId, has_meeting: false, basis: "declined", note: p.note ? String(p.note).slice(0, 300) : "Review meeting declined", set_by: me, set_at: now }, { onConflict: "entity_id" });
+        if (error) throw new Error(error.message);
+        return json({ success: true });
+      }
+      case "meeting_agreed": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const fee = Number(p.fee_net);
+        if (!Number.isFinite(fee) || fee < 0) throw new BadRequest("A net fee is needed (0 to price it later)");
+        const meetingDate = p.meeting_date ? isoDate(p.meeting_date, "meeting_date") : null;
+        const planId = optUuid(p.plan_id, "plan_id");
+        const { data: ent } = await db.from("entities").select("name").eq("id", entityId).maybeSingle();
+        // The bill: a draft in Billing, priced now or later, pushed when the meeting happens.
+        const vat = Math.round(fee * 0.2 * 100) / 100, gross = Math.round((fee + vat) * 100) / 100;
+        let periodEnd: string | null = null;
+        if (planId) { const { data: pl } = await db.from("job_plans").select("period_end").eq("id", planId).maybeSingle(); periodEnd = pl?.period_end || null; }
+        const desc = `Annual review meeting${periodEnd ? ` – year to ${new Date(`${periodEnd}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}` : ""}${meetingDate ? ` (${meetingDate})` : ""}`;
+        const { data: bill, error: bErr } = await db.from("billing_items").insert({
+          entity_id: entityId, service: "Review Meetings", description: desc, net_amount: fee, vat_amount: vat, gross_amount: gross, status: "draft", created_by: me,
+          lines: [{ service: "Review Meetings", description: desc, qty: 1, rate: fee, net: fee, vat, gross }],
+        }).select("id").single();
+        if (bErr) throw new Error(bErr.message);
+        const { error } = await db.from("client_review_meetings").upsert({
+          entity_id: entityId, has_meeting: true, basis: "manual", agreed_at: now, meeting_fee: fee, billing_item_id: bill.id,
+          note: `Review meeting agreed${fee ? ` at £${fee}` : ""}${meetingDate ? ` for ${meetingDate}` : ""}`, set_by: me, set_at: now,
+        }, { onConflict: "entity_id" });
+        if (error) throw new Error(error.message);
+        // The job: meeting on, chain rebuilt, the date pinned if known.
+        if (planId) {
+          const plan = await loadPlan(planId);
+          const job = await accountsJob(plan.entity_id, plan.period_end);
+          await db.from("job_plans").update({ has_meeting: true, updated_at: now }).eq("id", planId);
+          await rebuild({ ...plan, has_meeting: true }, job);
+          if (meetingDate) await db.from("job_milestones").update({ due_date: meetingDate, pinned_by: me, pinned_at: now, updated_at: now }).eq("plan_id", planId).eq("stage_key", "client_meeting");
+        }
+        // Fee viewers: if it becomes regular, the monthly fee should carry it.
+        const { data: viewers } = await db.from("staff_profiles").select("id").eq("is_active", true).eq("can_view_client_fees", true);
+        for (const v of viewers || []) {
+          const { data: dup } = await db.from("notifications").select("id").eq("source_key", `review_meeting:${entityId}:${bill.id}`).eq("recipient_id", v.id).limit(1);
+          if (!dup?.length) await db.from("notifications").insert({ recipient_id: v.id, kind: "review_meeting_agreed", title: `${ent?.name || "A client"} agreed a review meeting`, body: `Billed once at £${fee}. If it becomes regular, add it to the monthly fee.`, link_path: `/clients/${entityId}`, source_key: `review_meeting:${entityId}:${bill.id}` });
+        }
+        return json({ success: true, billing_item_id: bill.id, plan: planId ? await loadPlan(planId) : null, milestones: planId ? await milestonesOf(planId) : [] });
       }
 
       // A client reply or upload (sql/319): the owner says whether the

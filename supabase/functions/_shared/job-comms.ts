@@ -254,11 +254,12 @@ const GENERIC_RECORDS = "Hi {{greeting}},\n\n{{opener}}Could you send over the f
 
 export interface GenericOptions {
   entityId: string | null;
-  kind: "blank" | "records_request";
+  kind: "blank" | "records_request" | "meeting_proposal";
   ownerId: string;
   taskLabel?: string | null;
   items?: PickedItem[] | null;
   prefs?: unknown;   // unsaved draft-screen choices
+  fee?: number | null; // meeting proposal: the suggested fee, net
 }
 
 export async function renderGeneric(db: SupabaseClient, o: GenericOptions): Promise<Rendered & { period_end: string | null }> {
@@ -304,7 +305,18 @@ export async function renderGeneric(db: SupabaseClient, o: GenericOptions): Prom
     return { kind: "blank", to: to || null, to_reason: toReason, greeting, from_email: fromEmail, from_name: fromName, subject, text: `Hi ${greeting},\n\n${closing.opener.trim()}${closing.opener ? "\n\n" : ""}\n\n${closing.signoff}`, completes: false, picker: null, period_end: periodEnd };
   }
 
-  if (!o.entityId) throw new Error("A records request needs a client");
+  if (!o.entityId) throw new Error("This email needs a client");
+  if (o.kind === "meeting_proposal") {
+    const { data: tmpl } = await db.from("comm_templates").select("subject, body_text").eq("comm_type", "job_plan").eq("kind", "meeting_proposal").maybeSingle();
+    if (!tmpl) throw new Error("No meeting proposal template — add it under Communications");
+    const fee = Number(o.fee);
+    const vars: Record<string, string> = {
+      ...closing, greeting, client_name: clientName, year_end: fmtLong(periodEnd) || "the year end",
+      fee: Number.isFinite(fee) && fee > 0 ? `£${fee.toLocaleString("en-GB", { maximumFractionDigits: 0 })}` : "£___",
+      sender_first_name: sender,
+    };
+    return { kind: "meeting_proposal", to: to || null, to_reason: toReason, greeting, from_email: fromEmail, from_name: fromName, subject: renderStr(tmpl.subject, vars), text: renderStr(tmpl.body_text, vars), completes: false, picker: null, period_end: periodEnd };
+  }
   const picker = await pickerFor(db, o.entityId, "records_request");
   const picked: PickedItem[] = o.items ?? picker.filter((p) => p.ticked).map((p) => (p.key ? { key: p.key } : { text: p.label }));
   const { data: tmpl } = await db.from("comm_templates").select("subject, body_text").eq("comm_type", "job_plan").eq("kind", "records_request").maybeSingle();

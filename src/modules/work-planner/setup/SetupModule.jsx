@@ -84,8 +84,8 @@ export default function SetupModule() {
       <div style={{ flex: 1, overflow: 'auto' }}>
         <Routes>
           <Route index element={<Navigate to="/planner/setup/rules" replace />} />
-          {/* Legacy Preview URL redirects to the new Waiting tab. */}
-          <Route path="preview" element={<Navigate to="/planner/waiting" replace />} />
+          {/* Legacy Preview URL: Waiting is retired, the Planner shows the placed work. */}
+          <Route path="preview" element={<Navigate to="/planner/calendar" replace />} />
           <Route path="rules" element={<RulesView />} />
           <Route path="aliases" element={<AliasesView />} />
           <Route path="settings" element={<SettingsView />} />

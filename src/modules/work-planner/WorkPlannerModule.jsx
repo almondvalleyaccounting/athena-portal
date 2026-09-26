@@ -35,9 +35,7 @@ import CalendarView from './views/CalendarView';
 import CalendarGuide from './components/CalendarGuide';
 import CompletedView from './views/CompletedView';
 import MyTasksView from './views/MyTasksView';
-import WaitingView from './views/WaitingView';
 import AllocationsView from './views/AllocationsView';
-import EstimatesView from './views/EstimatesView';
 import CapacityView from './views/CapacityView';
 import ReadyNowView from './views/ReadyNowView';
 import DriftView from './views/DriftView';
@@ -69,8 +67,6 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 const TASK_PLANNER_TABS = [
   { id: 'mytasks',  label: 'Overview',    path: '/planner' },
   { id: 'day',      label: 'Day plan',    path: '/planner/day' },
-  // Hidden 2026-09-26 (Bobby): earmarked for deletion. The path still works.
-  { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting', hidden: true },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched',    label: 'Blocks',      path: '/planner/scheduled' },
   { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
@@ -82,7 +78,6 @@ const TEAM_TABS = [
 ];
 const CAPACITY_PLANNER_TABS = [
   { id: 'allocations', label: 'Allocations', path: '/planner/allocations' },
-  { id: 'estimates', label: 'Estimates',  path: '/planner/estimates' },
   { id: 'capacity',  label: 'Capacity',    path: '/planner/capacity' },
 ];
 const READY_TABS = [
@@ -994,14 +989,8 @@ export default function WorkPlannerModule() {
           {activeTab === 'drift' && (
             <DriftView />
           )}
-          {activeTab === 'waiting' && (
-            <WaitingView />
-          )}
           {activeTab === 'allocations' && (
             <AllocationsView />
-          )}
-          {activeTab === 'estimates' && (
-            <EstimatesView />
           )}
           {activeTab === 'capacity' && (
             <CapacityView />

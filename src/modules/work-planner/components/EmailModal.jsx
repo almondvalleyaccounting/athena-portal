@@ -20,6 +20,8 @@ const MODES = [
 
 export default function EmailModal({ ctx, staffList = [], profile, onClose, onSent, preset = null }) {
   const [mode, setMode] = useState(preset?.mode || null);
+  // A preset for the client (a meeting proposal) still needs the render.
+  useEffect(() => { if (preset?.mode === 'client' && preset?.kind) start('client'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [preview, setPreview] = useState(null);
   const [to, setTo] = useState(preset?.to || '');
   const [staffId, setStaffId] = useState(preset?.staffId || '');
@@ -40,7 +42,7 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
     setMode(m); setError(null);
     if (m === 'client' || m === 'records') {
       try {
-        const res = await callJobPlan({ action: 'preview_email', entity_id: ctx.entity_id, kind: m === 'records' ? 'records_request' : 'blank', task_label: taskLabel });
+        const res = await callJobPlan({ action: 'preview_email', entity_id: ctx.entity_id, kind: preset?.kind || (m === 'records' ? 'records_request' : 'blank'), task_label: taskLabel, fee: preset?.fee ?? null });
         setPreview(res.preview); setTo(res.preview.to || ''); setSubject(res.preview.subject); setText(res.preview.text);
         if (res.preview.picker) setPicker(res.preview.picker);
       } catch (e) { setError(e.message || String(e)); }
@@ -79,7 +81,7 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
     try {
       const res = await callJobPlan({
         action: 'send_email', entity_id: hasClient ? ctx.entity_id : null, to: test ? profile?.email : to, subject, text, test,
-        kind: mode === 'records' ? 'records_request' : 'blank', items: mode === 'records' ? picked() : undefined, period_end: preview?.period_end || null,
+        kind: preset?.kind || (mode === 'records' ? 'records_request' : 'blank'), fee: preset?.fee ?? null, items: mode === 'records' ? picked() : undefined, period_end: preview?.period_end || null,
         task: ctx.task || null, task_label: taskLabel || null, to_staff_id: mode === 'team' ? staffId || null : null,
       });
       if (test) setNote(`Test copy sent to ${res.to}.`);

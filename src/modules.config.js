@@ -94,7 +94,7 @@ export const MODULES = [
         label: 'Planner',
         route: '/planner',
         inDevelopment: true,
-        matchPaths: ['/planner', '/planner/day', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
+        matchPaths: ['/planner', '/planner/day', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
       },
       {
         id: 'wp-ready',
@@ -129,7 +129,7 @@ export const MODULES = [
         label: 'Capacity',
         route: '/planner/allocations',
         inDevelopment: true,
-        matchPaths: ['/planner/allocations', '/planner/estimates', '/planner/capacity'],
+        matchPaths: ['/planner/allocations', '/planner/capacity'],
       },
       {
         id: 'wp-job-review',
@@ -265,9 +265,9 @@ const DEV_EXACT = ['/planner', '/onboarding'];
 const DEV_PREFIXES = [
   '/manage/billing',
   '/onboarding/list', '/onboarding/board', '/onboarding/cross-check', '/onboarding/new', '/onboarding/updates',
-  '/planner/day', '/planner/waiting', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed',
+  '/planner/day', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed',
   '/planner/bookkeeping-health', '/planner/drift',
-  '/planner/allocations', '/planner/estimates', '/planner/capacity',
+  '/planner/allocations', '/planner/capacity',
   '/planner/review', '/planner/setup',
   '/timesheets', '/triage', '/hmrc', '/working-papers', '/planning', '/recruitment',
 ];
