@@ -22,7 +22,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
-import { computeChain, parseISO, toISO, minusWorkingDays, type StageRule, type JobContext } from "../_shared/workflow.ts";
+import { computeChain, parseISO, toISO, addDays, addMonths, minusWorkingDays, type StageRule, type JobContext } from "../_shared/workflow.ts";
 import { getValidGmailToken, base64UrlEncode, formatSender } from "../_shared/gmail-client.ts";
 import { sendForMilestone } from "../_shared/job-comms.ts";
 
@@ -261,13 +261,19 @@ Deno.serve(async (req) => {
     // deadline to commit their lists before anyone is chased.
     const nudgesLive = !!settings?.nudges_armed && (!settings?.nudges_from || today >= settings.nudges_from);
     if (nudgesLive) {
-      const cutoff = new Date(); cutoff.setUTCMonth(cutoff.getUTCMonth() - 1);
+      // A month past the year end, month end to month end: YE 31 Jan is due a
+      // nudge on 28 Feb, YE 30 Sep on 31 Oct — the same day Plan the Job shows
+      // its nudge flag. The query takes anything 28+ days past (a superset)
+      // and the filter decides. setUTCMonth(−1) on today used to roll 31 Mar
+      // back to 3 Mar and 31 Oct to 1 Oct, a day or so off at month ends.
+      const todayNoon = parseISO(today);
       const { data: jobs, error: jErr } = await db.from("v_accounts_jobs")
         .select("entity_id, client, period_end, ch_deadline, preparer_id, plan_status")
-        .lte("period_end", toISO(cutoff)).not("preparer_id", "is", null)
+        .lte("period_end", toISO(addDays(todayNoon, -28))).not("preparer_id", "is", null)
         .order("ch_deadline").limit(500);
       if (jErr) throw new Error(jErr.message);
-      const candidates = (jobs || []).filter((j) => j.plan_status !== "committed");
+      const candidates = (jobs || []).filter((j) =>
+        j.plan_status !== "committed" && addMonths(parseISO(j.period_end), 1) <= todayNoon);
       const since = new Date(Date.now() - (settings.nudge_every_days || 7) * 86400000).toISOString();
       const { data: recent } = await db.from("job_plan_nudges").select("entity_id, period_end").gte("sent_at", since);
       const recentKeys = new Set((recent || []).map((r) => `${r.entity_id}|${r.period_end}`));

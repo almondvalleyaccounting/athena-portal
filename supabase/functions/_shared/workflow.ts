@@ -72,13 +72,22 @@ export function toISO(d: Date): string {
 export function addDays(d: Date, n: number): Date {
   return new Date(d.getTime() + n * DAY);
 }
+const lastDayOf = (y: number, m0: number) => new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
+
+/** Month arithmetic that keeps a month end on a month end: YE 30 Sep + 3 is
+ *  31 Dec and YE 28 Feb + 7 is 30 Sep, the way Companies House counts. Any
+ *  other day keeps its number, clamped to a shorter month. Until 2026-09-26
+ *  this only clamped, so every YE on the last day of a short month put its
+ *  month-offset stages 1-3 days early (28 Feb + 3 → 28 May). Month offsets
+ *  are only used from the year end today; a stage anchor that happens to
+ *  fall on a month end would stick to month ends too. Same rule as
+ *  addMonthsKeepMonthEnd in src/lib/monthMath.js. Keeps the time of day. */
 export function addMonths(d: Date, n: number): Date {
+  const y = d.getUTCFullYear(), m0 = d.getUTCMonth(), day = d.getUTCDate();
   const out = new Date(d);
-  const day = out.getUTCDate();
-  out.setUTCDate(1);
-  out.setUTCMonth(out.getUTCMonth() + n);
-  const last = new Date(Date.UTC(out.getUTCFullYear(), out.getUTCMonth() + 1, 0)).getUTCDate();
-  out.setUTCDate(Math.min(day, last));
+  out.setUTCFullYear(y, m0 + n, 1);
+  const last = lastDayOf(out.getUTCFullYear(), out.getUTCMonth());
+  out.setUTCDate(day === lastDayOf(y, m0) ? last : Math.min(day, last));
   return out;
 }
 
