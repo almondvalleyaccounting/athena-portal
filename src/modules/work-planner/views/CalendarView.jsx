@@ -270,7 +270,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       return (
         <div style={{ ...base, borderLeft: '3px solid #0f766e', background: '#f0fdfa' }} title={`${x.title} · ${kindOf(x.block_kind).label}`}>
           <div style={{ fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{x.title}</div>
-          <div style={{ color: '#64748b', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{kindOf(x.block_kind).label} · {Math.round((x.duration || 0) / 6) / 10}h{n ? ` · ${n} clients` : ''}</div>
+          <div style={{ color: '#64748b', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{x.entity_id ? entityMap[x.entity_id]?.name : kindOf(x.block_kind).label} · {Math.round((x.duration || 0) / 6) / 10}h{n ? ` · ${n} clients` : ''}</div>
         </div>
       );
     }

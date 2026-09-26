@@ -21,6 +21,7 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
       const k = kindOf(block.block_kind);
       return {
         title: block.title, block_kind: block.block_kind || 'other', assignee_id: block.assignee_id || '',
+        scope: block.entity_id ? 'client' : 'generic', entity_id: block.entity_id || '',
         cadence: block.recurring ? (block.recurrence || 'daily') : 'daily',
         weekdays: (block.weekdays || 'mon,tue,wed,thu,fri').split(',').filter(Boolean),
         planned_date: block.planned_date ? formatISO(new Date(block.planned_date)) : formatISO(new Date()),
@@ -30,7 +31,7 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
         carry_over: !!block.carry_over,
       };
     }
-    return { title: 'Mail handling', block_kind: 'mail', assignee_id: profile?.id || '', cadence: 'daily', weekdays: [...DAYS], planned_date: formatISO(new Date()), minutes: '60', span_mode: 'days', span_days: '1', span_end_day: '', until: '', carry_over: false };
+    return { title: 'Mail handling', block_kind: 'mail', assignee_id: profile?.id || '', scope: 'generic', entity_id: '', cadence: 'daily', weekdays: [...DAYS], planned_date: formatISO(new Date()), minutes: '60', span_mode: 'days', span_days: '1', span_end_day: '', until: '', carry_over: false };
   });
   const [list, setList] = useState(() => items.map((it) => ({ entity_id: it.entity_id, label: it.label || '', minutes_default: it.minutes_default ?? '' })));
   const [filter, setFilter] = useState('');
@@ -73,6 +74,7 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
         action: 'save_block',
         block: {
           id: block?.id || null, title: form.title, block_kind: form.block_kind, assignee_id: form.assignee_id || null,
+          entity_id: form.scope === 'client' ? form.entity_id || null : null,
           recurrence: form.cadence,
           weekdays: form.cadence === 'daily' ? 'mon,tue,wed,thu,fri' : form.weekdays.join(','),
           planned_date: form.planned_date, duration: Number(form.minutes), service: kind.service,
@@ -80,7 +82,7 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
           span_end_day: form.cadence === 'monthly' && form.span_mode === 'until' ? Number(form.span_end_day) || null : null,
           until: form.until || null, carry_over: form.carry_over,
         },
-        items: list.map((x) => ({ entity_id: x.entity_id || null, label: x.label || null, minutes_default: x.minutes_default === '' ? null : Number(x.minutes_default) })),
+        items: form.scope === 'client' ? [] : list.filter((x) => x.entity_id).map((x) => ({ entity_id: x.entity_id, label: null, minutes_default: x.minutes_default === '' ? null : Number(x.minutes_default) })),
       });
       onSaved();
     } catch (e) { setErr(e.message); setBusy(false); }
@@ -119,6 +121,20 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
         <div style={{ marginBottom: 10 }}>
           <label style={labelStyle}>Title</label>
           <input style={inputStyle} value={form.title} onChange={(e) => set('title', e.target.value)} />
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <label style={labelStyle}>Who it is for</label>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="scope" checked={form.scope === 'generic'} onChange={() => set('scope', 'generic')} style={{ accentColor: '#0e7fe0' }} />Generic, broken down by client
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, cursor: 'pointer' }}>
+              <input type="radio" name="scope" checked={form.scope === 'client'} onChange={() => set('scope', 'client')} style={{ accentColor: '#0e7fe0' }} />One client
+            </label>
+            {form.scope === 'client' && <div style={{ flex: 1, minWidth: 220 }}><ClientTypeAhead entityList={entityList} value={form.entity_id} onChange={(id) => set('entity_id', id)} onAddNew={onAddEntity} /></div>}
+          </div>
+          <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>{form.scope === 'client' ? 'Time logs to this client; no sub-tasks.' : 'Tag the clients below; time can be logged per client when the block is completed.'}</div>
         </div>
 
         <div style={{ marginBottom: 10 }}>
@@ -177,31 +193,28 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
           </label>
         </div>
 
+        {form.scope === 'generic' && (
         <div style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <label style={{ ...labelStyle, marginBottom: 0, flex: 1 }}>{kind.byClient ? `Clients in this block · ${tagged.size}` : `Sub-tasks (optional) · ${list.length}`}</label>
+            <label style={{ ...labelStyle, marginBottom: 0, flex: 1 }}>Clients in this block · {tagged.size}</label>
             {kind.byClient && <button onClick={addSuggested} disabled={suggesting} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>{suggesting ? 'Looking…' : `Add my ${kind.service.toLowerCase()} clients`}</button>}
-            {!kind.byClient && <button onClick={() => setList((l) => [...l, { entity_id: '', label: '', minutes_default: '' }])} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>+ Sub-task</button>}
           </div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
             <div style={{ flex: 1 }}><ClientTypeAhead entityList={untagged} value="" onChange={addClient} onAddNew={onAddEntity} /></div>
             {list.length > 6 && <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter the list" style={{ ...inputStyle, width: 160 }} />}
           </div>
-          {list.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>{kind.byClient ? 'Search above to tag clients, so time can be logged per client when the block is completed.' : 'None. Time is logged against the block as a whole.'}</div>}
+          {list.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>No clients tagged. Time is logged against the block as a whole.</div>}
           <div style={{ maxHeight: 220, overflowY: 'auto' }}>
             {shown.map(({ it, i }) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-                <div style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {it.entity_id ? (entityMap?.[it.entity_id]?.name || 'Client') : (
-                    <input style={inputStyle} placeholder="Sub-task" value={it.label} onChange={(e) => setList((l) => l.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
-                  )}
-                </div>
+                <div style={{ flex: 1, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entityMap?.[it.entity_id]?.name || it.label || 'Client'}</div>
                 <input type="number" min={0} step={5} placeholder="mins" title="Usual minutes" style={{ ...inputStyle, width: 74 }} value={it.minutes_default} onChange={(e) => setList((l) => l.map((x, j) => (j === i ? { ...x, minutes_default: e.target.value } : x)))} />
                 <button onClick={() => setList((l) => l.filter((_, j) => j !== i))} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Remove">×</button>
               </div>
             ))}
           </div>
         </div>
+        )}
 
         {err && <div style={{ fontSize: 12.5, color: '#991b1b', marginBottom: 8 }}>{err}</div>}
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>

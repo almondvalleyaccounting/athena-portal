@@ -5,7 +5,7 @@ import { BTN } from '../../../lib/buttonStyles';
 // Athena (buttonStyles.js): secondary for the choices, danger for Delete.
 // It used to flash a green "Done" badge before the completion modal had
 // even opened; nothing was done at that point, so the flash is gone.
-export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComplete, onStartNotReq, onDelete }) {
+export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComplete, onStartNotReq, onDelete, onEmail }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -53,6 +53,7 @@ export default function ActionPopover({ x, y, task, onClose, onOpen, onStartComp
       <button style={btn} onClick={() => onOpen(task)}>Open</button>
       <button style={btn} onClick={() => onStartComplete(task)}>Done</button>
       <button style={btn} onClick={() => onStartNotReq(task)}>Not required</button>
+      {onEmail && <button style={btn} onClick={() => onEmail(task)}>Email</button>}
       {onDelete && (
         <button style={{ ...BTN.danger.sm, whiteSpace: 'nowrap' }} onClick={handleDelete}>Delete</button>
       )}

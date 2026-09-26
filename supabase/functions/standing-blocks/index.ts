@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
         if (!duration || duration < 5) throw new BadRequest("Hours per occurrence must be at least 5 minutes");
         const service = SERVICES.has(String(b.service || "")) ? String(b.service) : SERVICE_FOR_KIND[kind];
         const assignee = optUuid(b.assignee_id, "block.assignee_id");
+        const blockEntity = optUuid(b.entity_id, "block.entity_id");
         const spanDays = recurrence === "monthly" && b.span_days != null && b.span_days !== "" ? Number(b.span_days) : null;
         const spanEnd = recurrence === "monthly" && b.span_end_day != null && b.span_end_day !== "" ? Number(b.span_end_day) : null;
         if (spanDays != null && !(Number.isInteger(spanDays) && spanDays >= 1 && spanDays <= 23)) throw new BadRequest("Working days must be 1–23");
@@ -115,7 +116,7 @@ Deno.serve(async (req) => {
           title, task_type: "block_out", block_kind: kind, service, assignee_id: assignee,
           recurring: true, recurrence, weekdays, status: "not_started", source: "manual",
           planned_date: new Date(`${plannedDate}T00:00:00`).toISOString(), planned_hour: null, planned_min: 0,
-          duration, entity_id: null, updated_at: now,
+          duration, entity_id: blockEntity, updated_at: now,
           span_days: recurrence === "monthly" && !spanEnd ? (spanDays ?? 1) : null, span_end_day: spanEnd, until, carry_over: carryOver,
         };
         let blockId = id;
@@ -130,7 +131,8 @@ Deno.serve(async (req) => {
 
         // Items: replace the set. Minutes per item are defaults for the
         // completion form, not commitments.
-        const items = Array.isArray(p.items) ? p.items.slice(0, 200) : null;
+        // A client-level block has no sub-tasks.
+        const items = Array.isArray(p.items) ? (blockEntity ? [] : p.items.slice(0, 200)) : null;
         if (items) {
           const rows = items.map((it: Record<string, unknown>, i: number) => ({
             block_id: blockId,
@@ -159,7 +161,7 @@ Deno.serve(async (req) => {
       case "complete": {
         const blockId = uuid(p.block_id, "block_id");
         const occ = isoDate(p.occurrence_date, "occurrence_date");
-        const { data: block, error } = await db.from("scheduled_tasks").select("id, title, service, assignee_id, block_kind, carry_over").eq("id", blockId).maybeSingle();
+        const { data: block, error } = await db.from("scheduled_tasks").select("id, title, service, assignee_id, block_kind, carry_over, entity_id").eq("id", blockId).maybeSingle();
         if (error) throw new Error(error.message);
         if (!block) throw new BadRequest("Block not found", 404);
         const notRequired = p.not_required === true;
@@ -182,7 +184,7 @@ Deno.serve(async (req) => {
 
         const { error: cErr } = await db.from("completed_tasks").insert({
           source_type: "scheduled_instance", source_id: blockId, occurrence_date: occ, title: block.title,
-          entity_id: null, service: block.service, assignee_id: block.assignee_id || me, completed_by: me,
+          entity_id: block.entity_id || null, service: block.service, assignee_id: block.assignee_id || me, completed_by: me,
           completion_mins: total, not_required: notRequired,
         });
         if (cErr) throw new Error(cErr.message);
@@ -203,7 +205,7 @@ Deno.serve(async (req) => {
               notes: x.label ? `${block.title} — ${x.label}` : block.title, source: "completed", source_task_id: blockId,
             }))
           : (!notRequired && overall > 0
-              ? [{ staff_id: me, entity_id: null, service, work_date: workDate, minutes: overall, notes: block.title, source: "completed", source_task_id: blockId }]
+              ? [{ staff_id: me, entity_id: block.entity_id || null, service, work_date: workDate, minutes: overall, notes: block.title, source: "completed", source_task_id: blockId }]
               : []);
         if (tsRows.length) {
           const { error: tErr } = await db.from("timesheet_entries").insert(tsRows);

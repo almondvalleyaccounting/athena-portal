@@ -127,6 +127,10 @@ Deno.serve(async (req) => {
         };
         const externalOverdue = (m: Record<string, any>) => {
           if (!EXTERNAL_GATES.has(m.stage_key) || m.status !== "pending" || m.due_date >= today) return false;
+          // Records are only "waiting on the client" once a request or chase
+          // has actually gone (Bobby, 2026-09-26: Accona read as waiting when
+          // nothing had been sent). Until then the lateness is ours.
+          if (m.stage_key === "records_in" && !ms.some((x) => RECORDS_COMMS.has(x.stage_key) && (x.comms_sent_at || x.status === "done"))) return false;
           const g = gateKeyOf(m);
           return !g || isDone(g);
         };
@@ -191,6 +195,7 @@ Deno.serve(async (req) => {
         const limit = plan.ch_deadline ? toISO(minusWorkingDays(parseISO(plan.ch_deadline), 10)) : null;
         const lateExternal = ms.find((m) => externalOverdue(m));
         const lateStaff = ms.filter((m) => m.status === "pending" && !EXTERNAL_GATES.has(m.stage_key) && m.owner_role !== "client" && m.due_date < today);
+        const unasked = ms.find((m) => m.stage_key === "records_in" && m.status === "pending" && m.due_date < today && !externalOverdue(m));
         const daysLate = (iso: string) => Math.round((parseISO(today).getTime() - parseISO(iso).getTime()) / 86400000);
         if (fileCh && fileCh.status === "pending" && limit && today > limit) {
           risk = "urgent"; reason = `Inside the Companies House buffer (deadline ${plan.ch_deadline})`;
@@ -200,6 +205,8 @@ Deno.serve(async (req) => {
             : "Filing date sits on the statutory buffer";
         } else if (lateExternal) {
           risk = "waiting_on_client"; reason = `${lateExternal.label} ${daysLate(lateExternal.due_date)} days overdue`;
+        } else if (unasked) {
+          risk = "slipped"; reason = `Records not yet requested; they were due ${daysLate(unasked.due_date)} days ago`;
         } else if (lateStaff.length) {
           const worst = lateStaff.sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
           risk = "slipped"; reason = `${worst.label} ${daysLate(worst.due_date)} days overdue`;

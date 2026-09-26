@@ -105,7 +105,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
     scheduledTasks.forEach((m) => {
       if (m.assignee_id !== personId || !m.planned_date) return;
       generateInstances(m, addDays(dayDate, -14), pageEnd, overridesMap, completedKeys).forEach((inst) => {
-        out.push({ key: `block:${inst._key}`, type: 'block', item: inst, date: formatISO(inst._date), hours: (inst.duration || 0) / 60, title: inst.title, client: null, entity_id: null });
+        out.push({ key: `block:${inst._key}`, type: 'block', item: inst, date: formatISO(inst._date), hours: (inst.duration || 0) / 60, title: inst.title, client: inst.entity_id ? entityMap[inst.entity_id]?.name : null, entity_id: inst.entity_id || null });
       });
     });
     return out;

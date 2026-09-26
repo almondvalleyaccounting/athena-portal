@@ -101,15 +101,17 @@ export default function JobSelectorModal({ staffList, entityMap, profile, defaul
     return out;
   };
 
+  const notReady = (r) => r.period_end && r.period_end > date;
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
+      if (notReady(r)) return false; // its period end is after the day: cannot be done, so not offered
       if (type !== 'all' && r.type !== type) return false;
       if (who && r.assignee_id !== who) return false;
       if (needle && !(`${r.entities.name} ${r.bm_task_name}`.toLowerCase().includes(needle))) return false;
       return true;
     });
-  }, [rows, type, who, q]);
+  }, [rows, type, who, q, date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = useMemo(() => {
     const cut = formatISO(addDays(new Date(), URGENT_DAYS));
@@ -137,8 +139,6 @@ export default function JobSelectorModal({ staffList, entityMap, profile, defaul
     });
   };
 
-  const notReady = (r) => r.period_end && r.period_end > date;
-
   const schedule = async () => {
     const ids = [...selected.keys()].filter((id) => byId[id] && !notReady(byId[id]));
     if (!ids.length) return;
@@ -157,16 +157,15 @@ export default function JobSelectorModal({ staffList, entityMap, profile, defaul
 
   const Row = ({ r, nested }) => {
     const on = selected.has(r.id);
-    const blocked = notReady(r);
     const sa = r.service === 'Annual Accounts' ? directorSA(r) : null;
     return (
       <>
-        <div onClick={() => !blocked && toggle(r)} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 80px 70px 50px', gap: 8, alignItems: 'center', padding: '5px 10px', paddingLeft: nested ? 34 : 10, borderBottom: '1px solid #f1f5f9', fontSize: 13, cursor: blocked ? 'default' : 'pointer', opacity: blocked ? 0.5 : 1, background: on ? '#eff6ff' : '#fff' }}>
-          <input type="checkbox" checked={on} readOnly disabled={blocked} style={{ accentColor: '#0e7fe0' }} />
+        <div onClick={() => toggle(r)} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 90px 80px 70px 50px', gap: 8, alignItems: 'center', padding: '5px 10px', paddingLeft: nested ? 34 : 10, borderBottom: '1px solid #f1f5f9', fontSize: 13, cursor: 'pointer', background: on ? '#eff6ff' : '#fff' }}>
+          <input type="checkbox" checked={on} readOnly style={{ accentColor: '#0e7fe0' }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.entities.name}{nested ? <span style={{ color: '#64748b', fontWeight: 400 }}> · director's return</span> : ''}</div>
             <div style={{ color: '#64748b', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {shortName(r.bm_task_name)}{r.period_end ? ` · PE ${fmt(r.period_end)}` : ''}{blocked ? ' · period end not reached' : ''}
+              {shortName(r.bm_task_name)}{r.period_end ? ` · PE ${fmt(r.period_end)}` : ''}
               {on && selected.get(r.id)?.reason === 'director' ? ' · auto-selected' : ''}
             </div>
           </div>
@@ -203,7 +202,7 @@ export default function JobSelectorModal({ staffList, entityMap, profile, defaul
           <div style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>Job Selector</div>
           <button onClick={onClose} style={BTN.secondary.sm}>Close</button>
         </div>
-        <div style={{ padding: '0 16px 8px', fontSize: 12.5, color: '#64748b' }}>Pick BrightManager jobs to plan onto a day. A job keeps its BM assignee; only the date moves. Ticking a company's accounts also ticks its directors' returns when their tax year has ended.</div>
+        <div style={{ padding: '0 16px 8px', fontSize: 12.5, color: '#64748b' }}>Pick BrightManager jobs to plan onto a day. A job keeps its BM assignee; only the date moves. Jobs whose period end is after the chosen day are not listed. Ticking a company's accounts also ticks its directors' returns when their tax year has ended.</div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '0 16px 8px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 4 }}>

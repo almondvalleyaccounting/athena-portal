@@ -43,6 +43,7 @@ import DriftView from './views/DriftView';
 import TodayView from './views/TodayView';
 import DayPlanView from './views/DayPlanView';
 import TaskModal from './components/TaskModal';
+import EmailModal from './components/EmailModal';
 import TeamView from './views/TeamView';
 import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
@@ -66,7 +67,8 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 const TASK_PLANNER_TABS = [
   { id: 'mytasks',  label: 'Overview',    path: '/planner' },
   { id: 'day',      label: 'Day plan',    path: '/planner/day' },
-  { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
+  // Hidden 2026-09-26 (Bobby): earmarked for deletion. The path still works.
+  { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting', hidden: true },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched',    label: 'Blocks',      path: '/planner/scheduled' },
   { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
@@ -125,6 +127,9 @@ export default function WorkPlannerModule() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [taskModal, setTaskModal] = useState(null); // { type, id, occurrence_date? }
+  const [emailModal, setEmailModal] = useState(null); // EmailModal ctx
+  // Email about a quick task: the same chooser as everywhere else.
+  const emailQuick = (t) => { setPopover(null); setQuickModal(null); setEmailModal({ entity_id: t.entity_id || null, entity_name: t.entity_id ? entityMap[t.entity_id]?.name : null, task_label: t.title, task: t.id && (t._isQuick || t.due_date != null || !t._instance) ? { type: 'quick', id: t.id } : null }); };
   const [refreshTick, setRefreshTick] = useState(0); // bumped when the task modal changes something
   // Deep link from a notification email: /planner/day?task=bm:<id>[:<date>]
   useEffect(() => {
@@ -187,7 +192,8 @@ export default function WorkPlannerModule() {
     : TASK_PLANNER_TABS;
   // A one-tab sub-module gets a title, not a tab strip — a lone tab looks
   // clickable and goes nowhere.
-  const soleTab = visibleTabs.length === 1 ? visibleTabs[0] : null;
+  const shownTabs = visibleTabs.filter((t) => !t.hidden);
+  const soleTab = shownTabs.length === 1 ? shownTabs[0] : null;
 
   // ── Derived: overridesMap and completedKeys ──
   const overridesMap = useMemo(() => {
@@ -833,7 +839,7 @@ export default function WorkPlannerModule() {
             }}>
               {soleTab.label}
             </div>
-          ) : visibleTabs.map((tab) => (
+          ) : shownTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => navigate(tab.path)}
@@ -1062,12 +1068,14 @@ export default function WorkPlannerModule() {
           }}
           onDone={quickModal?.id ? () => { const t = quickModal; setQuickModal(null); handleStartComplete({ ...t, _isQuick: true }); } : undefined}
           onNotRequired={quickModal?.id ? () => { const t = quickModal; setQuickModal(null); handleStartNotReq({ ...t, _isQuick: true }); } : undefined}
+          onEmail={quickModal?.id ? () => emailQuick({ ...quickModal, _isQuick: true }) : undefined}
           onAddEntity={addEntity}
           onClose={() => setQuickModal(null)}
         />
       )}
 
       {guideOpen && <CalendarGuide onClose={() => setGuideOpen(false)} />}
+      {emailModal && <EmailModal ctx={emailModal} staffList={staffList} profile={profile} onClose={() => setEmailModal(null)} />}
       {taskModal && (
         <TaskModal
           task={taskModal}
@@ -1093,6 +1101,7 @@ export default function WorkPlannerModule() {
           onOpen={handleOpen}
           onStartComplete={handleStartComplete}
           onStartNotReq={handleStartNotReq}
+          onEmail={(t) => (t._isQuick || t.due_date != null) ? emailQuick(t) : setEmailModal({ entity_id: t.entity_id || null, entity_name: t.entity_id ? entityMap[t.entity_id]?.name : null, task_label: t.title, task: t._masterId ? { type: 'block', id: t._masterId, occurrence_date: t._date ? formatISO(t._date) : null } : null })}
           onDelete={async (task) => {
             try {
               const isQuick = !!task._isQuick || task.due_date != null;

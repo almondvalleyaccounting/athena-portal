@@ -170,6 +170,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
     details = (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         <Field label="Kind">{kindOf(detail.block_kind).label}</Field>
+        <Field label="Client">{entityName || 'Generic'}</Field>
         <Field label="Person">{staffMap?.[detail.assignee_id]?.name}</Field>
         <Field label="This occurrence">{fmt(occ)}</Field>
         <Field label="When">{cadenceLabel(detail)}</Field>
