@@ -7,6 +7,9 @@ import { callJobPlan } from '../plan/planQueries';
 import { listScheduleInRange, rescheduleTask } from '../setup/queries';
 import { formatISO, addDays, startOfWeek, today, sameDay } from '../lib/helpers';
 import Avatar from '../components/Avatar';
+import JobSelectorModal from '../components/JobSelectorModal';
+import { generateInstances } from '../lib/instanceEngine';
+import { kindOf } from '../lib/blocksApi';
 import { BTN } from '../../../lib/buttonStyles';
 
 // Right-click menu. Fixed at the pointer, closes on any click or Escape.
@@ -114,9 +117,9 @@ function Cell({ id, children, style }) {
 
 // onOpen opens a quick task straight into its editor (Done, Not required and
 // Delete live there), rather than a click-then-Open popover.
-export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete }) {
+export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete, onEditBlock, onCompleteBlock, selectorOpen, onSelectorClose }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile } = useWorkPlanner();
   const [milestones, setMilestones] = useState([]);
   const [bmRows, setBmRows] = useState([]);
   const [doneInAthena, setDoneInAthena] = useState({}); // bm_task_schedule_id -> completion
@@ -179,7 +182,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
     const out = new Map(); // `${personId}|${iso}` -> { ms: [], bm: [], quick: [], hours }
     const put = (pid, iso, kind, item, hours) => {
       const key = `${pid || 'unassigned'}|${iso}`;
-      if (!out.has(key)) out.set(key, { ms: [], bm: [], quick: [], hours: 0 });
+      if (!out.has(key)) out.set(key, { ms: [], bm: [], quick: [], block: [], hours: 0 });
       const c = out.get(key);
       c[kind].push(item);
       c.hours += Number(hours) || 0;
@@ -193,6 +196,15 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       if (filters.serviceFilter && b.service !== filters.serviceFilter) continue;
       put(b.assignee_id, b.scheduled_for_date, 'bm', b, doneInAthena[b.id] ? 0 : (b.remaining_hours ?? b.scheduled_hours));
     }
+    // Standing blocks (sql/312): occurrences in the window, hours from the block.
+    for (const m of scheduledTasks) {
+      if (!m.planned_date) continue;
+      for (const inst of generateInstances(m, days[0], days[days.length - 1], overridesMap, completedKeys)) {
+        if (filters.serviceFilter && inst.service !== filters.serviceFilter) continue;
+        if (filters.clientFilter) continue;
+        put(inst.assignee_id, formatISO(inst._date), 'block', inst, (inst.duration || 0) / 60);
+      }
+    }
     for (const q of quickTasks) {
       if (!q.planned_date) continue;
       if (filters.clientFilter && q.entity_id !== filters.clientFilter) continue;
@@ -201,7 +213,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       put(q.assignee_id, formatISO(d), 'quick', q, (q.duration || 15) / 60);
     }
     return out;
-  }, [milestones, bmRows, quickTasks, filters.clientFilter, filters.serviceFilter, days, doneInAthena]);
+  }, [milestones, bmRows, quickTasks, scheduledTasks, overridesMap, completedKeys, filters.clientFilter, filters.serviceFilter, days, doneInAthena]);
 
   const hasUnassigned = useMemo(() => [...items.keys()].some((k) => k.startsWith('unassigned|')), [items]);
   const rows = useMemo(() => (hasUnassigned && !filters.teamFilter ? [...people, { id: null, name: 'Unassigned', working_days: '' }] : people), [people, hasUnassigned, filters.teamFilter]);
@@ -283,6 +295,10 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       }) });
       items.push({ label: 'Move to today', disabled: x.scheduled_for_date === formatISO(now), run: async () => { try { await rescheduleTask(x.id, formatISO(now)); await load(); } catch (er) { setError(er.message); } } });
       if (x.entity_id) items.push({ label: 'Open the client', run: () => navigate(`/clients/${x.entity_id}`) });
+    } else if (type === 'block') {
+      title = `${x.title} · ${kindOf(x.block_kind).label}`;
+      items.push({ label: 'Complete / log time…', run: () => onCompleteBlock && onCompleteBlock(x) });
+      items.push({ label: 'Edit the block', run: () => onEditBlock && onEditBlock(scheduledTasks.find((m) => m.id === x._masterId)) });
     } else {
       title = x.title;
       items.push({ label: 'Open', run: () => onOpen({ ...x, _isQuick: true }) });
@@ -325,6 +341,15 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
         </div>
       );
     }
+    if (type === 'block') {
+      const n = (blockItemsMap[x._masterId] || []).length;
+      return (
+        <div style={{ ...base, borderLeft: '3px solid #0f766e', background: '#f0fdfa' }} title={`${x.title} · ${kindOf(x.block_kind).label}`}>
+          <div style={{ fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{x.title}</div>
+          <div style={{ color: '#64748b', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{kindOf(x.block_kind).label} · {Math.round((x.duration || 0) / 6) / 10}h{n ? ` · ${n} clients` : ''}</div>
+        </div>
+      );
+    }
     return (
       <div style={{ ...base, borderLeft: '3px dashed #38bdf8', background: '#f8fafc' }} title={x.title}>
         <div style={{ fontWeight: 500, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{x.title}</div>
@@ -344,6 +369,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       const person = pid === 'unassigned' ? null : staffMap[pid];
       c.ms.forEach((m) => list.push({ type: 'ms', item: m, person }));
       c.bm.forEach((b) => list.push({ type: 'bm', item: b, person }));
+      c.block.forEach((b) => list.push({ type: 'block', item: b, person }));
       c.quick.forEach((q) => list.push({ type: 'quick', item: q, person }));
     }
     list.sort((a, b) => (a.person?.name || 'zz').localeCompare(b.person?.name || 'zz'));
@@ -353,12 +379,18 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
     e.stopPropagation();
     if (type === 'ms') navigate(`/planner/plan/${x.job_plans.entity_id}/${x.job_plans.period_end}`);
     else if (type === 'quick') onOpen({ ...x, _isQuick: true });
+    else if (type === 'block') onCompleteBlock && onCompleteBlock(x);
     else if (x.entity_id) navigate(`/clients/${x.entity_id}`);
   };
   const floating = (
     <>
       <ContextMenu menu={menu} onClose={closeMenu} />
       {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
+      {selectorOpen && (
+        <JobSelectorModal staffList={staffList} entityMap={entityMap} profile={profile} teamFilter={filters.teamFilter}
+          defaultDate={formatISO(days.find((d) => d >= now && d.getDay() !== 0 && d.getDay() !== 6) || now)}
+          onScheduled={load} onClose={onSelectorClose} />
+      )}
       {dayModal && (() => {
         const list = dayItems(dayModal);
         const d = new Date(`${dayModal}T12:00:00`);
@@ -396,7 +428,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       const iso = key.split('|')[1];
       if (!perDay.has(iso)) perDay.set(iso, { stages: 0, jobs: 0, hours: 0 });
       const d = perDay.get(iso);
-      d.stages += c.ms.length; d.jobs += c.bm.length + c.quick.length; d.hours += c.hours;
+      d.stages += c.ms.length; d.jobs += c.bm.length + c.quick.length + c.block.length; d.hours += c.hours;
     }
     return (
       <div style={{ padding: 10, fontFamily: font }}>
@@ -491,6 +523,10 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
                         {c?.bm.map((b) => (
                           <Tile key={b.id} id={`bm:${b.id}`} data={{ type: 'bm' }} disabled={!!doneInAthena[b.id]} onContextMenu={(e) => openMenu(e, 'bm', b)}
                             onClick={(e) => { e.stopPropagation(); if (b.entity_id) navigate(`/clients/${b.entity_id}`); }}>{renderTile('bm', b)}</Tile>
+                        ))}
+                        {c?.block.map((b) => (
+                          <Tile key={b.id} id={`block:${b.id}`} data={{ type: 'block' }} disabled onContextMenu={(e) => openMenu(e, 'block', b)}
+                            onClick={(e) => { e.stopPropagation(); onCompleteBlock && onCompleteBlock(b); }}>{renderTile('block', b)}</Tile>
                         ))}
                         {c?.quick.map((q) => (
                           <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpen({ ...q, _isQuick: true }); }} onContextMenu={(e) => openMenu(e, 'quick', q)}>

@@ -13,6 +13,24 @@ export function advanceDate(d, recurrence) {
   }
 }
 
+// Standing blocks (sql/312) carry a weekdays list for daily cadences and
+// fall back to the Friday when a monthly date lands on a weekend. Returns
+// the date the occurrence actually sits on, or null when it does not occur.
+const DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export function occurrenceOn(master, d) {
+  if (master.recurrence === 'monthly' && master.block_kind) {
+    const dow = d.getDay();
+    if (dow === 6) return addDays(d, -1);
+    if (dow === 0) return addDays(d, -2);
+    return d;
+  }
+  if (master.weekdays && (master.recurrence === 'daily' || master.recurrence === 'weekly')) {
+    const set = new Set(String(master.weekdays).split(',').map((x) => x.trim().toLowerCase()));
+    return set.has(DOW[d.getDay()]) ? d : null;
+  }
+  return d;
+}
+
 // Deterministic key for an instance: "{masterId}_{YYYY-MM-DD}"
 export function instanceKey(masterId, date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -36,11 +54,12 @@ export function generateInstances(master, fromDate, toDate, overridesMap, comple
 
   while (d <= to && iterations < MAX_ITERATIONS) {
     iterations++;
-    if (d >= from) {
-      const key = instanceKey(master.id, d);
+    const on = occurrenceOn(master, d);
+    if (on && on >= from && on <= to) {
+      const key = instanceKey(master.id, on);
       if (!completedKeys.has(key)) {
         const override = overridesMap.get(key);
-        instances.push(mergeInstance(master, d, key, override));
+        instances.push(mergeInstance(master, on, key, override));
       }
     }
     if (!master.recurring || !master.recurrence) break;
@@ -66,10 +85,11 @@ export function nextInstance(master, overridesMap, completedKeys) {
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
-    const key = instanceKey(master.id, d);
-    if (d >= now && !completedKeys.has(key)) {
+    const on = occurrenceOn(master, d);
+    const key = on ? instanceKey(master.id, on) : null;
+    if (on && on >= now && !completedKeys.has(key)) {
       const override = overridesMap.get(key);
-      return mergeInstance(master, d, key, override);
+      return mergeInstance(master, on, key, override);
     }
     if (!master.recurring || !master.recurrence) break;
     const next = advanceDate(d, master.recurrence);
@@ -116,6 +136,7 @@ function mergeInstance(master, date, key, override) {
     duration: override?.duration ?? master.duration,
     recurring: master.recurring,
     recurrence: master.recurrence,
+    block_kind: master.block_kind || null,
     notes: override?.notes ?? null,
   };
 }

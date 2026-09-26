@@ -19,7 +19,9 @@ import { defaultDuration, CALENDAR_VIEWS } from './lib/constants';
 import FilterBar from './components/FilterBar';
 import ActionPopover from './components/ActionPopover';
 import CompleteModal from './components/CompleteModal';
-import MasterModal from './components/MasterModal';
+import StandingBlockModal from './components/StandingBlockModal';
+import BlockCompleteModal from './components/BlockCompleteModal';
+import { fetchBlockItems } from './lib/blocksApi';
 import InstanceModal from './components/InstanceModal';
 import QuickTaskModal from './components/QuickTaskModal';
 
@@ -60,11 +62,11 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 // the Stage board (every accounts job at its current stage) replaced the
 // Kanban, at the same paths so bookmarks keep working (sql/304, sql/305).
 const TASK_PLANNER_TABS = [
-  { id: 'mytasks',  label: 'Today',       path: '/planner' },
+  { id: 'mytasks',  label: 'Overview',    path: '/planner' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
-  { id: 'sched',    label: 'Scheduled',   path: '/planner/scheduled' },
-  { id: 'calendar', label: 'Calendar',    path: '/planner/calendar' },
+  { id: 'sched',    label: 'Standing blocks', path: '/planner/scheduled' },
+  { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
   { id: 'kanban',   label: 'Stage board', path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
 ];
@@ -118,6 +120,20 @@ export default function WorkPlannerModule() {
   const [statusFilter, setStatusFilter] = useState('');
   const [calendarView, setCalendarView] = useState('workweek');
   const [guideOpen, setGuideOpen] = useState(false);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [blockComplete, setBlockComplete] = useState(null); // a standing-block occurrence being completed
+  const [blockItems, setBlockItems] = useState([]);
+  const blockItemsMap = useMemo(() => {
+    const m = {};
+    blockItems.forEach((it) => { (m[it.block_id] ||= []).push(it); });
+    return m;
+  }, [blockItems]);
+  // After the standing-blocks edge function writes: blocks, their items and
+  // the completions all change under us.
+  const refreshBlocks = useCallback(async () => {
+    const [st, items, ct] = await Promise.all([fetchScheduledTasks(), fetchBlockItems(), fetchCompletedTasks()]);
+    setScheduledTasks(st); setBlockItems(items); setCompletedTasks(ct);
+  }, []);
   const [anchor, setAnchor] = useState(new Date(today()));
   const [dueFilter, setDueFilter] = useState('month');
   const [sourceFilter, setSourceFilter] = useState('');
@@ -206,17 +222,19 @@ export default function WorkPlannerModule() {
     let cancelled = false;
     async function load() {
       try {
-        const [qt, st, ov, ct, staff, entities] = await Promise.all([
+        const [qt, st, ov, ct, staff, entities, items] = await Promise.all([
           fetchQuickTasks(),
           fetchScheduledTasks(),
           fetchInstanceOverrides(),
           fetchCompletedTasks(),
           fetchStaffProfiles(),
           fetchEntities(),
+          fetchBlockItems().catch(() => []),
         ]);
         if (cancelled) return;
         setQuickTasks(qt);
         setScheduledTasks(st);
+        setBlockItems(items);
         setOverrides(ov);
         setCompletedTasks(ct);
         setAllStaff(staff);
@@ -641,24 +659,6 @@ export default function WorkPlannerModule() {
     setModal(created);
   }
 
-  async function handleSaveMaster(formData) {
-    if (formData.id && scheduledTasks.some((t) => t.id === formData.id)) {
-      // Update existing
-      const { id, created_at, created_by, ...patch } = formData;
-      await updateScheduledTask(id, patch);
-    } else {
-      // Create new
-      const { id, ...rest } = formData;
-      await addScheduledTask(rest);
-    }
-    setModal(null);
-  }
-
-  async function handleDeleteMaster(id) {
-    await deleteScheduledTask(id);
-    setModal(null);
-  }
-
   async function handleSaveOverride(key, overrideData) {
     if (!overrideData) {
       // No changes — just close
@@ -760,7 +760,9 @@ export default function WorkPlannerModule() {
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity, updateStaffCapacity,
     colourMode, staffColours, statusColours,
+    blockItemsMap, refreshBlocks,
   }), [
+    blockItemsMap, refreshBlocks,
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
@@ -799,7 +801,7 @@ export default function WorkPlannerModule() {
   }
 
   // ── Render ──
-  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'kanban' || activeTab === 'mytasks';
+  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'mytasks';
 
   return (
     <WorkPlannerContext.Provider value={contextValue}>
@@ -839,9 +841,14 @@ export default function WorkPlannerModule() {
           {showNewBtn && (
             <div style={{ display: 'flex', gap: 6 }}>
               {activeTab === 'calendar' && (
-                <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Calendar works">
-                  Guide
-                </button>
+                <>
+                  <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Planner works">
+                    Guide
+                  </button>
+                  <button onClick={() => setSelectorOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Pull BrightManager jobs onto a day">
+                    Job Selector
+                  </button>
+                </>
               )}
               {activeTab === 'mytasks' && (
                 <button
@@ -851,12 +858,14 @@ export default function WorkPlannerModule() {
                   + Quick Task
                 </button>
               )}
-              <button
-                onClick={() => setModal('new')}
-                style={{ ...BTN.primary.sm, cursor: 'pointer' }}
-              >
-                + Scheduled Task
-              </button>
+              {activeTab !== 'mytasks' && (
+                <button
+                  onClick={() => setModal('new')}
+                  style={{ ...BTN.primary.sm, cursor: 'pointer' }}
+                >
+                  + Standing block
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -903,7 +912,7 @@ export default function WorkPlannerModule() {
             <QuickTasksView compact={compact} onAction={handleAction} />
           )}
           {activeTab === 'sched' && (
-            <ScheduledView sort={sort} onEdit={(m) => setModal(m)} />
+            <ScheduledView onEdit={(m) => setModal(m)} />
           )}
           {activeTab === 'calendar' && (
             <CalendarView
@@ -918,6 +927,10 @@ export default function WorkPlannerModule() {
                 setQuickTasks((prev) => prev.filter((t) => t.id !== q.id));
                 await deleteQuickTaskDb(q.id);
               }}
+              onEditBlock={(m) => setModal(m)}
+              onCompleteBlock={(inst) => setBlockComplete(inst)}
+              selectorOpen={selectorOpen}
+              onSelectorClose={() => setSelectorOpen(false)}
             />
           )}
           {activeTab === 'kanban' && (
@@ -954,18 +967,30 @@ export default function WorkPlannerModule() {
         </div>
       </div>
 
-      {/* Master Modal */}
+      {/* Standing block editor (sql/312) */}
       {modal != null && (
-        <MasterModal
-          master={modal === 'new' ? null : modal}
-          overridesMap={overridesMap}
+        <StandingBlockModal
+          block={modal === 'new' ? null : modal}
+          items={modal !== 'new' && modal?.id ? (blockItemsMap[modal.id] || []) : []}
           staffList={staffList}
           entityList={entityList}
-          progressNotes={modal !== 'new' && modal?.id ? (notesMap[`master:${modal.id}`] || []) : []}
-          onSave={handleSaveMaster}
-          onDelete={handleDeleteMaster}
+          entityMap={entityMap}
+          profile={profile}
+          onSaved={async () => { setModal(null); await refreshBlocks(); }}
+          onDeleted={async () => { setModal(null); await refreshBlocks(); }}
           onAddEntity={addEntity}
           onClose={() => setModal(null)}
+        />
+      )}
+      {blockComplete != null && (
+        <BlockCompleteModal
+          instance={blockComplete}
+          block={scheduledTasks.find((m) => m.id === blockComplete._masterId)}
+          items={blockItemsMap[blockComplete._masterId] || []}
+          entityMap={entityMap}
+          onDone={async () => { setBlockComplete(null); await refreshBlocks(); }}
+          onEdit={(b) => { setBlockComplete(null); setModal(b); }}
+          onClose={() => setBlockComplete(null)}
         />
       )}
 

@@ -14,7 +14,7 @@ export default function CalendarGuide({ onClose }) {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 640, maxWidth: '94vw', maxHeight: '90vh', overflow: 'auto', padding: '18px 22px', fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>The Calendar</div>
+          <div style={{ fontSize: 17, fontWeight: 700, flex: 1 }}>The Planner</div>
           <button onClick={onClose} style={BTN.secondary.sm}>Close</button>
         </div>
 
@@ -24,11 +24,13 @@ export default function CalendarGuide({ onClose }) {
         <div style={h}>Where the tasks come from</div>
         <p style={p}><b>Purple jobs</b> come from BrightManager. Every job in BM is imported and placed on a day by the scheduling rules, worked back from its deadline.</p>
         <p style={p}><b>Coloured stages</b> come from a job plan. When an accounts job is planned (Work → Plan the Job), Athena works back from the year end and puts each step on a date: request records, records in, prepare, review, meeting or send, approval, file. They move by themselves if the client is late.</p>
-        <p style={p}><b>Dashed quick tasks</b> are the ones you or a colleague added by hand, or that came from BM as one-offs.</p>
+        <p style={p}><b>Teal standing blocks</b> are repeating time that is not a BM job: mail, onboarding, confirmation statements, weekly and monthly payroll. They are set up under Standing blocks and count against your capacity. A payroll block breaks down by client when you complete it.</p>
+        <p style={p}><b>Dashed quick tasks</b> are the ones you or a colleague added by hand.</p>
 
         <div style={h}>How to use it</div>
         <p style={p}>Drag anything to another day to plan it. Drag a stage or a quick task onto someone else's row to hand it over. Drag a quick task out of the sidebar onto a day to add it to that day, or back to the sidebar to unplan it.</p>
         <p style={p}>Click a task to open it. Right-click for the quick options: mark complete, done, not required, open the plan.</p>
+        <p style={p}><b>Job Selector</b> (top right) lists every open BM job, urgent first, so you can pull work forward onto a day when there is room. Ticking a company's accounts also ticks its directors' returns when their tax year has ended.</p>
 
         <div style={h}>Common questions</div>
         <div style={q}>What happens to tasks we don't mark complete in Athena?</div>
