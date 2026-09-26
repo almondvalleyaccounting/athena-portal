@@ -1,3 +1,4 @@
+import { supabase } from '../../lib/supabase';
 import React, { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../shell/AppShell';
@@ -44,6 +45,7 @@ import TodayView from './views/TodayView';
 import DayPlanView from './views/DayPlanView';
 import TaskModal from './components/TaskModal';
 import EmailModal from './components/EmailModal';
+import HolidayModal from './components/HolidayModal';
 import TeamView from './views/TeamView';
 import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
@@ -128,6 +130,21 @@ export default function WorkPlannerModule() {
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [taskModal, setTaskModal] = useState(null); // { type, id, occurrence_date? }
   const [emailModal, setEmailModal] = useState(null); // EmailModal ctx
+  const [holidayOpen, setHolidayOpen] = useState(false);
+  const [holidays, setHolidays] = useState([]); // staff_holidays (sql/317)
+  // `${staffId}|${iso}` for every day off, so views can ask in O(1).
+  const holidayMap = useMemo(() => {
+    const m = {};
+    holidays.forEach((h) => {
+      for (let d = new Date(`${h.date_from}T12:00:00`); formatISO(d) <= h.date_to; d.setDate(d.getDate() + 1)) m[`${h.staff_id}|${formatISO(d)}`] = h;
+    });
+    return m;
+  }, [holidays]);
+  const refreshHolidays = useCallback(async () => {
+    const { data } = await supabase.from('staff_holidays').select('*').gte('date_to', formatISO(addDays(new Date(), -60))).order('date_from').limit(2000);
+    setHolidays(data || []);
+  }, []);
+  useEffect(() => { refreshHolidays(); }, [refreshHolidays]);
   // Email about a quick task: the same chooser as everywhere else.
   const emailQuick = (t) => { setPopover(null); setQuickModal(null); setEmailModal({ entity_id: t.entity_id || null, entity_name: t.entity_id ? entityMap[t.entity_id]?.name : null, task_label: t.title, task: t.id && (t._isQuick || t.due_date != null || !t._instance) ? { type: 'quick', id: t.id } : null }); };
   const [refreshTick, setRefreshTick] = useState(0); // bumped when the task modal changes something
@@ -748,9 +765,9 @@ export default function WorkPlannerModule() {
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity, updateStaffCapacity,
     colourMode, staffColours, statusColours,
-    blockItemsMap, refreshBlocks,
+    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays,
   }), [
-    blockItemsMap, refreshBlocks,
+    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays,
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
@@ -828,6 +845,11 @@ export default function WorkPlannerModule() {
           <div style={{ flex: 1 }} />
           {showNewBtn && (
             <div style={{ display: 'flex', gap: 6 }}>
+              {(activeTab === 'day' || activeTab === 'calendar' || activeTab === 'mytasks') && (
+                <button onClick={() => setHolidayOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Holidays, cover and handover">
+                  Holidays
+                </button>
+              )}
               {activeTab === 'day' && (
                 <button onClick={() => setSelectorOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Pull BrightManager jobs onto this day">
                   Job Selector
@@ -1046,6 +1068,7 @@ export default function WorkPlannerModule() {
 
       {guideOpen && <CalendarGuide onClose={() => setGuideOpen(false)} />}
       {emailModal && <EmailModal ctx={emailModal} staffList={staffList} profile={profile} onClose={() => setEmailModal(null)} />}
+      {holidayOpen && <HolidayModal holidays={holidays} staffList={staffList} staffMap={staffMap} profile={profile} canManage={!!profile?.can_manage_portal} onChanged={refreshHolidays} onClose={() => setHolidayOpen(false)} />}
       {taskModal && (
         <TaskModal
           task={taskModal}

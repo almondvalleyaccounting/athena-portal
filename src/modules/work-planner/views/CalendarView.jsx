@@ -39,7 +39,7 @@ function Cell({ id, children, style }) {
 // Delete live there), rather than a click-then-Open popover.
 export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete, onEditBlock, onCompleteBlock, selectorOpen, onSelectorClose, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile, holidayMap = {} } = useWorkPlanner();
   const [milestones, setMilestones] = useState([]);
   const [bmRows, setBmRows] = useState([]);
   const [doneInAthena, setDoneInAthena] = useState({}); // bm_task_schedule_id -> completion
@@ -417,7 +417,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
             {rows.map((p) => {
               const pid = p.id || 'unassigned';
               const weekUsed = days.reduce((s, d) => s + (items.get(`${pid}|${formatISO(d)}`)?.hours || 0), 0);
-              const weekCap = p.id ? days.reduce((s, d) => s + dayCapacity(p, d), 0) : 0;
+              const weekCap = p.id ? days.reduce((s, d) => s + (holidayMap[`${p.id}|${formatISO(d)}`] ? 0 : dayCapacity(p, d)), 0) : 0;
               return (
                 <React.Fragment key={pid}>
                   <div style={{ padding: '8px 10px', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #e5e7eb', background: '#fff', position: 'sticky', left: 0, zIndex: 2 }}>
@@ -434,10 +434,12 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
                   {days.map((d, i) => {
                     const iso = formatISO(d);
                     const c = items.get(`${pid}|${iso}`);
-                    const cap = p.id ? dayCapacity(p, d) : 0;
+                    const hol = p.id ? holidayMap[`${p.id}|${iso}`] : null;
+                    const cap = p.id && !hol ? dayCapacity(p, d) : 0;
                     const off = p.id && cap === 0;
                     return (
-                      <Cell key={i} id={`cell:${pid}:${iso}`} style={{ padding: 4, minHeight: 64, borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', background: off ? '#f8fafc' : sameDay(d, now) ? '#f0f9ff' : '#fff', verticalAlign: 'top' }}>
+                      <Cell key={i} id={`cell:${pid}:${iso}`} style={{ padding: 4, minHeight: 64, borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', background: hol ? 'repeating-linear-gradient(135deg, #fff7ed, #fff7ed 6px, #ffedd5 6px, #ffedd5 12px)' : off ? '#f8fafc' : sameDay(d, now) ? '#f0f9ff' : '#fff', verticalAlign: 'top' }}>
+                        {hol && <div style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 2 }}>{hol.kind === 'holiday' ? '🏖 Holiday' : hol.kind === 'sick' ? 'Sick' : 'Off'}{hol.half_day ? ' (½)' : ''}</div>}
                         {c?.ms.map((m) => (
                           <Tile key={m.id} id={`ms:${m.id}`} data={{ type: 'ms' }} disabled={m.status !== 'pending'} onContextMenu={(e) => openMenu(e, 'ms', m)}
                             onClick={(e) => { e.stopPropagation(); onOpenTask({ type: 'ms', id: m.id }); }}>
@@ -459,7 +461,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
                         ))}
                         {p.id && (c?.hours > 0 || cap > 0) && (
                           <div style={{ fontSize: 10.5, color: loadColour(c?.hours || 0, cap), textAlign: 'right', marginTop: 2 }}>
-                            {off ? 'off' : `${Math.round((c?.hours || 0) * 10) / 10} / ${Math.round(cap * 10) / 10}h`}
+                            {off ? (hol ? `${Math.round((c?.hours || 0) * 10) / 10}h planned · off` : 'off') : `${Math.round((c?.hours || 0) * 10) / 10} / ${Math.round(cap * 10) / 10}h`}
                           </div>
                         )}
                       </Cell>

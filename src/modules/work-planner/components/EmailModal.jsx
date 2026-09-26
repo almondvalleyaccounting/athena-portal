@@ -18,13 +18,13 @@ const MODES = [
   { id: 'records', label: 'Ask the client for records',  needsClient: true },
 ];
 
-export default function EmailModal({ ctx, staffList = [], profile, onClose, onSent }) {
-  const [mode, setMode] = useState(null);
+export default function EmailModal({ ctx, staffList = [], profile, onClose, onSent, preset = null }) {
+  const [mode, setMode] = useState(preset?.mode || null);
   const [preview, setPreview] = useState(null);
-  const [to, setTo] = useState('');
-  const [staffId, setStaffId] = useState('');
-  const [subject, setSubject] = useState('');
-  const [text, setText] = useState('');
+  const [to, setTo] = useState(preset?.to || '');
+  const [staffId, setStaffId] = useState(preset?.staffId || '');
+  const [subject, setSubject] = useState(preset?.subject || '');
+  const [text, setText] = useState(preset?.text || '');
   const [picker, setPicker] = useState(null);
   const [custom, setCustom] = useState('');
   const [busy, setBusy] = useState(false);
@@ -57,6 +57,7 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
     setTo(s.email || '');
     setText((t) => t.replace(/^Hi [^,]*,/, `Hi ${(s.name || '').split(' ')[0]},`));
   }, [staffId, mode, staffList]);
+  const canGoBack = !preset;
 
   // Records: the text re-renders as the ticks change, then stays editable.
   const rerender = async (next) => {
@@ -149,7 +150,7 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
                       {staffList.filter((s) => s.id !== profile?.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   ) : (
-                    <input value={to} onChange={(e) => setTo(e.target.value)} placeholder={mode === 'other' ? 'name@example.com' : 'No email address on file'} style={input} />
+                    <input value={to} onChange={(e) => setTo(e.target.value)} placeholder={mode === 'other' ? 'name@example.com, another@example.com' : 'No email address on file'} style={input} />
                   )}
                   {preview?.to_reason && mode !== 'team' && mode !== 'other' && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{preview.to_reason}</span>}
                 </div>
@@ -159,7 +160,7 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
                 </div>
                 <textarea value={text} onChange={(e) => setText(e.target.value)} rows={12} style={{ ...input, fontSize: 13.5, lineHeight: 1.5, resize: 'vertical', background: '#f8fafc', marginBottom: 10 }} />
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                  <button onClick={() => { setMode(null); setPicker(null); setPreview(null); }} style={{ ...BTN.secondary.sm, marginRight: 'auto' }}>Back</button>
+                  {canGoBack && <button onClick={() => { setMode(null); setPicker(null); setPreview(null); }} style={{ ...BTN.secondary.sm, marginRight: 'auto' }}>Back</button>}
                   <button onClick={onClose} style={BTN.secondary.sm}>Cancel</button>
                   {profile?.email && <button onClick={() => send(true)} disabled={busy} style={BTN.secondary.sm}>Send a copy to me</button>}
                   <button onClick={() => send(false)} disabled={busy || !to || !subject} style={{ ...BTN.primary.sm, opacity: busy || !to || !subject ? 0.5 : 1 }}>{busy ? 'Sending…' : 'Send'}</button>

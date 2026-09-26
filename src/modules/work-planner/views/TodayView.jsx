@@ -42,6 +42,20 @@ const pill = (r) => ({
 // Stages that send an email to the client (sql/309).
 const COMMS_STAGES = new Set(['request_records', 'chase_1', 'chase_2', 'client_meeting', 'approval']);
 
+// The dashboard at the top (Bobby, 2026-09-26): my BM jobs due in the next
+// three months, months across, type of work down, holidays flagged.
+const TILE_TYPES = [
+  { id: 'accounts',    label: 'Accounts',        services: ['Annual Accounts', 'Accounts', 'Corporation Tax'] },
+  { id: 'vat',         label: 'VAT returns',     services: ['VAT'] },
+  { id: 'sa',          label: 'Self assessment', services: ['Self Assessment', 'Personal Tax'] },
+  { id: 'cs',          label: 'Confirmation statements', services: ['Confirmation Statement'] },
+  { id: 'bookkeeping', label: 'Bookkeeping',     services: ['Bookkeeping', 'Management Accounts'] },
+  { id: 'other',       label: 'Other' },
+];
+const tileTypeOf = (service) => TILE_TYPES.find((t) => t.services?.includes(service))?.id || 'other';
+const monthKey = (iso) => String(iso).slice(0, 7);
+const monthLabel = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
 export default function TodayView({ onOpenTask }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -54,9 +68,12 @@ export default function TodayView({ onOpenTask }) {
   const [sendFor, setSendFor] = useState(null); // milestone with the send modal open
   const [emailFor, setEmailFor] = useState(null); // job with the generic email modal open
   const [busy, setBusy] = useState(false);
-  const { staffList } = useWorkPlanner();
+  const { staffList, holidays = [] } = useWorkPlanner();
   const [toUpdate, setToUpdate] = useState([]); // BM jobs done here, not yet confirmed in BM (sql/311)
+  const [jobs3m, setJobs3m] = useState([]); // my BM jobs due in the next three months
+  const [tile, setTile] = useState(null); // { month, type } open in the list modal
   const today = todayISO();
+  const months = useMemo(() => { const d = new Date(); return [0, 1, 2].map((i) => { const m = new Date(d.getFullYear(), d.getMonth() + i, 1); return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`; }); }, []);
 
   const load = useCallback(async () => {
     if (!profile?.id) return;
@@ -79,13 +96,36 @@ export default function TodayView({ onOpenTask }) {
         .select('id, bm_task_name, completed_at, minutes, entities(name)')
         .eq('completed_by', profile.id).is('confirmed_at', null).order('completed_at', { ascending: false }).limit(200);
       setToUpdate(comps || []);
+      const m0 = `${months[0]}-01`;
+      const m3 = new Date(`${months[2]}-01T12:00:00`); m3.setMonth(m3.getMonth() + 1);
+      const [{ data: bm }, { data: openC }] = await Promise.all([
+        supabase.from('bm_task_schedule').select('id, service, bm_task_name, bm_deadline, scheduled_for_date, scheduled_hours, entity_id, entities(name)')
+          .eq('assignee_id', profile.id).eq('state', 'planned').is('excluded_at', null).gte('bm_deadline', m0).lt('bm_deadline', `${m3.getFullYear()}-${String(m3.getMonth() + 1).padStart(2, '0')}-01`).order('bm_deadline').limit(2000),
+        supabase.from('bm_task_completions').select('bm_task_schedule_id').is('confirmed_at', null).limit(2000),
+      ]);
+      const done = new Set((openC || []).map((c) => c.bm_task_schedule_id));
+      setJobs3m((bm || []).filter((r) => !done.has(r.id)).map((r) => ({ ...r, type: tileTypeOf(r.service), month: monthKey(r.bm_deadline) })));
       setStages(ms || []);
       const seen = new Set();
       setAttention((mine || []).filter((r) => (seen.has(r.plan_id) ? false : seen.add(r.plan_id))).map((r) => r.job_plans));
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
-  }, [profile?.id, today]);
+  }, [profile?.id, today, months]);
   useEffect(() => { load(); }, [load]);
+
+  // Days off per month, for the tiles.
+  const offByMonth = useMemo(() => {
+    const out = {};
+    holidays.filter((h) => h.staff_id === profile?.id).forEach((h) => {
+      for (let d = new Date(`${h.date_from}T12:00:00`); d <= new Date(`${h.date_to}T12:00:00`); d.setDate(d.getDate() + 1)) {
+        if (d.getDay() === 0 || d.getDay() === 6) continue;
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        out[k] = (out[k] || 0) + (h.half_day ? 0.5 : 1);
+      }
+    });
+    return out;
+  }, [holidays, profile?.id]);
+  const tileJobs = (month, type) => jobs3m.filter((j) => j.month === month && (type === 'all' || j.type === type));
 
   // One entry per job: its stages in date order; the first is what to do next.
   const jobs = useMemo(() => {
@@ -171,6 +211,51 @@ export default function TodayView({ onOpenTask }) {
         <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading your stages…</div>
       ) : (
         <>
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '170px repeat(3, 1fr)', fontSize: 13 }}>
+              <div style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 600, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>Due in the next three months</div>
+              {months.map((mo) => (
+                <div key={mo} style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 700, color: '#475569', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', borderLeft: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                  <span>{monthLabel(mo)}</span>
+                  {offByMonth[mo] ? <span style={{ color: '#9a3412', fontWeight: 600 }}>🏖 {offByMonth[mo]} day{offByMonth[mo] === 1 ? '' : 's'} off</span> : null}
+                </div>
+              ))}
+              {TILE_TYPES.map((t) => (
+                <React.Fragment key={t.id}>
+                  <div style={{ padding: '8px 12px', fontWeight: 500, color: '#0f172a', borderBottom: '1px solid #f1f5f9' }}>{t.label}</div>
+                  {months.map((mo) => {
+                    const n = tileJobs(mo, t.id).length;
+                    const off = offByMonth[mo] > 0;
+                    return (
+                      <button key={mo} onClick={() => n && setTile({ month: mo, type: t.id })} disabled={!n}
+                        style={{ padding: '8px 12px', textAlign: 'left', border: 'none', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #f1f5f9', background: n ? (off ? '#fff7ed' : '#f0f9ff') : '#fff', cursor: n ? 'pointer' : 'default', fontFamily: font, fontSize: 15, fontWeight: 700, color: n ? (off ? '#9a3412' : '#0e7fe0') : '#cbd5e1' }}>
+                        {n}{n > 0 && off && <span style={{ fontSize: 11, fontWeight: 600, marginLeft: 6 }}>holiday this month</span>}
+                      </button>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          {tile && (
+            <div onClick={() => setTile(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 640, maxWidth: '94vw', maxHeight: '85vh', overflow: 'auto', padding: 16, fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{TILE_TYPES.find((t) => t.id === tile.type)?.label} · due {monthLabel(tile.month)} · {tileJobs(tile.month, tile.type).length}</div>
+                  <button onClick={() => setTile(null)} style={BTN.secondary.sm}>Close</button>
+                </div>
+                {tileJobs(tile.month, tile.type).map((j) => (
+                  <div key={j.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.entities?.name}</div>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>{String(j.bm_task_name).replace(/\s*(Year End|Quarterly End|Monthly End|Period End|Tax Year).*$/i, '')} · due {fmt(j.bm_deadline)}{j.scheduled_for_date ? ` · planned ${fmt(j.scheduled_for_date)}` : ''}{j.scheduled_hours ? ` · ${Number(j.scheduled_hours)}h` : ''}</div>
+                    </div>
+                    {onOpenTask && <button onClick={() => { setTile(null); onOpenTask({ type: 'bm', id: j.id }); }} style={BTN.secondary.sm}>Open</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {attention.length > 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '8px 12px' }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>Jobs needing attention · {attention.length}</div>

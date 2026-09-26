@@ -39,7 +39,7 @@ function DropZone({ id, style, children, activeStyle }) {
 
 export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick, onQuickDone, onCompleteBlock, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile, holidayMap = {} } = useWorkPlanner();
   const [day, setDay] = useState(formatISO(today()));
   const personId = filters.teamFilter || profile?.id;
   const person = staffMap[personId];
@@ -136,7 +136,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
   }, [all, pageStart, pageEnd]);
   const byKey = useMemo(() => Object.fromEntries(all.map((x) => [x.key, x])), [all]);
   const todayHours = todayList.reduce((s, x) => s + x.hours, 0);
-  const cap = person ? dayCapacity(person, dayDate) : 0;
+  const holiday = person ? holidayMap[`${person.id}|${day}`] : null;
+  const cap = person && !holiday ? dayCapacity(person, dayDate) : 0;
 
   // ── Moves (the same writes the week Planner makes) ──
   const moveTo = async (x, iso, remember = true) => {
@@ -258,6 +259,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           {loading && <span style={{ fontSize: 12, color: '#94a3b8' }}>Loading…</span>}
         </div>
         {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}<button onClick={() => setError(null)} style={{ ...BTN.secondary.sm, marginLeft: 8 }}>OK</button></div>}
+        {holiday && <div style={{ padding: '6px 12px', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 13, fontWeight: 600 }}>{person?.name?.split(' ')[0]} is off this day ({holiday.kind}{holiday.half_day ? ', half day' : ''}){holiday.cover_staff_id ? ` · cover ${staffMap[holiday.cover_staff_id]?.name?.split(' ')[0] || ''}` : ''}. Anything planned here needs to move or be handed over.</div>}
 
         <div style={{ display: 'grid', gridTemplateColumns: '340px minmax(340px, 1fr) 300px', gap: 10, flex: 1, minHeight: 0 }}>
           <DropZone id="incomplete" style={col} activeStyle={{ background: '#eff6ff' }}>

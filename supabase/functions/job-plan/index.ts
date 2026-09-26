@@ -31,6 +31,7 @@
 //   send_email    { entity_id?, to, subject, text, kind, items?, period_end?, test?, task?, task_label?, to_staff_id? }
 //   add_comment   { task: { type, id, occurrence_date? }, body, entity_id?, task_label? }   notifies the thread (sql/315)
 //   set_day_order { day, keys[] }                           Day Plan tile order (sql/313)
+//   save_holiday / delete_holiday / handover_preview        holidays and handover drafts (sql/317)
 //   complete_bm_job { schedule_id, minutes?, note? }        a BM job done in Athena (sql/311)
 //   confirm_bm_completion { completion_id }                 ticked off in BrightManager by hand
 //   mark_done     { milestone_id, minutes?, note? }
@@ -495,8 +496,9 @@ Deno.serve(async (req) => {
 
       case "send_email": {
         const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
-        const to = String(p.to || "").trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new BadRequest("That does not look like an email address");
+        // One address, or several separated by commas (a cover request to the team).
+        const to = String(p.to || "").split(",").map((x) => x.trim()).filter(Boolean).join(", ");
+        if (!to || !to.split(", ").every((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))) throw new BadRequest("That does not look like an email address");
         const subject = String(p.subject || "").trim().slice(0, 200);
         let text = String(p.text || "").slice(0, 20000);
         if (!subject || !text.trim()) throw new BadRequest("Subject and message are needed");
@@ -558,6 +560,83 @@ Deno.serve(async (req) => {
           if (notified) await db.from("task_comments").update({ notified_at: now }).eq("id", row.id);
         }
         return json({ success: true, id: row.id, notified });
+      }
+
+      // Holidays (sql/317). Anyone edits their own; can_manage_portal edits anyone's.
+      case "save_holiday": {
+        const { data: meRow } = await db.from("staff_profiles").select("can_manage_portal").eq("id", me).maybeSingle();
+        const staffId = optUuid(p.staff_id, "staff_id") || me;
+        if (staffId !== me && !meRow?.can_manage_portal) throw new BadRequest("Only a manager can add holidays for someone else", 403);
+        const from = isoDate(p.date_from, "date_from"), to = isoDate(p.date_to, "date_to");
+        if (to < from) throw new BadRequest("The end is before the start");
+        const kind = ["holiday", "sick", "other"].includes(String(p.kind)) ? String(p.kind) : "holiday";
+        const row = { staff_id: staffId, date_from: from, date_to: to, kind, half_day: p.half_day === true, note: p.note ? String(p.note).slice(0, 300) : null, cover_staff_id: optUuid(p.cover_staff_id, "cover_staff_id") };
+        const id = optUuid(p.id, "id");
+        if (id) {
+          const { data: cur } = await db.from("staff_holidays").select("staff_id").eq("id", id).maybeSingle();
+          if (!cur) throw new BadRequest("Holiday not found", 404);
+          if (cur.staff_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Not yours to change", 403);
+          const { error } = await db.from("staff_holidays").update(row).eq("id", id);
+          if (error) throw new Error(error.message);
+          return json({ success: true, id });
+        }
+        const { data, error } = await db.from("staff_holidays").insert({ ...row, created_by: me }).select("id").single();
+        if (error) throw new Error(error.message);
+        return json({ success: true, id: data.id });
+      }
+      case "delete_holiday": {
+        const id = uuid(p.id, "id");
+        const [{ data: cur }, { data: meRow }] = await Promise.all([
+          db.from("staff_holidays").select("staff_id").eq("id", id).maybeSingle(),
+          db.from("staff_profiles").select("can_manage_portal").eq("id", me).maybeSingle(),
+        ]);
+        if (!cur) throw new BadRequest("Holiday not found", 404);
+        if (cur.staff_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Not yours to remove", 403);
+        const { error } = await db.from("staff_holidays").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        return json({ success: true });
+      }
+
+      // A handover draft: what I have not finished and what is planned while
+      // I am away, pulled from the system, for the person to edit and send.
+      case "handover_preview": {
+        const from = isoDate(p.date_from, "date_from"), to = isoDate(p.date_to, "date_to");
+        const mode = p.mode === "cover" ? "cover" : "handover";
+        const today = now.slice(0, 10);
+        const [{ data: meRow }, { data: ms }, { data: bm }, { data: qt }, { data: comps }] = await Promise.all([
+          db.from("staff_profiles").select("name").eq("id", me).maybeSingle(),
+          db.from("job_milestones").select("label, due_date, hours, job_plans!inner(status, entities(name))").eq("owner_id", me).eq("status", "pending").eq("job_plans.status", "committed").lte("due_date", to).order("due_date").limit(300),
+          db.from("bm_task_schedule").select("id, bm_task_name, scheduled_for_date, bm_deadline, scheduled_hours, entities(name)").eq("assignee_id", me).eq("state", "planned").is("excluded_at", null).lte("scheduled_for_date", to).gte("scheduled_for_date", new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)).order("scheduled_for_date").limit(300),
+          db.from("quick_tasks").select("title, planned_date, due_date, duration, entities(name)").eq("assignee_id", me).limit(300),
+          db.from("bm_task_completions").select("bm_task_schedule_id").is("confirmed_at", null),
+        ]);
+        const doneIds = new Set((comps || []).map((c) => c.bm_task_schedule_id));
+        const fmtD = (iso: string | null) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "");
+        type Item = { when: string; line: string };
+        const items: Item[] = [];
+        for (const m of ms || []) items.push({ when: m.due_date, line: `${(m.job_plans as Record<string, any>)?.entities?.name || "Client"} – ${m.label}${m.hours ? ` (${Number(m.hours)}h)` : ""} – due ${fmtD(m.due_date)}` });
+        for (const b of bm || []) if (!doneIds.has(b.id)) items.push({ when: b.scheduled_for_date, line: `${(b.entities as Record<string, any>)?.name || "Client"} – ${String(b.bm_task_name).replace(/\s*(Year End|Quarterly End|Monthly End|Period End|Tax Year).*$/i, "")}${b.bm_deadline ? ` – deadline ${fmtD(b.bm_deadline)}` : ""}` });
+        for (const q of qt || []) {
+          const when = (q.planned_date || q.due_date || "").slice(0, 10);
+          if (!when || when > to) continue;
+          items.push({ when, line: `${(q.entities as Record<string, any>)?.name ? `${(q.entities as Record<string, any>).name} – ` : ""}${q.title}` });
+        }
+        items.sort((a, b) => a.when.localeCompare(b.when));
+        const before = items.filter((i) => i.when < from);
+        const during = items.filter((i) => i.when >= from && i.when <= to);
+        const bullets = (list: Item[]) => (list.length ? list.map((i) => `• ${i.line}`).join("\n") : "• (nothing)");
+        const first = String(meRow?.name || "").split(" ")[0];
+        const range = from === to ? fmtD(from) : `${fmtD(from)} to ${fmtD(to)}`;
+        let subject: string, text: string;
+        if (mode === "cover") {
+          subject = `Cover while I’m off (${range})`;
+          text = `Hi all,\n\nI’m off ${range}. Could someone pick these up while I’m away?\n\n${bullets(during)}\n\n${before.length ? `And still open from before I go:\n\n${bullets(before)}\n\n` : ""}Just reply with what you can take and I’ll hand over the detail.\n\nThanks,\n${first}`;
+        } else {
+          subject = `Handover – ${range}`;
+          text = `Hi ,\n\nA handover for while I’m off ${range}.\n\nNot finished before I go:\n\n${bullets(before)}\n\nPlanned while I’m away:\n\n${bullets(during)}\n\nNotes on what’s needed:\n• \n\nThanks,\n${first}`;
+        }
+        void today;
+        return json({ success: true, subject, text, counts: { before: before.length, during: during.length } });
       }
 
       // Day Plan (sql/313): the order of my tiles for a day.
