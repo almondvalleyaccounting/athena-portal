@@ -28,7 +28,8 @@
 //                 to that address and leaves the stage untouched
 //   move_milestone { milestone_id, due_date, owner_id? }   the week planner's drag; pins the stage
 //   preview_email { entity_id?, kind: blank|records_request, task_label?, items? }  an email from a task
-//   send_email    { entity_id?, to, subject, text, kind, items?, period_end?, test? }
+//   send_email    { entity_id?, to, subject, text, kind, items?, period_end?, test?, task?, task_label?, to_staff_id? }
+//   add_comment   { task: { type, id, occurrence_date? }, body, entity_id?, task_label? }   notifies the thread (sql/315)
 //   set_day_order { day, keys[] }                           Day Plan tile order (sql/313)
 //   complete_bm_job { schedule_id, minutes?, note? }        a BM job done in Athena (sql/311)
 //   confirm_bm_completion { completion_id }                 ticked off in BrightManager by hand
@@ -95,6 +96,25 @@ function pickedItems(v: unknown[]): Array<{ key?: string | null; text?: string |
     const text = o.text ? String(o.text).slice(0, 300) : null;
     return key ? { key } : { text };
   }).filter((x) => x.key || (x.text && x.text.trim()));
+}
+// A task reference from the browser: { type: ms|bm|quick|block, id, occurrence_date? }.
+const TASK_TYPES = new Set(["ms", "bm", "quick", "block"]);
+function taskRef(v: unknown): { type: string; id: string; occurrence_date: string | null } | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const type = String(o.type || "");
+  if (!TASK_TYPES.has(type)) throw new BadRequest("task.type must be ms, bm, quick or block");
+  const id = uuid(o.id, "task.id");
+  const occ = o.occurrence_date ? isoDate(o.occurrence_date, "task.occurrence_date") : null;
+  return { type, id, occurrence_date: occ };
+}
+const PORTAL_URL = Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondvalleyaccounting.co.uk";
+function taskUrl(t: { type: string; id: string; occurrence_date: string | null }): string {
+  return `${PORTAL_URL}/planner/day?task=${t.type}:${t.id}${t.occurrence_date ? `:${t.occurrence_date}` : ""}`;
+}
+function optUuid(v: unknown, field: string): string | null {
+  if (v === null || v === undefined || v === "") return null;
+  return uuid(v, field);
 }
 function optBool(v: unknown): boolean | null {
   if (v === null || v === undefined) return null;
@@ -462,15 +482,66 @@ Deno.serve(async (req) => {
         const to = String(p.to || "").trim();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new BadRequest("That does not look like an email address");
         const subject = String(p.subject || "").trim().slice(0, 200);
-        const text = String(p.text || "").slice(0, 20000);
+        let text = String(p.text || "").slice(0, 20000);
         if (!subject || !text.trim()) throw new BadRequest("Subject and message are needed");
         const { data: settings } = await db.from("job_plan_settings").select("comms_mailbox").eq("id", true).maybeSingle();
         const remember = p.kind === "records_request" && Array.isArray(p.items) ? pickedItems(p.items) : null;
+        const task = taskRef(p.task);
+        const toStaff = optUuid(p.to_staff_id, "to_staff_id");
+        // A colleague is asked to reply in Athena, so the thread lives on the task.
+        if (toStaff && task) text = `${text.trimEnd()}\n\n—\nReply in Athena: ${taskUrl(task)}`;
         const out = await sendGeneric(db, {
-          entityId, to, subject, text, ownerId: me, mailbox: settings?.comms_mailbox || null,
+          entityId: toStaff ? null : entityId, to, subject, text, ownerId: me, mailbox: settings?.comms_mailbox || null,
           testOnly: p.test === true, remember, periodEnd: p.period_end ? isoDate(p.period_end, "period_end") : null,
         });
+        if (task && p.test !== true) {
+          await db.from("task_comments").insert({
+            task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, entity_id: entityId,
+            task_label: p.task_label ? String(p.task_label).slice(0, 160) : null, author_id: me,
+            body: `${subject}\n\n${String(p.text || "").slice(0, 20000)}`, kind: "email", to_staff_id: toStaff, to_email: to, notified_at: now,
+          });
+        }
         return json({ success: true, ...out });
+      }
+
+      // The task modal's comments (sql/315). A reply notifies everyone else on
+      // the thread by email, from the author's mailbox, with the text.
+      case "add_comment": {
+        const task = taskRef(p.task);
+        if (!task) throw new BadRequest("task is needed");
+        const body = String(p.body || "").trim().slice(0, 20000);
+        if (!body) throw new BadRequest("Nothing to say");
+        const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
+        const label = p.task_label ? String(p.task_label).slice(0, 160) : null;
+        const { data: row, error } = await db.from("task_comments").insert({
+          task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, entity_id: entityId, task_label: label, author_id: me, body, kind: "comment",
+        }).select("id").single();
+        if (error) throw new Error(error.message);
+
+        const { data: thread } = await db.from("task_comments").select("author_id, to_staff_id").eq("task_type", task.type).eq("task_id", task.id);
+        const others = new Set<string>();
+        (thread || []).forEach((c) => { if (c.author_id && c.author_id !== me) others.add(c.author_id); if (c.to_staff_id && c.to_staff_id !== me) others.add(c.to_staff_id); });
+        let notified = 0;
+        if (others.size) {
+          const [{ data: people }, { data: meRow }, { data: ent }] = await Promise.all([
+            db.from("staff_profiles").select("id, name, email").in("id", [...others]).eq("is_active", true),
+            db.from("staff_profiles").select("name").eq("id", me).maybeSingle(),
+            entityId ? db.from("entities").select("name").eq("id", entityId).maybeSingle() : Promise.resolve({ data: null }),
+          ]);
+          const { data: settings } = await db.from("job_plan_settings").select("comms_mailbox").eq("id", true).maybeSingle();
+          const myFirst = String(meRow?.name || "").split(" ")[0] || "A colleague";
+          const subject = `Re: ${[ent?.name, label].filter(Boolean).join(" – ") || "a task"}`;
+          for (const person of people || []) {
+            if (!person.email) continue;
+            const text = `Hi ${String(person.name || "").split(" ")[0]},\n\n${myFirst} replied on ${label || "the task"}${ent?.name ? ` (${ent.name})` : ""} in Athena:\n\n${body}\n\n—\nReply in Athena: ${taskUrl(task)}`;
+            try {
+              await sendGeneric(db, { entityId: null, to: person.email, subject, text, ownerId: me, mailbox: settings?.comms_mailbox || null });
+              notified++;
+            } catch (e) { console.error("[job-plan] comment notify", (e as Error).message); }
+          }
+          if (notified) await db.from("task_comments").update({ notified_at: now }).eq("id", row.id);
+        }
+        return json({ success: true, id: row.id, notified });
       }
 
       // Day Plan (sql/313): the order of my tiles for a day.

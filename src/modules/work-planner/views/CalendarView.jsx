@@ -37,7 +37,7 @@ function Cell({ id, children, style }) {
 
 // onOpen opens a quick task straight into its editor (Done, Not required and
 // Delete live there), rather than a click-then-Open popover.
-export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete, onEditBlock, onCompleteBlock, selectorOpen, onSelectorClose }) {
+export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete, onEditBlock, onCompleteBlock, selectorOpen, onSelectorClose, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
   const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile } = useWorkPlanner();
   const [milestones, setMilestones] = useState([]);
@@ -88,7 +88,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
   }, [fromISO, toISO]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshTick]);
 
   // ── People (rows) ──
   const people = useMemo(() => {
@@ -200,6 +200,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       const p = x.job_plans;
       title = `${x.label} · ${p?.entities?.name || ''}`;
       const pending = x.status === 'pending';
+      items.push({ label: 'Open', run: () => onOpenTask({ type: 'ms', id: x.id }) });
       items.push({ label: 'Open the plan', run: () => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`) });
       items.push({ label: 'Done…', disabled: !pending, run: () => setAsk({ title: x.label, subtitle: p?.entities?.name, defaultMins: x.hours ? Math.round(Number(x.hours) * 60) : null, run: (m) => act({ action: 'mark_done', milestone_id: x.id, minutes: m }) }) });
       items.push({ label: 'Not required (skip)', disabled: !pending, run: () => { if (window.confirm(`Skip "${x.label}" on this job?`)) act({ action: 'skip', milestone_id: x.id }).catch((er) => setError(er.message)); } });
@@ -207,6 +208,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
     } else if (type === 'bm') {
       const done = doneInAthena[x.id];
       title = `${shortTask(x.bm_task_name)} · ${entityMap[x.entity_id]?.name || ''}`;
+      items.push({ label: 'Open', run: () => onOpenTask({ type: 'bm', id: x.id }) });
       items.push({ label: done ? 'Marked complete — update BrightManager' : 'Mark complete…', disabled: !!done, run: () => setAsk({
         title: shortTask(x.bm_task_name), subtitle: entityMap[x.entity_id]?.name, cta: 'Mark complete',
         defaultMins: x.remaining_hours != null ? Math.round(Number(x.remaining_hours) * 60) : null,
@@ -217,11 +219,13 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       if (x.entity_id) items.push({ label: 'Open the client', run: () => navigate(`/clients/${x.entity_id}`) });
     } else if (type === 'block') {
       title = `${x.title} · ${kindOf(x.block_kind).label}`;
+      items.push({ label: 'Open', run: () => onOpenTask({ type: 'block', id: x._masterId, occurrence_date: formatISO(x._date) }) });
       items.push({ label: 'Complete / log time…', run: () => onCompleteBlock && onCompleteBlock(x) });
       items.push({ label: 'Edit the block', run: () => onEditBlock && onEditBlock(scheduledTasks.find((m) => m.id === x._masterId)) });
     } else {
       title = x.title;
-      items.push({ label: 'Open', run: () => onOpen({ ...x, _isQuick: true }) });
+      items.push({ label: 'Open', run: () => onOpenTask({ type: 'quick', id: x.id }) });
+      items.push({ label: 'Edit', run: () => onOpen({ ...x, _isQuick: true }) });
       items.push({ label: 'Done…', run: () => onQuickDone && onQuickDone(x) });
       items.push({ label: 'Not required', run: () => onQuickNotRequired && onQuickNotRequired(x) });
       items.push({ label: x.planned_date ? 'Unplan (back to the list)' : 'Plan for today', run: () => updateQuickTask(x.id, { planned_date: x.planned_date ? null : new Date(`${formatISO(now)}T09:00:00`).toISOString() }) });
@@ -297,10 +301,10 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
   };
   const clickFor = (type, x) => (e) => {
     e.stopPropagation();
-    if (type === 'ms') navigate(`/planner/plan/${x.job_plans.entity_id}/${x.job_plans.period_end}`);
-    else if (type === 'quick') onOpen({ ...x, _isQuick: true });
-    else if (type === 'block') onCompleteBlock && onCompleteBlock(x);
-    else if (x.entity_id) navigate(`/clients/${x.entity_id}`);
+    if (type === 'ms') onOpenTask({ type: 'ms', id: x.id });
+    else if (type === 'quick') onOpenTask({ type: 'quick', id: x.id });
+    else if (type === 'block') onOpenTask({ type: 'block', id: x._masterId, occurrence_date: formatISO(x._date) });
+    else onOpenTask({ type: 'bm', id: x.id });
   };
   const floating = (
     <>
@@ -391,7 +395,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
           <div style={{ padding: '8px 10px', fontSize: 12, fontWeight: 600, color: '#94a3b8', borderBottom: '1px solid #e5e7eb' }}>Unplanned quick tasks ({unplannedQuick.length})</div>
           <div style={{ overflowY: 'auto', padding: 5, flex: 1 }}>
             {unplannedQuick.map((q) => (
-              <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpen({ ...q, _isQuick: true }); }} onContextMenu={(e) => openMenu(e, 'quick', q)}>
+              <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpenTask({ type: 'quick', id: q.id }); }} onContextMenu={(e) => openMenu(e, 'quick', q)}>
                 {renderTile('quick', q)}
               </Tile>
             ))}
@@ -436,20 +440,20 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
                       <Cell key={i} id={`cell:${pid}:${iso}`} style={{ padding: 4, minHeight: 64, borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9', background: off ? '#f8fafc' : sameDay(d, now) ? '#f0f9ff' : '#fff', verticalAlign: 'top' }}>
                         {c?.ms.map((m) => (
                           <Tile key={m.id} id={`ms:${m.id}`} data={{ type: 'ms' }} disabled={m.status !== 'pending'} onContextMenu={(e) => openMenu(e, 'ms', m)}
-                            onClick={(e) => { e.stopPropagation(); navigate(`/planner/plan/${m.job_plans.entity_id}/${m.job_plans.period_end}`); }}>
+                            onClick={(e) => { e.stopPropagation(); onOpenTask({ type: 'ms', id: m.id }); }}>
                             {renderTile('ms', m)}
                           </Tile>
                         ))}
                         {c?.bm.map((b) => (
                           <Tile key={b.id} id={`bm:${b.id}`} data={{ type: 'bm' }} disabled={!!doneInAthena[b.id]} onContextMenu={(e) => openMenu(e, 'bm', b)}
-                            onClick={(e) => { e.stopPropagation(); if (b.entity_id) navigate(`/clients/${b.entity_id}`); }}>{renderTile('bm', b)}</Tile>
+                            onClick={(e) => { e.stopPropagation(); onOpenTask({ type: 'bm', id: b.id }); }}>{renderTile('bm', b)}</Tile>
                         ))}
                         {c?.block.map((b) => (
                           <Tile key={b.id} id={`block:${b.id}`} data={{ type: 'block' }} disabled onContextMenu={(e) => openMenu(e, 'block', b)}
-                            onClick={(e) => { e.stopPropagation(); onCompleteBlock && onCompleteBlock(b); }}>{renderTile('block', b)}</Tile>
+                            onClick={(e) => { e.stopPropagation(); onOpenTask({ type: 'block', id: b._masterId, occurrence_date: formatISO(b._date) }); }}>{renderTile('block', b)}</Tile>
                         ))}
                         {c?.quick.map((q) => (
-                          <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpen({ ...q, _isQuick: true }); }} onContextMenu={(e) => openMenu(e, 'quick', q)}>
+                          <Tile key={q.id} id={`quick:${q.id}`} data={{ type: 'quick' }} onClick={(e) => { e.stopPropagation(); onOpenTask({ type: 'quick', id: q.id }); }} onContextMenu={(e) => openMenu(e, 'quick', q)}>
                             {renderTile('quick', q)}
                           </Tile>
                         ))}

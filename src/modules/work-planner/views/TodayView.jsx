@@ -157,7 +157,7 @@ function SendModal({ milestone, onClose, onSent, myEmail }) {
   );
 }
 
-export default function TodayView() {
+export default function TodayView({ onOpenTask }) {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [stages, setStages] = useState([]);
@@ -260,7 +260,8 @@ export default function TodayView() {
             )}
             <button onClick={() => { setDoneFor(m.id); setMins(m.hours ? String(Math.round(Number(m.hours) * 60)) : ''); }} disabled={busy} style={COMMS_STAGES.has(m.stage_key) && !m.comms_sent_at ? BTN.secondary.sm : BTN.primary.sm}>Done</button>
             <button onClick={() => { if (window.confirm(`Skip "${m.label}" on this job?`)) act({ action: 'skip', milestone_id: m.id }); }} disabled={busy} style={BTN.secondary.sm}>Skip</button>
-            <button onClick={() => setEmailFor({ entity_id: p.entity_id, entity_name: p.entities?.name, task_label: m.label })} disabled={busy} style={BTN.secondary.sm}>Email</button>
+            <button onClick={() => setEmailFor({ entity_id: p.entity_id, entity_name: p.entities?.name, task_label: m.label, task: { type: 'ms', id: m.id } })} disabled={busy} style={BTN.secondary.sm}>Email</button>
+            {onOpenTask && <button onClick={() => onOpenTask({ type: 'ms', id: m.id })} style={BTN.secondary.sm}>Open</button>}
           </div>
         )}
       </div>

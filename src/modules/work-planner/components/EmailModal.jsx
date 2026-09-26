@@ -79,6 +79,7 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
       const res = await callJobPlan({
         action: 'send_email', entity_id: hasClient ? ctx.entity_id : null, to: test ? profile?.email : to, subject, text, test,
         kind: mode === 'records' ? 'records_request' : 'blank', items: mode === 'records' ? picked() : undefined, period_end: preview?.period_end || null,
+        task: ctx.task || null, task_label: taskLabel || null, to_staff_id: mode === 'team' ? staffId || null : null,
       });
       if (test) setNote(`Test copy sent to ${res.to}.`);
       else { onSent && onSent(); onClose(); }
@@ -108,7 +109,8 @@ export default function EmailModal({ ctx, staffList = [], profile, onClose, onSe
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 10 }}>
-              {preview?.from_email ? `Goes from your mailbox (${preview.from_email})` : 'Goes from your mailbox if connected, else the practice mailbox with your name on it'}, plain text{hasClient ? ', and is logged on the client page' : ''}.
+              {preview?.from_email ? `Goes from your mailbox (${preview.from_email})` : 'Goes from your mailbox if connected, else the practice mailbox with your name on it'}, plain text{hasClient && mode !== 'team' ? ', and is logged on the client page' : ''}.
+              {mode === 'team' && ctx.task ? ' It carries a link back to this task; their reply in Athena comes to you by email.' : ''}
             </div>
             {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13, marginBottom: 8 }}>{error}</div>}
             {note && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#dcfce7', color: '#166534', fontSize: 13, marginBottom: 8 }}>{note}</div>}

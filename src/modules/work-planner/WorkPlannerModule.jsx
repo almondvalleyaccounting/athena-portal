@@ -42,6 +42,7 @@ import ReadyNowView from './views/ReadyNowView';
 import DriftView from './views/DriftView';
 import TodayView from './views/TodayView';
 import DayPlanView from './views/DayPlanView';
+import TaskModal from './components/TaskModal';
 import TeamView from './views/TeamView';
 import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
@@ -123,6 +124,15 @@ export default function WorkPlannerModule() {
   const [calendarView, setCalendarView] = useState('workweek');
   const [guideOpen, setGuideOpen] = useState(false);
   const [selectorOpen, setSelectorOpen] = useState(false);
+  const [taskModal, setTaskModal] = useState(null); // { type, id, occurrence_date? }
+  const [refreshTick, setRefreshTick] = useState(0); // bumped when the task modal changes something
+  // Deep link from a notification email: /planner/day?task=bm:<id>[:<date>]
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('task');
+    if (!t) return;
+    const [type, id, occ] = t.split(':');
+    if (['ms', 'bm', 'quick', 'block'].includes(type) && id) setTaskModal({ type, id, occurrence_date: occ || null });
+  }, [location.search]);
   const [blockComplete, setBlockComplete] = useState(null); // a standing-block occurrence being completed
   const [blockItems, setBlockItems] = useState([]);
   const blockItemsMap = useMemo(() => {
@@ -908,7 +918,7 @@ export default function WorkPlannerModule() {
         <div style={{ flex: 1, overflow: 'auto', minWidth: 0, minHeight: 0 }}>
           {activeTab === 'mytasks' && (
             <>
-              <TodayView />
+              <TodayView onOpenTask={setTaskModal} />
               <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
             </>
           )}
@@ -919,6 +929,8 @@ export default function WorkPlannerModule() {
               onOpenQuick={(q) => handleOpen({ ...q, _isQuick: true })}
               onQuickDone={(q) => handleStartComplete({ ...q, _isQuick: true })}
               onCompleteBlock={(inst) => setBlockComplete(inst)}
+              onOpenTask={setTaskModal}
+              refreshTick={refreshTick}
             />
           )}
           {activeTab === 'team' && (
@@ -947,6 +959,8 @@ export default function WorkPlannerModule() {
               onCompleteBlock={(inst) => setBlockComplete(inst)}
               selectorOpen={selectorOpen}
               onSelectorClose={() => setSelectorOpen(false)}
+              onOpenTask={setTaskModal}
+              refreshTick={refreshTick}
             />
           )}
           {activeTab === 'kanban' && (
@@ -1054,6 +1068,20 @@ export default function WorkPlannerModule() {
       )}
 
       {guideOpen && <CalendarGuide onClose={() => setGuideOpen(false)} />}
+      {taskModal && (
+        <TaskModal
+          task={taskModal}
+          staffMap={staffMap} staffList={staffList} entityMap={entityMap} profile={profile}
+          quickTasks={quickTasks} scheduledTasks={scheduledTasks} blockItemsMap={blockItemsMap}
+          onClose={() => { setTaskModal(null); if (location.search.includes('task=')) navigate(location.pathname, { replace: true }); }}
+          onChanged={() => setRefreshTick((n) => n + 1)}
+          onEditQuick={(q) => setQuickModal(q)}
+          onQuickDone={(q) => handleStartComplete({ ...q, _isQuick: true })}
+          onQuickNotRequired={(q) => handleStartNotReq({ ...q, _isQuick: true })}
+          onCompleteBlock={(inst) => setBlockComplete(inst)}
+          onEditBlock={(b) => setModal(b)}
+        />
+      )}
 
       {/* Action Popover */}
       {popover != null && (

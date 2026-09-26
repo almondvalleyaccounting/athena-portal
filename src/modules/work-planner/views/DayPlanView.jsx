@@ -37,7 +37,7 @@ function DropZone({ id, style, children, activeStyle }) {
   return <div ref={setNodeRef} style={{ ...style, ...(isOver ? activeStyle || { background: '#eff6ff' } : {}) }}>{children}</div>;
 }
 
-export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick, onQuickDone, onCompleteBlock }) {
+export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick, onQuickDone, onCompleteBlock, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
   const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile } = useWorkPlanner();
   const [day, setDay] = useState(formatISO(today()));
@@ -53,6 +53,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
   const [ask, setAsk] = useState(null);
   const [email, setEmail] = useState(null);
   const [active, setActive] = useState(null);
+  const [weekOffset, setWeekOffset] = useState(0); // right column: 0 = rest of this week, n = n weeks on
+  const [undo, setUndo] = useState(null); // { x, from } for the last move
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const dayDate = useMemo(() => new Date(`${day}T12:00:00`), [day]);
@@ -63,6 +65,10 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
   }, [dayDate]);
   const weekEndISO = formatISO(weekEnd);
   const backISO = formatISO(addDays(dayDate, -90));
+  // The right column can page forward a week at a time; the window loads that far.
+  const pageStart = useMemo(() => (weekOffset === 0 ? addDays(dayDate, 1) : addDays(startOfWeek(weekEnd), 1 + 7 * (weekOffset - 1) + 7)), [weekOffset, dayDate, weekEnd]);
+  const pageEnd = useMemo(() => (weekOffset === 0 ? weekEnd : addDays(pageStart, 6)), [weekOffset, weekEnd, pageStart]);
+  const loadEndISO = formatISO(pageEnd);
 
   const load = useCallback(async () => {
     if (!personId) return;
@@ -71,8 +77,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
       const [{ data: ms, error: mErr }, bm, { data: comps }, { data: ord }] = await Promise.all([
         supabase.from('job_milestones')
           .select('id, stage_key, label, kind, hours, owner_id, due_date, status, note, comms_sent_at, job_plans!inner(id, entity_id, period_end, status, risk, entities(name))')
-          .eq('owner_id', personId).eq('status', 'pending').eq('job_plans.status', 'committed').lte('due_date', weekEndISO).order('due_date').limit(500),
-        listScheduleInRange({ startISO: backISO, endISO: weekEndISO, staffIds: [personId] }),
+          .eq('owner_id', personId).eq('status', 'pending').eq('job_plans.status', 'committed').lte('due_date', loadEndISO).order('due_date').limit(500),
+        listScheduleInRange({ startISO: backISO, endISO: loadEndISO, staffIds: [personId] }),
         supabase.from('bm_task_completions').select('bm_task_schedule_id').is('confirmed_at', null).limit(1000),
         supabase.from('day_plan_order').select('keys').eq('staff_id', personId).eq('day', day).maybeSingle(),
       ]);
@@ -84,8 +90,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
       setOrder(ord?.keys || []);
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
-  }, [personId, day, weekEndISO, backISO]);
-  useEffect(() => { load(); }, [load]);
+  }, [personId, day, loadEndISO, backISO]);
+  useEffect(() => { load(); }, [load, refreshTick]);
 
   // ── Every item as a uniform tile record ──
   const all = useMemo(() => {
@@ -98,12 +104,12 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
     });
     scheduledTasks.forEach((m) => {
       if (m.assignee_id !== personId || !m.planned_date) return;
-      generateInstances(m, addDays(dayDate, -14), weekEnd, overridesMap, completedKeys).forEach((inst) => {
+      generateInstances(m, addDays(dayDate, -14), pageEnd, overridesMap, completedKeys).forEach((inst) => {
         out.push({ key: `block:${inst._key}`, type: 'block', item: inst, date: formatISO(inst._date), hours: (inst.duration || 0) / 60, title: inst.title, client: null, entity_id: null });
       });
     });
     return out;
-  }, [milestones, bmRows, doneInAthena, quickTasks, scheduledTasks, overridesMap, completedKeys, personId, entityMap, dayDate, weekEnd]);
+  }, [milestones, bmRows, doneInAthena, quickTasks, scheduledTasks, overridesMap, completedKeys, personId, entityMap, dayDate, pageEnd]);
 
   const incomplete = useMemo(() => all.filter((x) => x.date < day && !(x.type === 'block' && !x.item.carry_over)).sort((a, b) => a.date.localeCompare(b.date)), [all, day]);
   // Blocks that do not carry over: missed days wait for a reason, not for the work.
@@ -119,26 +125,35 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
   }, [all, day, order]);
   const rest = useMemo(() => {
     const groups = new Map();
-    all.filter((x) => x.date > day && x.date <= weekEndISO).sort((a, b) => a.date.localeCompare(b.date)).forEach((x) => { if (!groups.has(x.date)) groups.set(x.date, []); groups.get(x.date).push(x); });
+    const fromISO = formatISO(pageStart), toISO = formatISO(pageEnd);
+    all.filter((x) => x.date >= fromISO && x.date <= toISO).sort((a, b) => a.date.localeCompare(b.date)).forEach((x) => { if (!groups.has(x.date)) groups.set(x.date, []); groups.get(x.date).push(x); });
     // Empty working days still get a drop target.
-    for (let d = addDays(dayDate, 1); d <= weekEnd; d = addDays(d, 1)) {
+    for (let d = new Date(pageStart); d <= pageEnd; d = addDays(d, 1)) {
       const iso = formatISO(d);
       if (!groups.has(iso) && d.getDay() !== 0 && d.getDay() !== 6) groups.set(iso, []);
     }
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [all, day, weekEndISO, dayDate, weekEnd]);
+  }, [all, pageStart, pageEnd]);
   const byKey = useMemo(() => Object.fromEntries(all.map((x) => [x.key, x])), [all]);
   const todayHours = todayList.reduce((s, x) => s + x.hours, 0);
   const cap = person ? dayCapacity(person, dayDate) : 0;
 
   // ── Moves (the same writes the week Planner makes) ──
-  const moveTo = async (x, iso) => {
+  const moveTo = async (x, iso, remember = true) => {
     if (x.date === iso) return;
     if (x.type === 'ms') await callJobPlan({ action: 'move_milestone', milestone_id: x.item.id, due_date: iso });
     else if (x.type === 'bm') await rescheduleTask(x.item.id, iso);
     else if (x.type === 'quick') await updateQuickTask(x.item.id, { planned_date: new Date(`${iso}T09:00:00`).toISOString() });
-    else throw new Error('A standing block stays on its day; complete it or mark it not required.');
+    else throw new Error('A block stays on its day; complete it or mark it not required.');
+    if (remember) setUndo({ x, from: x.date, to: iso });
   };
+  const undoMove = async () => {
+    if (!undo) return;
+    try { await moveTo({ ...undo.x, date: undo.to }, undo.from, false); setUndo(null); await load(); }
+    catch (e) { setError(e.message || String(e)); }
+  };
+  // "Back to Incomplete": the previous working day, so it lands on the left.
+  const prevWorkingISO = (() => { let d = addDays(dayDate, -1); while (d.getDay() === 0 || d.getDay() === 6) d = addDays(d, -1); return formatISO(d); })();
   const saveOrder = async (keys) => {
     setOrder(keys);
     if (personId === profile?.id) await callJobPlan({ action: 'set_day_order', day, keys }).catch((e) => setError(e.message));
@@ -162,6 +177,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
       } else if (target.startsWith('day:')) {
         await moveTo(x, target.slice(4));
         await load();
+      } else if (target === 'incomplete') {
+        if (x.date >= day) { await moveTo(x, prevWorkingISO); await load(); }
       }
     } catch (e) { setError(e.message || String(e)); }
   }, [byKey, todayList, day, load]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -175,10 +192,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
     else onCompleteBlock && onCompleteBlock(x.item);
   };
   const openFor = (x) => {
-    if (x.type === 'ms') navigate(`/planner/plan/${x.item.job_plans.entity_id}/${x.item.job_plans.period_end}`);
-    else if (x.type === 'bm') { if (x.entity_id) navigate(`/clients/${x.entity_id}`); }
-    else if (x.type === 'quick') onOpenQuick && onOpenQuick(x.item);
-    else onCompleteBlock && onCompleteBlock(x.item);
+    if (x.type === 'block') onOpenTask({ type: 'block', id: x.item._masterId, occurrence_date: x.date });
+    else onOpenTask({ type: x.type, id: x.item.id });
   };
   const openMenu = (e, x) => {
     e.preventDefault(); e.stopPropagation();
@@ -189,6 +204,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
     if (x.type === 'ms') items.push({ label: 'Not required (skip)', run: () => { if (window.confirm(`Skip "${x.title}" on this job?`)) act({ action: 'skip', milestone_id: x.item.id }).catch((er) => setError(er.message)); } });
     if (x.date !== day && x.type !== 'block') items.push({ label: 'Move to this day', run: () => moveTo(x, day).then(load).catch((er) => setError(er.message)) });
     if (x.entity_id) items.push({ label: 'Email…', run: () => setEmail(x) });
+    if (x.type === 'quick') items.push({ label: 'Edit', run: () => onOpenQuick && onOpenQuick(x.item) });
+    if (x.date === day && x.type !== 'block') items.push({ label: 'Back to Incomplete', run: () => moveTo(x, prevWorkingISO).then(load).catch((er) => setError(er.message)) });
     setMenu({ x: e.clientX, y: e.clientY, title: `${x.title}${x.client ? ` · ${x.client}` : ''}`, items });
   };
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -211,7 +228,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           {risk && <span style={{ marginLeft: 5, padding: '0 5px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: risk.bg, color: risk.fg }}>{risk.label}</span>}
         </div>
         {!compact && (
-          <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'wrap' }} onPointerDown={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'nowrap' }} onPointerDown={(e) => e.stopPropagation()}>
             <button onClick={() => openFor(x)} style={BTN.secondary.sm}>Open</button>
             <button onClick={() => doneFor(x)} style={BTN.primary.sm}>{x.type === 'bm' ? 'Complete' : x.type === 'block' ? 'Log time' : 'Done'}</button>
             {x.entity_id && <button onClick={() => setEmail(x)} style={BTN.secondary.sm}>Email</button>}
@@ -236,13 +253,14 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           <div style={{ fontSize: 14, fontWeight: 600, marginLeft: 4 }}>{dayDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
           <div style={{ fontSize: 12.5, color: '#64748b' }}>· {person?.name || '—'}{filters.teamFilter && filters.teamFilter !== profile?.id ? ' (viewing)' : ''}</div>
           <div style={{ flex: 1 }} />
+          {undo && <button onClick={undoMove} style={BTN.secondary.sm} title={`Put "${undo.x.title}" back on ${fmtDay(undo.from)}`}>Undo move</button>}
           <div style={{ fontSize: 12.5, fontWeight: 600, color: loadColour(todayHours, cap) }}>{Math.round(todayHours * 10) / 10}h planned / {Math.round(cap * 10) / 10}h</div>
           {loading && <span style={{ fontSize: 12, color: '#94a3b8' }}>Loading…</span>}
         </div>
         {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}<button onClick={() => setError(null)} style={{ ...BTN.secondary.sm, marginLeft: 8 }}>OK</button></div>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(340px, 1fr) 300px', gap: 10, flex: 1, minHeight: 0 }}>
-          <div style={col}>
+        <div style={{ display: 'grid', gridTemplateColumns: '340px minmax(340px, 1fr) 300px', gap: 10, flex: 1, minHeight: 0 }}>
+          <DropZone id="incomplete" style={col} activeStyle={{ background: '#eff6ff' }}>
             <div style={colHead}>Incomplete <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {incomplete.length}</span></div>
             <div style={{ overflowY: 'auto', padding: 6, flex: 1 }}>
               {unexplained.length > 0 && (
@@ -259,8 +277,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
               {incomplete.length === 0 && unexplained.length === 0 && <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: 8 }}>Nothing left over from earlier days.</div>}
               {incomplete.map((x) => <Draggable key={x.key} id={x.key} disabled={x.type === 'block'}><Tile x={x} showDate /></Draggable>)}
             </div>
-            <div style={{ padding: '6px 10px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb' }}>Planned for an earlier day, still open. Drag into the day or use →.</div>
-          </div>
+            <div style={{ padding: '6px 10px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb' }}>Planned for an earlier day, still open. Drag into the day or use →. Drop a tile here to send it back.</div>
+          </DropZone>
 
           <div style={col}>
             <div style={colHead}>{sameDay(dayDate, today()) ? 'Today' : fmtDay(day)} <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {todayList.length} · drag to prioritise</span></div>
@@ -277,7 +295,11 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           </div>
 
           <div style={col}>
-            <div style={colHead}>Rest of the week</div>
+            <div style={{ ...colHead, gap: 4 }}>
+              <button onClick={() => setWeekOffset((n) => Math.max(0, n - 1))} disabled={weekOffset === 0} style={{ ...BTN.secondary.sm, padding: '2px 7px', opacity: weekOffset === 0 ? 0.4 : 1 }} title="Previous week">‹</button>
+              <span style={{ flex: 1, textAlign: 'center' }}>{weekOffset === 0 ? 'Rest of the week' : `Week of ${fmtDay(formatISO(pageStart))}`}</span>
+              <button onClick={() => setWeekOffset((n) => n + 1)} style={{ ...BTN.secondary.sm, padding: '2px 7px' }} title="Next week">›</button>
+            </div>
             <div style={{ overflowY: 'auto', padding: 6, flex: 1 }}>
               {rest.map(([iso, list]) => (
                 <DropZone key={iso} id={`day:${iso}`} style={{ marginBottom: 8, borderRadius: 8, padding: 4 }}>
