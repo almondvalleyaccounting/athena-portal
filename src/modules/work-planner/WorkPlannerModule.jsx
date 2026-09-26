@@ -41,6 +41,7 @@ import CapacityView from './views/CapacityView';
 import ReadyNowView from './views/ReadyNowView';
 import DriftView from './views/DriftView';
 import TodayView from './views/TodayView';
+import DayPlanView from './views/DayPlanView';
 import TeamView from './views/TeamView';
 import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
@@ -63,6 +64,7 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 // Kanban, at the same paths so bookmarks keep working (sql/304, sql/305).
 const TASK_PLANNER_TABS = [
   { id: 'mytasks',  label: 'Overview',    path: '/planner' },
+  { id: 'day',      label: 'Day plan',    path: '/planner/day' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched',    label: 'Standing blocks', path: '/planner/scheduled' },
@@ -801,7 +803,7 @@ export default function WorkPlannerModule() {
   }
 
   // ── Render ──
-  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'mytasks';
+  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'mytasks' || activeTab === 'day';
 
   return (
     <WorkPlannerContext.Provider value={contextValue}>
@@ -840,6 +842,11 @@ export default function WorkPlannerModule() {
           <div style={{ flex: 1 }} />
           {showNewBtn && (
             <div style={{ display: 'flex', gap: 6 }}>
+              {activeTab === 'day' && (
+                <button onClick={() => setSelectorOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Pull BrightManager jobs onto this day">
+                  Job Selector
+                </button>
+              )}
               {activeTab === 'calendar' && (
                 <>
                   <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Planner works">
@@ -858,7 +865,7 @@ export default function WorkPlannerModule() {
                   + Quick Task
                 </button>
               )}
-              {activeTab !== 'mytasks' && (
+              {activeTab !== 'mytasks' && activeTab !== 'day' && (
                 <button
                   onClick={() => setModal('new')}
                   style={{ ...BTN.primary.sm, cursor: 'pointer' }}
@@ -904,6 +911,15 @@ export default function WorkPlannerModule() {
               <TodayView />
               <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
             </>
+          )}
+          {activeTab === 'day' && (
+            <DayPlanView
+              selectorOpen={selectorOpen}
+              onSelectorClose={() => setSelectorOpen(false)}
+              onOpenQuick={(q) => handleOpen({ ...q, _isQuick: true })}
+              onQuickDone={(q) => handleStartComplete({ ...q, _isQuick: true })}
+              onCompleteBlock={(inst) => setBlockComplete(inst)}
+            />
           )}
           {activeTab === 'team' && (
             <TeamView />

@@ -27,6 +27,9 @@
 //   send_comms    { milestone_id, to?, test? }   send it; test=true with `to` sends a copy
 //                 to that address and leaves the stage untouched
 //   move_milestone { milestone_id, due_date, owner_id? }   the week planner's drag; pins the stage
+//   preview_email { entity_id?, kind: blank|records_request, task_label?, items? }  an email from a task
+//   send_email    { entity_id?, to, subject, text, kind, items?, period_end?, test? }
+//   set_day_order { day, keys[] }                           Day Plan tile order (sql/313)
 //   complete_bm_job { schedule_id, minutes?, note? }        a BM job done in Athena (sql/311)
 //   confirm_bm_completion { completion_id }                 ticked off in BrightManager by hand
 //   mark_done     { milestone_id, minutes?, note? }
@@ -40,7 +43,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { computeChain, type StageRule, type JobContext } from "../_shared/workflow.ts";
-import { renderForMilestone, sendForMilestone } from "../_shared/job-comms.ts";
+import { renderForMilestone, sendForMilestone, renderGeneric, sendGeneric } from "../_shared/job-comms.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -442,6 +445,41 @@ Deno.serve(async (req) => {
         const out = await sendForMilestone(db, id, { mailbox: settings?.comms_mailbox || null, toOverride, actorId: me, testOnly, items });
         const { data: m } = await db.from("job_milestones").select("plan_id").eq("id", id).maybeSingle();
         return json({ success: true, ...out, plan: m ? await loadPlan(m.plan_id) : null, milestones: m ? await milestonesOf(m.plan_id) : [] });
+      }
+
+      // Email from a task (Day Plan / Overview): a blank email about it, or
+      // a records request for a client with no plan stage to hang it on.
+      case "preview_email": {
+        const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
+        const kind = p.kind === "records_request" ? "records_request" : "blank";
+        const items = Array.isArray(p.items) ? pickedItems(p.items) : null;
+        const r = await renderGeneric(db, { entityId, kind, ownerId: me, taskLabel: p.task_label ? String(p.task_label).slice(0, 160) : null, items });
+        return json({ success: true, preview: r });
+      }
+
+      case "send_email": {
+        const entityId = p.entity_id ? uuid(p.entity_id, "entity_id") : null;
+        const to = String(p.to || "").trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new BadRequest("That does not look like an email address");
+        const subject = String(p.subject || "").trim().slice(0, 200);
+        const text = String(p.text || "").slice(0, 20000);
+        if (!subject || !text.trim()) throw new BadRequest("Subject and message are needed");
+        const { data: settings } = await db.from("job_plan_settings").select("comms_mailbox").eq("id", true).maybeSingle();
+        const remember = p.kind === "records_request" && Array.isArray(p.items) ? pickedItems(p.items) : null;
+        const out = await sendGeneric(db, {
+          entityId, to, subject, text, ownerId: me, mailbox: settings?.comms_mailbox || null,
+          testOnly: p.test === true, remember, periodEnd: p.period_end ? isoDate(p.period_end, "period_end") : null,
+        });
+        return json({ success: true, ...out });
+      }
+
+      // Day Plan (sql/313): the order of my tiles for a day.
+      case "set_day_order": {
+        const day = isoDate(p.day, "day");
+        const keys = (Array.isArray(p.keys) ? p.keys : []).map((k: unknown) => String(k).slice(0, 80)).filter((k: string) => /^(ms|bm|quick|block):/.test(k)).slice(0, 300);
+        const { error } = await db.from("day_plan_order").upsert({ staff_id: me, day, keys, updated_at: now }, { onConflict: "staff_id,day" });
+        if (error) throw new Error(error.message);
+        return json({ success: true });
       }
 
       // Right-click on the Calendar: a BrightManager job is done. Recorded

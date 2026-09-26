@@ -30,6 +30,7 @@ export default function CalendarGuide({ onClose }) {
         <div style={h}>How to use it</div>
         <p style={p}>Drag anything to another day to plan it. Drag a stage or a quick task onto someone else's row to hand it over. Drag a quick task out of the sidebar onto a day to add it to that day, or back to the sidebar to unplan it.</p>
         <p style={p}>Click a task to open it. Right-click for the quick options: mark complete, done, not required, open the plan.</p>
+        <p style={p}><b>Day plan</b> is the same information for one person and one day: what is left over from earlier days, today's tiles in the order you want them (drag to reorder), and the rest of the week. Moves made there show here, and the other way round.</p>
         <p style={p}><b>Job Selector</b> (top right) lists every open BM job, urgent first, so you can pull work forward onto a day when there is room. Ticking a company's accounts also ticks its directors' returns when their tax year has ended.</p>
 
         <div style={h}>Common questions</div>

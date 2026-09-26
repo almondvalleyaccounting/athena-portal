@@ -179,6 +179,144 @@ export async function renderForMilestone(
   };
 }
 
+// ── Generic emails from a task (Day Plan, Overview) ─────────────────────
+//
+// Not tied to a plan stage: a blank email about a task, or a records
+// request for a client with no committed plan. Same voice, same From rules,
+// same log on the client page.
+
+async function rememberItems(db: SupabaseClient, entityId: string, picked: PickedItem[], periodEnd: string | null, actorId: string | null, now: string) {
+  const keys = picked.filter((p) => p.key).map((p) => p.key as string);
+  const customs = picked.filter((p) => !p.key && p.text && p.text.trim()).map((p) => p.text!.trim());
+  await db.from("client_records_items").update({ active: false }).eq("entity_id", entityId);
+  if (keys.length) {
+    await db.from("client_records_items").upsert(
+      keys.map((k) => ({ entity_id: entityId, item_key: k, active: true, last_period_end: periodEnd, last_requested_at: now, requested_by: actorId })),
+      { onConflict: "entity_id,item_key" },
+    );
+  }
+  await db.from("client_records_items").delete().eq("entity_id", entityId).is("item_key", null);
+  if (customs.length) {
+    await db.from("client_records_items").insert(
+      customs.map((t) => ({ entity_id: entityId, item_key: null, custom_text: t, active: true, last_period_end: periodEnd, last_requested_at: now, requested_by: actorId })),
+    );
+  }
+}
+
+const GENERIC_RECORDS = "Hi {{greeting}},\n\nHope you’re well. Could you send over the following when you get a chance?\n\n{{items}}\n\nUpload them to the portal or just reply to this email, whichever is easier.\n\nThanks,\n{{sender_first_name}}";
+
+export interface GenericOptions {
+  entityId: string | null;
+  kind: "blank" | "records_request";
+  ownerId: string;
+  taskLabel?: string | null;
+  items?: PickedItem[] | null;
+}
+
+export async function renderGeneric(db: SupabaseClient, o: GenericOptions): Promise<Rendered & { period_end: string | null }> {
+  const [{ data: sp }, { data: gc }] = await Promise.all([
+    db.from("staff_profiles").select("name").eq("id", o.ownerId).maybeSingle(),
+    db.from("gmail_connections").select("account_email").eq("owner_staff_id", o.ownerId).eq("status", "active").limit(1),
+  ]);
+  const fromName = sp?.name || "";
+  const fromEmail = gc?.[0]?.account_email || null;
+  const sender = firstWord(fromName) || "Almond Valley Accounting";
+
+  let to = "", toReason: string | null = null, greeting = "there", clientName = "", periodEnd: string | null = null, recordsDue: string | null = null;
+  if (o.entityId) {
+    const [{ data: ent }, contact, { data: plan }] = await Promise.all([
+      db.from("entities").select("id, name, billing_email, prospect_email").eq("id", o.entityId).maybeSingle(),
+      primaryContact(db, o.entityId),
+      db.from("job_plans").select("id, period_end, status").eq("entity_id", o.entityId).eq("status", "committed").order("period_end", { ascending: false }).limit(1),
+    ]);
+    if (!ent) throw new Error("Client not found");
+    clientName = ent.name;
+    to = contact?.email || "";
+    toReason = to ? "primary contact" : null;
+    if (!to) { to = (ent.billing_email || "").trim() || (ent.prospect_email || "").trim(); toReason = to ? "client record" : null; }
+    if (!to.includes("@")) { to = ""; toReason = null; }
+    greeting = contact?.greeting || "there";
+    const p = plan?.[0];
+    if (p) {
+      periodEnd = p.period_end;
+      const { data: ri } = await db.from("job_milestones").select("due_date").eq("plan_id", p.id).in("stage_key", ["records_in", "close_books"]).limit(1);
+      recordsDue = ri?.[0]?.due_date || null;
+    } else {
+      // The year end most recently passed, if BM knows one.
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: aj } = await db.from("v_accounts_jobs").select("period_end").eq("entity_id", o.entityId).lte("period_end", today).order("period_end", { ascending: false }).limit(1);
+      periodEnd = aj?.[0]?.period_end || null;
+    }
+  }
+
+  if (o.kind === "blank") {
+    const subject = [clientName, o.taskLabel].filter(Boolean).join(" – ");
+    return { kind: "blank", to: to || null, to_reason: toReason, greeting, from_email: fromEmail, from_name: fromName, subject, text: `Hi ${greeting},\n\n\n\nThanks,\n${sender}`, completes: false, picker: null, period_end: periodEnd };
+  }
+
+  if (!o.entityId) throw new Error("A records request needs a client");
+  const picker = await pickerFor(db, o.entityId, "records_request");
+  const picked: PickedItem[] = o.items ?? picker.filter((p) => p.ticked).map((p) => (p.key ? { key: p.key } : { text: p.label }));
+  const { data: tmpl } = await db.from("comm_templates").select("subject, body_text").eq("comm_type", "job_plan").eq("kind", "records_request").maybeSingle();
+  const useTemplate = !!(tmpl && periodEnd);
+  const vars: Record<string, string> = {
+    greeting, client_name: clientName, year_end: fmtLong(periodEnd),
+    records_due: fmtLong(recordsDue || new Date(Date.now() + 21 * 86400000).toISOString().slice(0, 10)),
+    sender_first_name: sender, items: itemsText(picked, picker),
+  };
+  return {
+    kind: "records_request", to: to || null, to_reason: toReason, greeting, from_email: fromEmail, from_name: fromName,
+    subject: useTemplate ? renderStr(tmpl!.subject, vars) : `${clientName} – records`,
+    text: renderStr(useTemplate ? tmpl!.body_text : GENERIC_RECORDS, vars),
+    completes: false, picker, period_end: periodEnd,
+  };
+}
+
+export interface GenericSend {
+  entityId: string | null;
+  to: string;
+  subject: string;
+  text: string;
+  ownerId: string;
+  mailbox?: string | null;
+  testOnly?: boolean;
+  remember?: PickedItem[] | null;  // records request: what was asked for
+  periodEnd?: string | null;
+}
+
+/** Send a composed email through the sender's Gmail and log it on the client. */
+export async function sendGeneric(db: SupabaseClient, s: GenericSend) {
+  const [{ data: sp }, { data: gc }] = await Promise.all([
+    db.from("staff_profiles").select("name").eq("id", s.ownerId).maybeSingle(),
+    db.from("gmail_connections").select("account_email").eq("owner_staff_id", s.ownerId).eq("status", "active").limit(1),
+  ]);
+  const ownEmail = gc?.[0]?.account_email || null;
+  const token = await getValidGmailToken(ownEmail || s.mailbox || undefined);
+  const fromName = ownEmail ? (token.displayName || sp?.name || "") : (sp?.name || token.displayName);
+  const mime = buildMime(s.to, s.subject, s.text, token.accountEmail, fromName);
+  const resp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token.accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: base64UrlEncode(mime) }),
+  });
+  if (!resp.ok) throw new Error(`Gmail ${resp.status}: ${(await resp.text()).slice(0, 300)}`);
+  const sent = await resp.json();
+  const now = new Date().toISOString();
+  if (s.testOnly) return { to: s.to, subject: s.subject, from: token.accountEmail, gmail_message_id: sent.id || null, test: true };
+
+  if (s.entityId) {
+    await db.from("client_communications").upsert({
+      entity_id: s.entityId, mailbox: token.accountEmail,
+      gmail_message_id: sent.id || null, gmail_thread_id: sent.threadId || null,
+      direction: "out", from_email: token.accountEmail, from_name: fromName || null,
+      to_emails: [s.to], cc_emails: [], subject: s.subject, snippet: s.text.slice(0, 200),
+      body_html: null, body_text: s.text, matched_email: s.to, occurred_at: now,
+    }, { onConflict: "entity_id,mailbox,gmail_message_id", ignoreDuplicates: true });
+    if (s.remember) await rememberItems(db, s.entityId, s.remember, s.periodEnd ?? null, s.ownerId, now);
+  }
+  return { to: s.to, subject: s.subject, from: token.accountEmail, gmail_message_id: sent.id || null };
+}
+
 export interface SendOptions {
   mailbox?: string | null;     // gmail account_email to fall back to; null = practice default
   toOverride?: string | null;  // a test recipient, or a corrected address
@@ -229,21 +367,7 @@ export async function sendForMilestone(db: SupabaseClient, milestoneId: string, 
   // Remember what this client was asked for, so next year starts from it.
   if (ITEM_STAGES.has(m.stage_key)) {
     const picked = opts.items ?? (r.picker || []).filter((p) => p.ticked).map((p) => (p.key ? { key: p.key } : { text: p.label }));
-    const keys = picked.filter((p) => p.key).map((p) => p.key as string);
-    const customs = picked.filter((p) => !p.key && p.text && p.text.trim()).map((p) => p.text!.trim());
-    await db.from("client_records_items").update({ active: false }).eq("entity_id", plan.entity_id);
-    if (keys.length) {
-      await db.from("client_records_items").upsert(
-        keys.map((k) => ({ entity_id: plan.entity_id, item_key: k, active: true, last_period_end: plan.period_end, last_requested_at: now, requested_by: opts.actorId ?? null })),
-        { onConflict: "entity_id,item_key" },
-      );
-    }
-    await db.from("client_records_items").delete().eq("entity_id", plan.entity_id).is("item_key", null);
-    if (customs.length) {
-      await db.from("client_records_items").insert(
-        customs.map((t) => ({ entity_id: plan.entity_id, item_key: null, custom_text: t, active: true, last_period_end: plan.period_end, last_requested_at: now, requested_by: opts.actorId ?? null })),
-      );
-    }
+    await rememberItems(db, plan.entity_id, picked, plan.period_end, opts.actorId ?? null, now);
   }
 
   const patch: Record<string, unknown> = {

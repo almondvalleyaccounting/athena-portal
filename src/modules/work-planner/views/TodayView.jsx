@@ -4,10 +4,14 @@ import { supabase } from '../../../lib/supabase';
 import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import { callJobPlan } from '../plan/planQueries';
+import EmailModal from '../components/EmailModal';
+import { useWorkPlanner } from '../WorkPlannerModule';
 
-// Today — the stages of committed job plans that are mine and due soon, with
-// one Done button that also logs time against the job (job-plan mark_done).
-// Quick tasks render below this from the existing My Tasks list.
+// Overview — my committed job plans, one row per job (Bobby, 2026-09-26:
+// a job listed once per stage was three rows for Accona and would be a mess
+// for multi-client work). The row carries the next stage due, with Done /
+// Send / Skip, and the stages that follow it in one line. Quick tasks render
+// below this from the existing My Tasks list.
 
 const font = "'Outfit', sans-serif";
 
@@ -163,7 +167,9 @@ export default function TodayView() {
   const [doneFor, setDoneFor] = useState(null); // milestone id with the minutes form open
   const [mins, setMins] = useState('');
   const [sendFor, setSendFor] = useState(null); // milestone with the send modal open
+  const [emailFor, setEmailFor] = useState(null); // job with the generic email modal open
   const [busy, setBusy] = useState(false);
+  const { staffList } = useWorkPlanner();
   const [toUpdate, setToUpdate] = useState([]); // BM jobs done here, not yet confirmed in BM (sql/311)
   const today = todayISO();
 
@@ -196,11 +202,18 @@ export default function TodayView() {
   }, [profile?.id, today]);
   useEffect(() => { load(); }, [load]);
 
+  // One entry per job: its stages in date order; the first is what to do next.
+  const jobs = useMemo(() => {
+    const byPlan = new Map();
+    stages.forEach((m) => { if (!byPlan.has(m.plan_id || m.job_plans.id)) byPlan.set(m.plan_id || m.job_plans.id, []); byPlan.get(m.plan_id || m.job_plans.id).push(m); });
+    return [...byPlan.values()].map((list) => { list.sort((a, b) => a.due_date.localeCompare(b.due_date) || a.seq - b.seq); return { next: list[0], then: list.slice(1) }; })
+      .sort((a, b) => a.next.due_date.localeCompare(b.next.due_date));
+  }, [stages]);
   const groups = useMemo(() => ({
-    overdue: stages.filter((m) => m.due_date < today),
-    week: stages.filter((m) => m.due_date >= today && m.due_date <= addDaysISO(today, 7)),
-    next: stages.filter((m) => m.due_date > addDaysISO(today, 7)),
-  }), [stages, today]);
+    overdue: jobs.filter((j) => j.next.due_date < today),
+    week: jobs.filter((j) => j.next.due_date >= today && j.next.due_date <= addDaysISO(today, 7)),
+    next: jobs.filter((j) => j.next.due_date > addDaysISO(today, 7)),
+  }), [jobs, today]);
 
   const act = async (payload) => {
     setBusy(true); setError(null);
@@ -209,7 +222,8 @@ export default function TodayView() {
     finally { setBusy(false); }
   };
 
-  const Row = ({ m }) => {
+  const Row = ({ job }) => {
+    const m = job.next;
     const p = m.job_plans;
     const risk = RISK[p.risk];
     const open = doneFor === m.id;
@@ -217,15 +231,19 @@ export default function TodayView() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 13.5 }}>
         <div style={{ minWidth: 90, color: m.due_date < today ? '#b91c1c' : '#475569', fontWeight: 500 }}>{fmt(m.due_date)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ fontWeight: 500 }}>{m.label}</span>
-          <span style={{ color: '#64748b' }}> · </span>
-          <button onClick={() => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`)} style={{ background: 'none', border: 'none', padding: 0, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, fontSize: 13.5 }}>
+          <button onClick={() => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`)} style={{ background: 'none', border: 'none', padding: 0, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, fontSize: 13.5, fontWeight: 600 }}>
             {p.entities?.name}
           </button>
           <span style={{ color: '#94a3b8', fontSize: 12 }}> · YE {new Date(`${p.period_end}T12:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</span>
-          {m.hours ? <span style={{ color: '#94a3b8', fontSize: 12 }}> · {Number(m.hours)}h</span> : null}
-          {m.comms_sent_at && <span style={{ color: '#166534', fontSize: 12 }}> · sent {fmt(m.comms_sent_at.slice(0, 10))} to {m.comms_to}</span>}
           {risk && <span style={{ marginLeft: 6, ...pill(risk) }} title={p.risk_reason || ''}>{risk.label}</span>}
+          <div style={{ fontSize: 13 }}>
+            <span style={{ fontWeight: 500 }}>{m.label}</span>
+            {m.hours ? <span style={{ color: '#94a3b8', fontSize: 12 }}> · {Number(m.hours)}h</span> : null}
+            {m.comms_sent_at && <span style={{ color: '#166534', fontSize: 12 }}> · sent {fmt(m.comms_sent_at.slice(0, 10))} to {m.comms_to}</span>}
+            {job.then.length > 0 && (
+              <span style={{ color: '#94a3b8', fontSize: 12 }}> · then {job.then.slice(0, 3).map((t) => `${t.label} ${fmt(t.due_date)}`).join(' · ')}{job.then.length > 3 ? ` · +${job.then.length - 3} more` : ''}</span>
+            )}
+          </div>
         </div>
         {open ? (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -242,6 +260,7 @@ export default function TodayView() {
             )}
             <button onClick={() => { setDoneFor(m.id); setMins(m.hours ? String(Math.round(Number(m.hours) * 60)) : ''); }} disabled={busy} style={COMMS_STAGES.has(m.stage_key) && !m.comms_sent_at ? BTN.secondary.sm : BTN.primary.sm}>Done</button>
             <button onClick={() => { if (window.confirm(`Skip "${m.label}" on this job?`)) act({ action: 'skip', milestone_id: m.id }); }} disabled={busy} style={BTN.secondary.sm}>Skip</button>
+            <button onClick={() => setEmailFor({ entity_id: p.entity_id, entity_name: p.entities?.name, task_label: m.label })} disabled={busy} style={BTN.secondary.sm}>Email</button>
           </div>
         )}
       </div>
@@ -253,13 +272,14 @@ export default function TodayView() {
       <div style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 600, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#f8fafc' }}>
         {title} <span style={{ color: '#94a3b8', fontWeight: 500 }}>· {items.length}</span>
       </div>
-      {items.length === 0 ? <div style={{ padding: '10px 12px', fontSize: 13, color: '#cbd5e1' }}>{empty}</div> : items.map((m) => <Row key={m.id} m={m} />)}
+      {items.length === 0 ? <div style={{ padding: '10px 12px', fontSize: 13, color: '#cbd5e1' }}>{empty}</div> : items.map((j) => <Row key={j.next.id} job={j} />)}
     </div>
   );
 
   return (
     <div style={{ padding: '12px 10px 0', fontFamily: font, display: 'flex', flexDirection: 'column', gap: 10 }}>
       {sendFor && <SendModal milestone={sendFor} myEmail={profile?.email} onClose={() => setSendFor(null)} onSent={load} />}
+      {emailFor && <EmailModal ctx={emailFor} staffList={staffList} profile={profile} onClose={() => setEmailFor(null)} />}
       {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13.5 }}>{error}</div>}
       {loading ? (
         <div style={{ color: '#94a3b8', fontSize: 13 }}>Loading your stages…</div>
@@ -296,6 +316,7 @@ export default function TodayView() {
           <Section title="Overdue" items={groups.overdue} empty="Nothing overdue." />
           <Section title="This week" items={groups.week} empty="Nothing due this week." />
           <Section title="Next two weeks" items={groups.next} empty="Nothing coming up." />
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>One row per job: the next stage, then what follows. Plan the day itself under Day plan.</div>
           {stages.length === 0 && attention.length === 0 && (
             <div style={{ fontSize: 12.5, color: '#94a3b8' }}>
               Stages appear here once a job plan you own is committed. Plan yours under <button onClick={() => navigate('/planner/plan')} style={{ background: 'none', border: 'none', padding: 0, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, fontSize: 12.5 }}>Plan the Job</button>.
