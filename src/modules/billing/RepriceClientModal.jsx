@@ -1173,7 +1173,7 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
               <Field label="Subject">
                 <input value={subject} onChange={(e) => setSubject(e.target.value)} style={{ ...input, width: '100%' }} />
               </Field>
-              <Field label="Letter opening" hint="Only used where it's true: the thank-you when there are new services, the review date when there's an inflation rise.">
+              <Field label="Letter opening" hint="Only used where it's true: that they asked about the new services, and the review date when there's an inflation rise.">
                 {kind === 'proposal' && (
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginBottom: 6 }}>
                     <input type="checkbox" checked={letterOpts.clientRequested} onChange={(e) => setLetterOpts((o) => ({ ...o, clientRequested: e.target.checked }))} />

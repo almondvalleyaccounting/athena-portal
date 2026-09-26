@@ -29,6 +29,20 @@ export function hasInflationRise(lines) {
   return (lines || []).some((l) => componentsOf(l).some((c) => c.reasonKey === 'inflation' && c.amount > 0));
 }
 
+// The opening of a proposal, in the practice's own words (2026-09-26),
+// shared by the letter and the covering email. Optional additions only
+// when true: when we last reviewed the fees (with an inflation rise), and
+// that the client asked about the new services.
+export function proposalOpening({ when, current, next, clientRequested = false, lastReviewed = null }) {
+  return [
+    'Please see below the proposed new fees for our services. This proposal is in two parts.',
+    `Part 1 is a change to our fees as a result of inflation and / or because your business has evolved and the work required from our side has therefore changed.${lastReviewed ? ` We last reviewed your fees in ${lastReviewed}.` : ''}`,
+    `Part 2 is a quote for additional services we can provide${clientRequested ? ', which you asked us about' : ''}.`,
+    `If you accept the new services by clicking the link, your monthly fee will go from ${money(current)} to ${money(next)} plus VAT from ${when}.`,
+    'As ever, please get in touch if you have any questions or would like to discuss any of these changes.',
+  ];
+}
+
 // A first draft of the covering note. Staff edit it in the modal.
 // clientRequested: the client asked for the new services (a thank-you).
 // lastReviewed: "March 2024", when we last reviewed their fees.
@@ -43,13 +57,12 @@ export function defaultCoveringText({ kind = 'notice', contactName, clientName, 
     : null;
 
   if (kind === 'proposal') {
-    if (clientRequested) paras.push('Thank you for asking us to take on some extra work. The new services, and what they cost, are in Part 2 of the attached letter.');
-    paras.push(reviewed
-      ? `${reviewed}, so from ${when} we're making the changes in Part 1.`
-      : `From ${when} we're making some changes to your fees (Part 1)${clientRequested ? '' : ", and we'd like to add some new services (Part 2)"}.`);
-    paras.push(`If you accept the new services, your monthly fee will go from ${from} to ${to}, plus VAT.`);
-    paras.push('The table below sums it up and the attached letter has the detail.');
-    paras.push("To accept the new services, click Review and accept below. We won't add them until you do. The changes in Part 1 go ahead either way.");
+    const opening = proposalOpening({ when, current: summary.current, next: summary.next, clientRequested, lastReviewed: reviewed ? lastReviewed : null });
+    // The letter's words, with the table and the button in the email.
+    paras.push(...opening.slice(0, 4));
+    paras.push('The table below sums it up and the attached letter has the detail. The changes in Part 1 go ahead either way.');
+    paras.push(opening[4]);
+    return paras.join('\n\n');
   } else {
     if (reviewed) paras.push(`${reviewed}.`);
     paras.push(`From ${when}, your monthly fee will go from ${from} to ${to}, plus VAT.`);

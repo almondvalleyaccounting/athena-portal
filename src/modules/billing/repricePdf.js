@@ -10,7 +10,7 @@
 // the Unicode minus sign does not, so negatives use a plain hyphen.
 
 import { BUCKETS, OUR_FEES_FOOTNOTE, PART_TITLE, longDate, summaryRows, partFor, componentsOf, changeLabel } from './repriceReasons';
-import { KIND_TITLE, hasInflationRise } from './composeRepriceEmail';
+import { KIND_TITLE, hasInflationRise, proposalOpening } from './composeRepriceEmail';
 
 const OCEAN_700 = [25, 58, 80];
 const OCEAN_600 = [30, 69, 96];
@@ -56,7 +56,8 @@ async function getLogo() {
 // proposes new services: Part 1 is the changes we're making, Part 2 the
 // new services for the client to accept.
 //
-// clientRequested adds a thank-you for asking (proposals only);
+// A proposal opens in the practice's own words (proposalOpening).
+// clientRequested notes the client asked about the new services;
 // lastReviewed ("March 2024") adds when we last reviewed their fees, when
 // there's an inflation rise to explain.
 export async function buildRepricePdf({ kind = 'notice', clientName, contactName, effectiveAt, lines, summary, acceptUrl = null, clientRequested = false, lastReviewed = null }) {
@@ -93,18 +94,15 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...DARK);
   para(contactName ? `Dear ${contactName},` : 'Dear client,', 2.2);
   const hasInflation = hasInflationRise(lines);
-  const hasNew = (summary.buckets.newService || 0) !== 0;
-  if (proposal && hasNew && clientRequested) {
-    para('Thank you for asking us to take on some extra work. The new services, and what they cost, are in Part 2.');
+  if (proposal) {
+    const paras = proposalOpening({ when, current: summary.current, next: summary.next, clientRequested, lastReviewed: hasInflation ? lastReviewed : null });
+    paras.forEach((t, i) => para(t, i === paras.length - 1 ? 5 : 3.2));
+  } else {
+    if (hasInflation && lastReviewed) {
+      para(`We last reviewed your fees in ${lastReviewed}. Our costs have risen with inflation since then, so from ${when} we are making the changes below.`);
+    }
+    para(`From ${when}, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)} plus VAT.`, 5);
   }
-  if (hasInflation && lastReviewed) {
-    para(`We last reviewed your fees in ${lastReviewed}. Our costs have risen with inflation since then, so from ${when} we are making the changes in Part 1.`);
-  } else if (proposal) {
-    para(`From ${when} we are making the changes to your fees in Part 1.`);
-  }
-  para(proposal
-    ? `If you accept the new services, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)} plus VAT.`
-    : `From ${when}, your monthly fee will go from ${money(summary.current)} to ${money(summary.next)} plus VAT.`, 5);
 
   // ── Headline tiles ──
   const tileW = (cw - 8) / 3, tileH = 17;
@@ -196,8 +194,12 @@ export async function buildRepricePdf({ kind = 'notice', clientName, contactName
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...DARK);
   const over = doc.splitTextToSize('The detail for each service is overleaf.', lw);
   doc.text(over, margin, ly); ly += over.length * 3.8 + 3;
-  const close = doc.splitTextToSize('Any questions? Reply to our email or call us on 0141 471 4255.', lw);
-  doc.text(close, margin, ly); ly += close.length * 3.8 + 4;
+  // A proposal's letter already closes with "get in touch"; a notice's doesn't.
+  if (!proposal) {
+    const close = doc.splitTextToSize('Any questions? Reply to our email or call us on 0141 471 4255.', lw);
+    doc.text(close, margin, ly); ly += close.length * 3.8;
+  }
+  ly += 4;
   if (finalRows.some((r) => r.star)) {
     doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...GRAY);
     const fn = doc.splitTextToSize(`* ${OUR_FEES_FOOTNOTE}`, lw);
