@@ -152,3 +152,16 @@ incremental substitute is a rule: **a new mutating path is an edge function, not
 browser table write.** There are already 67 of them. Each one added shrinks the
 browser's grants toward read-only, which is most of the benefit of three tiers without
 a rewrite. Reads may stay direct where RLS genuinely expresses the rule.
+
+## Money-logic tests
+
+`npm test` runs `tests/money` (Vitest): pricing, quote maths, fee changes, fee
+roll-up, the cash forecast and dashboard periods. They run twice without anyone
+asking: before every Vercel build (`npm run build` is `vitest run && vite build`,
+so a failing test stops the deploy and prod stays on the last good version), and
+on commit via `.git/hooks/pre-commit`. That hook is not versioned; on a fresh
+clone, `cp scripts/pre-commit-tests.sh .git/hooks/pre-commit`.
+
+Where two copies of a formula disagree (the quote form, group quote, PDF, portal
+catalogue, SQL), a test pins down today's behaviour, not a ruling. Changing which
+copy is right is Bobby's call, one item at a time.
