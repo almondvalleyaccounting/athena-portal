@@ -294,9 +294,9 @@ const COMMIT_CONSEQUENCES = (n) => [
   '• Each stage lands on its owner’s Today list on its date, and the nightly tick moves the dates as records arrive or slip.',
   '• Requests and chases are skipped automatically once BrightManager shows Records Received.',
   '',
-  'Not yet, until the client-comms playbooks are switched on:',
-  '• Clients with a meeting will get a meeting invite request for the date shown.',
-  '• Clients whose records are outstanding will get a year-end paperwork request — a gap request where our VAT returns already cover the year.',
+  'Client emails:',
+  '• The records request (a gap request where our VAT returns cover the year), the chases, the meeting invite and the approval chase each wait on the owner’s Today list with a Preview & send button.',
+  '• They go out by themselves only when "Send client comms automatically" is switched on in Scheduled Jobs. It is off unless someone has turned it on.',
   '',
   'Any plan can be taken back to draft from its page.',
 ].join('\n');
@@ -618,6 +618,7 @@ function PlanEditor() {
                     <div style={{ fontSize: 11.5, color: '#94a3b8' }}>
                       {KIND_LABEL[m.kind] || m.kind} · {ROLE_LABEL[m.owner_role] || m.owner_role}
                       {done && ` · done ${fmtDate((m.done_at || '').slice(0, 10))}`}
+                      {m.comms_sent_at && <span style={{ color: '#166534' }}> · sent {fmtDate(m.comms_sent_at.slice(0, 10))} to {m.comms_to}</span>}
                     </div>
                   </td>
                   <td style={td}>

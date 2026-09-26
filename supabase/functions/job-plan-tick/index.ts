@@ -24,6 +24,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { computeChain, parseISO, toISO, minusWorkingDays, type StageRule, type JobContext } from "../_shared/workflow.ts";
 import { getValidGmailToken, base64UrlEncode, formatSender } from "../_shared/gmail-client.ts";
+import { sendForMilestone } from "../_shared/job-comms.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const startedAt = new Date().toISOString();
   const today = todayISO();
-  const stats = { plans: 0, doneMarked: 0, skipped: 0, datesMoved: 0, riskChanged: 0, nudged: 0, nudgeErrors: 0, errors: [] as string[] };
+  const stats = { plans: 0, doneMarked: 0, skipped: 0, datesMoved: 0, riskChanged: 0, nudged: 0, nudgeErrors: 0, commsSent: 0, commsErrors: 0, errors: [] as string[] };
 
   const { data: run } = await db.from("scheduled_job_runs")
     .insert({ job_key: "job-plan-tick", status: "running", reported_by: caller.kind === "service" ? "pg_cron" : "staff" })
@@ -215,8 +216,47 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Nudges ───────────────────────────────────────────────────────────
+    // ── Client comms (sql/309) ───────────────────────────────────────────
+    // Armed and past the start date: send the comms stages that are due.
+    // Requests and chases on their date; the meeting invite three weeks
+    // ahead of the meeting; the approval chase once approval is overdue.
+    // One send per stage, ever, and a stage only when its gate is done.
     const { data: settings } = await db.from("job_plan_settings").select("*").eq("id", true).maybeSingle();
+    const commsLive = !!settings?.comms_armed && (!settings?.comms_from || today >= settings.comms_from);
+    if (commsLive) {
+      const inviteFrom = toISO(new Date(parseISO(today).getTime() + 21 * 86400000));
+      let sentThisRun = 0;
+      for (const plan of plans || []) {
+        const ms = milestonesByPlan.get(plan.id) || [];
+        const byKey = new Map(ms.map((m) => [m.stage_key, m]));
+        const gateDone = (m: Record<string, any>) => {
+          const rule = stages.find((s) => s.key === m.stage_key);
+          const alts = (rule?.gate_stage_key || "").split("|").map((x) => x.trim()).filter(Boolean);
+          const g = alts.find((k) => byKey.has(k));
+          if (!g) return true;
+          const gm = byKey.get(g)!;
+          return gm.status === "done" || gm.status === "skipped";
+        };
+        for (const m of ms) {
+          if (sentThisRun >= 100) break;
+          if (m.status !== "pending" || m.comms_sent_at) continue;
+          let due = false;
+          if (["request_records", "chase_1", "chase_2"].includes(m.stage_key)) due = m.due_date <= today && gateDone(m);
+          else if (m.stage_key === "client_meeting") due = m.due_date <= inviteFrom && gateDone(m);
+          else if (m.stage_key === "approval") due = m.due_date < today && gateDone(m);
+          if (!due) continue;
+          try {
+            await sendForMilestone(db, m.id, { mailbox: settings?.comms_mailbox || null, actorId: null });
+            stats.commsSent++; sentThisRun++;
+          } catch (e) {
+            stats.commsErrors++;
+            stats.errors.push(`comms ${m.stage_key} ${plan.entity_id}: ${(e as Error).message}`);
+          }
+        }
+      }
+    }
+
+    // ── Nudges ───────────────────────────────────────────────────────────
     // Armed, and past the start date if one is set (sql/308): the team has a
     // deadline to commit their lists before anyone is chased.
     const nudgesLive = !!settings?.nudges_armed && (!settings?.nudges_from || today >= settings.nudges_from);
