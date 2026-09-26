@@ -297,6 +297,7 @@ export default function QuoteDetailPage() {
             {quote.defaults_version && ` \u00B7 v${quote.defaults_version}`}
             {quote.valid_until && ` \u00B7 Valid until ${new Date(quote.valid_until + 'T00:00:00').toLocaleDateString('en-GB')}`}
           </p>
+          <SupersedeLinks quote={quote} />
           {quote.valid_until && quote.valid_until < new Date().toISOString().slice(0, 10) && (quote.status === 'sent' || quote.status === 'approved') && (
             <div className="flex items-center gap-2 mt-1">
               <span className="text-xs text-red-600 bg-red-50 rounded px-2 py-0.5 font-medium">Expired -- valid until date has passed</span>
@@ -600,6 +601,32 @@ export default function QuoteDetailPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// "Superseded by X" / "Replaces X" (sql/326), each a link to the other quote.
+function SupersedeLinks({ quote }) {
+  const navigate = useNavigate();
+  const [refs, setRefs] = useState({});
+  useEffect(() => {
+    const ids = [quote.superseded_by, quote.supersedes].filter(Boolean);
+    if (!ids.length) return;
+    supabase.from('quotes').select('id, quote_ref').in('id', ids)
+      .then(({ data }) => setRefs(Object.fromEntries((data || []).map((q) => [q.id, q.quote_ref]))));
+  }, [quote.superseded_by, quote.supersedes]);
+  const link = (id) => (
+    <button onClick={() => navigate('/manage/quotes/' + id)} className="text-ocean-600 hover:underline" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}>
+      {refs[id] || 'another quote'}
+    </button>
+  );
+  if (!quote.superseded_by && !quote.supersedes) return null;
+  return (
+    <div className="text-xs text-gray-500 mt-1 space-y-0.5">
+      {quote.superseded_by && (
+        <p>Superseded by {link(quote.superseded_by)}{quote.superseded_at ? ` on ${new Date(quote.superseded_at).toLocaleDateString('en-GB')}` : ''} — no longer in the pipeline.</p>
+      )}
+      {quote.supersedes && <p>Replaces {link(quote.supersedes)}.</p>}
     </div>
   );
 }

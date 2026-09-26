@@ -80,6 +80,7 @@ const STATUS_BADGE_LABELS = {
   expired: 'Expired',
   deleted: 'Deleted',
   committed: 'Committed',
+  superseded: 'Superseded',
 };
 
 export function StatusBadge({ status }) {
@@ -93,6 +94,7 @@ export function StatusBadge({ status }) {
     expired: 'bg-gray-100 text-gray-400',
     deleted: 'bg-gray-100 text-gray-400',
     committed: 'bg-teal-100 text-teal-700',
+    superseded: 'bg-gray-100 text-gray-400 line-through',
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] || colors.draft}`}>

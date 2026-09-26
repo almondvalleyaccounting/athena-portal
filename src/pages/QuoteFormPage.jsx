@@ -5,6 +5,7 @@ import { Inp, TabRow, Section, Btn, fmt, G4, C4 } from '../components/ui';
 import DirectorCard from '../components/DirectorCard';
 import ClientNamePicker from '../components/ClientNamePicker';
 import ExistingFeesChoiceModal from '../components/ExistingFeesChoiceModal';
+import SupersedeQuoteModal from '../components/SupersedeQuoteModal';
 import useQuoteForm from '../hooks/useQuoteForm';
 import { useAuth } from '../shell/AppShell';
 import { useFeeEngine } from '../contexts/FeeEngineContext';
@@ -51,6 +52,9 @@ export default function QuoteFormPage({ mode = 'new' }) {
   const [saving, setSaving] = useState(false);
   const [showMobileTotals, setShowMobileTotals] = useState(false);
   const [error, setError] = useState('');
+  // A new quote for a client with an open quote: replace it, or keep both
+  // (SupersedeQuoteModal). { name, openQuotes, resolve } while asking.
+  const [supersedeAsk, setSupersedeAsk] = useState(null);
   const [entity, setEntity] = useState(null);
   const [existingQuoteRef, setExistingQuoteRef] = useState(null);
   const [formLoading, setFormLoading] = useState(mode === 'edit' || !!fromId);
@@ -355,6 +359,22 @@ export default function QuoteFormPage({ mode = 'new' }) {
           return;
         }
 
+        // An open quote for this client already? Ask whether this one
+        // replaces it. The database marks the replaced quote Superseded on
+        // insert (sql/326).
+        let supersedes = null;
+        const { data: openQuotes } = await supabase.from('quotes')
+          .select('id, quote_ref, status, monthly_net, created_at')
+          .eq('entity_id', entityId)
+          .in('status', ['draft', 'pending_approval', 'approved', 'sent', 'accepted'])
+          .order('created_at', { ascending: false });
+        if (openQuotes?.length) {
+          const choice = await new Promise((resolve) => setSupersedeAsk({ name: f.client.name, openQuotes, resolve }));
+          setSupersedeAsk(null);
+          if (!choice) { setSaving(false); return; }
+          if (choice !== 'keep') supersedes = choice;
+        }
+
         const { data: savedQuotes, error: quoteErr } = await supabase
           .from('quotes')
           .insert({
@@ -364,6 +384,7 @@ export default function QuoteFormPage({ mode = 'new' }) {
             group_id: groupParam || null,
             status: 'draft',
             created_by: profile.id,
+            supersedes,
           })
           .select();
 
@@ -792,6 +813,14 @@ export default function QuoteFormPage({ mode = 'new' }) {
           </button>
         </div>
       </div>
+      {supersedeAsk && (
+        <SupersedeQuoteModal
+          name={supersedeAsk.name}
+          openQuotes={supersedeAsk.openQuotes}
+          onChoose={(c) => supersedeAsk.resolve(c)}
+          onCancel={() => supersedeAsk.resolve(null)}
+        />
+      )}
       {feesChoice && (
         <ExistingFeesChoiceModal
           name={feesChoice.entity.name}

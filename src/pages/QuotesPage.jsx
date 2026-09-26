@@ -8,8 +8,8 @@ import DataTable from '../components/DataTable';
 import { fetchAllRows } from '../lib/fetchAllRows';
 import { useFeeReviews, annualDelta, reviewAsRow, ReviewStateBadge, reviewHref, REVIEW_STATE } from '../modules/billing/FeeReviewsPanel';
 
-const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired' };
-const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired'];
+const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired', superseded: 'Superseded' };
+const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired', 'superseded'];
 
 // Status card definitions — pipeline is the aggregate default.
 // Fee reviews for existing clients count too (FeeReviewsPanel STAGE): an
