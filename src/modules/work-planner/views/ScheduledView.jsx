@@ -7,7 +7,7 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 import DataTable from '../../../components/DataTable';
 import { BTN } from '../../../lib/buttonStyles';
 
-// Standing blocks (sql/312): the repeating blocks of time that are not
+// Blocks (sql/312, sql/314): the repeating blocks of time that are not
 // BrightManager jobs. One row per block; the Planner shows the occurrences.
 
 export default function ScheduledView({ onEdit }) {
@@ -30,7 +30,8 @@ export default function ScheduledView({ onEdit }) {
       render: (m) => (m.assignee_id ? <span style={{ display: 'inline-flex' }}><Avatar id={m.assignee_id} staffMap={staffMap} customColour={staffColours?.[m.assignee_id]} /></span> : null),
     },
     { key: 'title', label: 'Block', wrap: true, sortValue: (m) => m.title || null, render: (m) => <span style={{ fontSize: 14, fontWeight: 500 }}>{m.title}</span> },
-    { key: 'kind', label: 'Kind', width: 160, sortValue: (m) => kindOf(m.block_kind).label, render: (m) => <span style={{ fontSize: 12.5, color: '#64748b' }}>{m.block_kind ? kindOf(m.block_kind).label : 'Scheduled task'}</span> },
+    { key: 'kind', label: 'Kind', width: 150, sortValue: (m) => kindOf(m.block_kind).label, render: (m) => <span style={{ fontSize: 12.5, color: '#64748b' }}>{m.block_kind ? kindOf(m.block_kind).label : 'Scheduled task'}</span> },
+    { key: 'carry', label: 'If not done', width: 110, sortValue: (m) => (m.carry_over ? 1 : 0), render: (m) => <span style={{ fontSize: 12, color: m.carry_over ? '#0e7fe0' : '#94a3b8' }}>{m.carry_over ? 'Carries over' : 'Explained'}</span> },
     { key: 'cadence', label: 'When', width: 200, sortValue: (m) => cadenceLabel(m), render: (m) => <span style={{ fontSize: 12.5, color: '#64748b' }}>{cadenceLabel(m)}</span> },
     { key: 'hours', label: 'Hours', width: 70, align: 'right', sortValue: (m) => Number(m.duration) || 0, render: (m) => <span style={{ fontSize: 12.5 }}>{Math.round((Number(m.duration) || 0) / 6) / 10}h</span> },
     {
@@ -54,9 +55,9 @@ export default function ScheduledView({ onEdit }) {
   return (
     <div style={{ padding: 10 }}>
       <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 8 }}>
-        Repeating blocks of time that are not BrightManager jobs: mail, onboarding, confirmation statements, payroll. They sit on the Planner, count against capacity, and log to the timesheet when completed. Payroll blocks break down by client.
+        Repeating blocks of time that are not BrightManager jobs: mail, onboarding, confirmation statements, payroll. They sit on the Planner, count against capacity, and log to the timesheet when completed. Tag clients into a block and it breaks down by client.
       </div>
-      <DataTable columns={columns} rows={list} rowKey={(m) => m.id} onRowClick={(m) => onEdit(m)} sort={sort} onSort={(next) => { setSort(next); setPage(1); }} page={page} onPage={setPage} empty="No standing blocks yet. Add one with + Standing block." />
+      <DataTable columns={columns} rows={list} rowKey={(m) => m.id} onRowClick={(m) => onEdit(m)} sort={sort} onSort={(next) => { setSort(next); setPage(1); }} page={page} onPage={setPage} empty="No blocks yet. Add one with + Block." />
     </div>
   );
 }

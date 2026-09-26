@@ -1,40 +1,100 @@
 import { addDays, addMonths, formatISO } from './helpers';
 
-// Advance a date by one recurrence step
-export function advanceDate(d, recurrence) {
-  const date = d instanceof Date ? d : new Date(d);
-  switch (recurrence) {
-    case 'daily':     return addDays(date, 1);
-    case 'weekly':    return addDays(date, 7);
-    case 'monthly':   return addMonths(date, 1);
-    case 'quarterly': return addMonths(date, 3);
-    case 'annually':  return addMonths(date, 12);
-    default:          return null;
-  }
+// Occurrences of a scheduled task / block (sql/312, sql/314).
+//
+// A block's cadence is one of:
+//   daily        every weekday in `weekdays` (default Mon–Fri)
+//   weekly       the `weekdays` each week
+//   fortnightly  the `weekdays` every other week, counted from the start date's week
+//   monthly      from the start date's day of the month, for `span_days` working
+//                days or until `span_end_day`; each day is its own occurrence
+//   quarterly / annually   the same day every 3 / 12 months (legacy one-a-period)
+// `until` ends the series. A non-recurring task is a single occurrence.
+
+const DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const MAX_DAYS = 800;
+
+const isWorkingDay = (d) => d.getDay() !== 0 && d.getDay() !== 6;
+const nextWorkingDay = (d) => { let x = new Date(d); while (!isWorkingDay(x)) x = addDays(x, 1); return x; };
+const weekStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); const dow = x.getDay() === 0 ? 6 : x.getDay() - 1; return addDays(x, -dow); };
+const dayISO = (d) => formatISO(d);
+
+function weekdaySet(master) {
+  const s = new Set(String(master.weekdays || 'mon,tue,wed,thu,fri').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+  return s.size ? s : new Set(['mon', 'tue', 'wed', 'thu', 'fri']);
 }
 
-// Standing blocks (sql/312) carry a weekdays list for daily cadences and
-// fall back to the Friday when a monthly date lands on a weekend. Returns
-// the date the occurrence actually sits on, or null when it does not occur.
-const DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-export function occurrenceOn(master, d) {
-  if (master.recurrence === 'monthly' && master.block_kind) {
-    const dow = d.getDay();
-    if (dow === 6) return addDays(d, -1);
-    if (dow === 0) return addDays(d, -2);
-    return d;
+// The days a monthly block runs in the month containing `monthDate`.
+function monthlySpan(master, start, monthDate) {
+  const dom = start.getDate();
+  const y = monthDate.getFullYear(), m = monthDate.getMonth();
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  const first = nextWorkingDay(new Date(y, m, Math.min(dom, lastDay)));
+  const days = [];
+  if (master.span_end_day) {
+    const endDay = Math.min(Number(master.span_end_day), lastDay);
+    let end = new Date(y, m, endDay);
+    if (end < first) end = new Date(y, m + 1, Math.min(Number(master.span_end_day), new Date(y, m + 2, 0).getDate()));
+    for (let d = new Date(first); d <= end; d = addDays(d, 1)) if (isWorkingDay(d)) days.push(d);
+    return days;
   }
-  if (master.weekdays && (master.recurrence === 'daily' || master.recurrence === 'weekly')) {
-    const set = new Set(String(master.weekdays).split(',').map((x) => x.trim().toLowerCase()));
-    return set.has(DOW[d.getDay()]) ? d : null;
+  const n = Math.max(1, Number(master.span_days) || 1);
+  let d = new Date(first);
+  while (days.length < n) { if (isWorkingDay(d)) days.push(d); d = addDays(d, 1); }
+  return days;
+}
+
+/** Every date (local midnight) the master occurs on between from and to, inclusive. */
+export function occurrenceDates(master, fromDate, toDate) {
+  if (!master.planned_date) return [];
+  const start = new Date(master.planned_date); start.setHours(0, 0, 0, 0);
+  const from = new Date(fromDate); from.setHours(0, 0, 0, 0);
+  const to = new Date(toDate); to.setHours(0, 0, 0, 0);
+  const until = master.until ? new Date(`${String(master.until).slice(0, 10)}T00:00:00`) : null;
+  const hi = until && until < to ? until : to;
+  const out = [];
+  if (!master.recurring || !master.recurrence) {
+    if (start >= from && start <= hi) out.push(start);
+    return out;
   }
-  return d;
+  const rec = master.recurrence;
+  if (rec === 'quarterly' || rec === 'annually') {
+    let d = new Date(start);
+    for (let i = 0; i < 200 && d <= hi; i++) { if (d >= from) out.push(d); d = addMonths(d, rec === 'quarterly' ? 3 : 12); }
+    return out;
+  }
+  if (rec === 'monthly') {
+    // Walk month by month from the later of the start month and the window.
+    let cursor = new Date(Math.max(start.getTime(), from.getTime()));
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1); // spans can begin in the previous month
+    for (let i = 0; i < 40; i++) {
+      const monthDate = new Date(cursor.getFullYear(), cursor.getMonth() + i, 1);
+      if (monthDate > addMonths(hi, 1)) break;
+      for (const d of monthlySpan(master, start, monthDate)) {
+        if (d >= start && d >= from && d <= hi) out.push(d);
+      }
+    }
+    return out.sort((a, b) => a - b).filter((d, i, arr) => i === 0 || +d !== +arr[i - 1]);
+  }
+  // daily / weekly / fortnightly: day by day
+  const days = weekdaySet(master);
+  const base = weekStart(start);
+  let d = new Date(Math.max(start.getTime(), from.getTime()));
+  for (let i = 0; i < MAX_DAYS && d <= hi; i++, d = addDays(d, 1)) {
+    if (!days.has(DOW[d.getDay()])) continue;
+    if (rec === 'fortnightly') {
+      const weeks = Math.round((weekStart(d) - base) / (7 * 86400000));
+      if (weeks % 2 !== 0) continue;
+    }
+    out.push(new Date(d));
+  }
+  return out;
 }
 
 // Deterministic key for an instance: "{masterId}_{YYYY-MM-DD}"
 export function instanceKey(masterId, date) {
   const d = date instanceof Date ? date : new Date(date);
-  return `${masterId}_${formatISO(d)}`;
+  return `${masterId}_${dayISO(d)}`;
 }
 
 // Generate all virtual instances for a master within a date range
@@ -42,62 +102,19 @@ export function instanceKey(masterId, date) {
 // completedKeys: Set of instanceKey strings that are already completed
 export function generateInstances(master, fromDate, toDate, overridesMap, completedKeys) {
   const instances = [];
-  if (!master.planned_date) return instances;
-
-  const from = fromDate instanceof Date ? fromDate : new Date(fromDate);
-  const to = toDate instanceof Date ? toDate : new Date(toDate);
-  let d = new Date(master.planned_date);
-  d.setHours(0, 0, 0, 0);
-
-  let iterations = 0;
-  const MAX_ITERATIONS = 600;
-
-  while (d <= to && iterations < MAX_ITERATIONS) {
-    iterations++;
-    const on = occurrenceOn(master, d);
-    if (on && on >= from && on <= to) {
-      const key = instanceKey(master.id, on);
-      if (!completedKeys.has(key)) {
-        const override = overridesMap.get(key);
-        instances.push(mergeInstance(master, on, key, override));
-      }
-    }
-    if (!master.recurring || !master.recurrence) break;
-    const next = advanceDate(d, master.recurrence);
-    if (!next) break;
-    d = next;
+  for (const d of occurrenceDates(master, fromDate, toDate)) {
+    const key = instanceKey(master.id, d);
+    if (completedKeys.has(key)) continue;
+    instances.push(mergeInstance(master, d, key, overridesMap.get(key)));
   }
-
   return instances;
 }
 
-// Generate the next upcoming instance for a master (from today forward)
+// The next upcoming instance for a master (from today forward)
 export function nextInstance(master, overridesMap, completedKeys) {
-  if (!master.planned_date) return null;
-
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  let d = new Date(master.planned_date);
-  d.setHours(0, 0, 0, 0);
-
-  let iterations = 0;
-  const MAX_ITERATIONS = 200;
-
-  while (iterations < MAX_ITERATIONS) {
-    iterations++;
-    const on = occurrenceOn(master, d);
-    const key = on ? instanceKey(master.id, on) : null;
-    if (on && on >= now && !completedKeys.has(key)) {
-      const override = overridesMap.get(key);
-      return mergeInstance(master, on, key, override);
-    }
-    if (!master.recurring || !master.recurrence) break;
-    const next = advanceDate(d, master.recurrence);
-    if (!next) break;
-    d = next;
-  }
-
-  return null;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const list = generateInstances(master, now, addDays(now, 400), overridesMap, completedKeys);
+  return list[0] || null;
 }
 
 // Count future overrides for a master
@@ -137,6 +154,7 @@ function mergeInstance(master, date, key, override) {
     recurring: master.recurring,
     recurrence: master.recurrence,
     block_kind: master.block_kind || null,
+    carry_over: !!master.carry_over,
     notes: override?.notes ?? null,
   };
 }

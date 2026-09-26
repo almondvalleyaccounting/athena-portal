@@ -67,7 +67,7 @@ const TASK_PLANNER_TABS = [
   { id: 'day',      label: 'Day plan',    path: '/planner/day' },
   { id: 'waiting',  label: 'Waiting',     path: '/planner/waiting' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
-  { id: 'sched',    label: 'Standing blocks', path: '/planner/scheduled' },
+  { id: 'sched',    label: 'Blocks',      path: '/planner/scheduled' },
   { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
   { id: 'kanban',   label: 'Stage board', path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
@@ -870,7 +870,7 @@ export default function WorkPlannerModule() {
                   onClick={() => setModal('new')}
                   style={{ ...BTN.primary.sm, cursor: 'pointer' }}
                 >
-                  + Standing block
+                  + Block
                 </button>
               )}
             </div>

@@ -1,33 +1,42 @@
 import { supabase } from '../../../lib/supabase';
 
-// Standing blocks (sql/312) are written through the standing-blocks edge
+// Blocks (sql/312, sql/314) are written through the standing-blocks edge
 // function; the browser only reads them.
 
 export const BLOCK_KINDS = [
   { id: 'mail',                    label: 'Mail handling',           service: 'Admin',               hours: 1 },
   { id: 'onboarding',              label: 'Onboarding',              service: 'Admin',               hours: 2 },
   { id: 'confirmation_statements', label: 'Confirmation statements', service: 'Company Secretarial', hours: 2 },
-  { id: 'payroll_weekly',          label: 'Weekly payroll',          service: 'Payroll',             hours: 3, byClient: true },
-  { id: 'payroll_monthly',         label: 'Monthly payroll',         service: 'Payroll',             hours: 4, byClient: true },
-  { id: 'bookkeeping',             label: 'Bookkeeping',             service: 'Bookkeeping',         hours: 3, byClient: true },
+  { id: 'payroll_weekly',          label: 'Weekly payroll',          service: 'Payroll',             hours: 3, byClient: true, carry: true },
+  { id: 'payroll_monthly',         label: 'Monthly payroll',         service: 'Payroll',             hours: 1, byClient: true, carry: true, monthly: true },
+  { id: 'bookkeeping',             label: 'Bookkeeping',             service: 'Bookkeeping',         hours: 3, byClient: true, carry: true },
   { id: 'admin',                   label: 'Admin',                   service: 'Admin',               hours: 1 },
   { id: 'other',                   label: 'Other',                   service: 'Admin',               hours: 1 },
 ];
 export const kindOf = (id) => BLOCK_KINDS.find((k) => k.id === id) || BLOCK_KINDS[BLOCK_KINDS.length - 1];
 
 export const BLOCK_CADENCES = [
-  { id: 'daily',   label: 'Every working day' },
-  { id: 'days',    label: 'Certain days each week' },
-  { id: 'monthly', label: 'Monthly, from the start date' },
+  { id: 'daily',       label: 'Every weekday' },
+  { id: 'weekly',      label: 'Certain days each week' },
+  { id: 'fortnightly', label: 'Certain days every other week' },
+  { id: 'monthly',     label: 'Monthly, from a day of the month' },
 ];
 
-export function cadenceLabel(block) {
-  if (block.recurrence === 'monthly') return `Monthly on the ${new Date(block.planned_date).getDate()}${ordinal(new Date(block.planned_date).getDate())}`;
-  const days = (block.weekdays || 'mon,tue,wed,thu,fri').split(',').filter(Boolean);
-  if (days.length === 5 && !days.includes('sat') && !days.includes('sun')) return 'Every working day';
-  return days.map((d) => d.charAt(0).toUpperCase() + d.slice(1)).join(', ');
-}
+const cap = (d) => d.charAt(0).toUpperCase() + d.slice(1);
 function ordinal(n) { const s = ['th', 'st', 'nd', 'rd']; const v = n % 100; return s[(v - 20) % 10] || s[v] || s[0]; }
+export function cadenceLabel(block) {
+  if (!block.recurring) return 'Once';
+  const days = (block.weekdays || 'mon,tue,wed,thu,fri').split(',').filter(Boolean).map(cap).join(', ');
+  if (block.recurrence === 'monthly') {
+    const dom = new Date(block.planned_date).getDate();
+    const span = block.span_end_day ? `to the ${block.span_end_day}${ordinal(block.span_end_day)}` : `${block.span_days || 1} working day${(block.span_days || 1) === 1 ? '' : 's'}`;
+    return `Monthly from the ${dom}${ordinal(dom)}, ${span}`;
+  }
+  if (block.recurrence === 'fortnightly') return `Every other week · ${days}`;
+  if (block.recurrence === 'weekly') return `Weekly · ${days}`;
+  if (block.recurrence === 'daily') return days === 'Mon, Tue, Wed, Thu, Fri' ? 'Every weekday' : days;
+  return block.recurrence;
+}
 
 export async function callStandingBlocks(payload) {
   const { data, error } = await supabase.functions.invoke('standing-blocks', { body: payload });

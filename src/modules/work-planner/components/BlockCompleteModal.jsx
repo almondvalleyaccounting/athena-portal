@@ -18,7 +18,9 @@ export default function BlockCompleteModal({ instance, block, items = [], entity
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [explain, setExplain] = useState(false);
   const occ = formatISO(instance._date);
+  const carry = !!block?.carry_over;
   const itemTotal = items.reduce((s, it) => s + (Number(mins[it.id]) || 0), 0);
 
   const submit = async (notRequired) => {
@@ -66,13 +68,17 @@ export default function BlockCompleteModal({ instance, block, items = [], entity
           </div>
         )}
 
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" rows={2} style={{ ...inputStyle, width: '100%', resize: 'vertical', marginBottom: 8 }} />
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={explain ? 'Why did it not happen? (needed)' : 'Note (optional)'} rows={2} autoFocus={explain} style={{ ...inputStyle, width: '100%', resize: 'vertical', marginBottom: 8, borderColor: explain && !note.trim() ? '#f59e0b' : '#e5e7eb' }} />
         {err && <div style={{ fontSize: 12.5, color: '#991b1b', marginBottom: 8 }}>{err}</div>}
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <span style={{ display: 'inline-flex', gap: 6, marginRight: 'auto' }}>
             <button onClick={() => onEdit(block)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Edit block</button>
-            <button onClick={() => submit(true)} disabled={busy} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Not required today</button>
+            {carry
+              ? <button onClick={() => submit(true)} disabled={busy} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Not required today</button>
+              : (explain
+                ? <button onClick={() => submit(true)} disabled={busy || !note.trim()} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Save the reason</button>
+                : <button onClick={() => setExplain(true)} disabled={busy} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Didn't happen…</button>)}
           </span>
           <button onClick={onClose} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => submit(false)} disabled={busy} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{busy ? 'Saving…' : 'Complete & log time'}</button>

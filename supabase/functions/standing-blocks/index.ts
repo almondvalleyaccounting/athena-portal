@@ -8,7 +8,7 @@
 // only path.
 //
 // Actions (POST, staff JWT):
-//   save_block   { block: { id?, title, block_kind, assignee_id, recurrence, weekdays?, planned_date, duration, service? }, items?: [{ entity_id?, label?, minutes_default? }] }
+//   save_block   { block: { id?, title, block_kind, assignee_id, recurrence, weekdays?, planned_date, duration, service?, span_days?, span_end_day?, until?, carry_over? }, items?: [{ entity_id?, label?, minutes_default? }] }
 //   delete_block { id }
 //   complete     { block_id, occurrence_date, minutes?, items?: [{ entity_id?, label?, minutes }], note?, not_required? }
 
@@ -30,7 +30,7 @@ function json(data: unknown, status = 200) {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const KINDS = new Set(["mail", "onboarding", "confirmation_statements", "payroll_weekly", "payroll_monthly", "bookkeeping", "admin", "other"]);
-const CADENCES = new Set(["daily", "weekly", "monthly"]);
+const CADENCES = new Set(["daily", "weekly", "fortnightly", "monthly"]);
 const SERVICES = new Set(["Admin", "Accounts Production", "Corporation Tax", "Self Assessment", "VAT Returns", "Bookkeeping", "Payroll", "Management Accounts", "Company Secretarial", "Advisory", "SA302s", "Accountant Certificates"]);
 const DOW = new Set(["mon", "tue", "wed", "thu", "fri", "sat", "sun"]);
 const SERVICE_FOR_KIND: Record<string, string> = {
@@ -91,9 +91,9 @@ Deno.serve(async (req) => {
         const kind = String(b.block_kind || "other");
         if (!KINDS.has(kind)) throw new BadRequest("Unknown block kind");
         const recurrence = String(b.recurrence || "daily");
-        if (!CADENCES.has(recurrence)) throw new BadRequest("Cadence must be daily, weekly or monthly");
+        if (!CADENCES.has(recurrence)) throw new BadRequest("Cadence must be daily, weekly, fortnightly or monthly");
         let weekdays: string | null = null;
-        if (recurrence === "daily") {
+        if (recurrence !== "monthly") {
           const days = String(b.weekdays || "mon,tue,wed,thu,fri").split(",").map((x) => x.trim().toLowerCase()).filter((x) => DOW.has(x));
           if (!days.length) throw new BadRequest("Pick at least one day");
           weekdays = [...new Set(days)].join(",");
@@ -103,12 +103,20 @@ Deno.serve(async (req) => {
         if (!duration || duration < 5) throw new BadRequest("Hours per occurrence must be at least 5 minutes");
         const service = SERVICES.has(String(b.service || "")) ? String(b.service) : SERVICE_FOR_KIND[kind];
         const assignee = optUuid(b.assignee_id, "block.assignee_id");
+        const spanDays = recurrence === "monthly" && b.span_days != null && b.span_days !== "" ? Number(b.span_days) : null;
+        const spanEnd = recurrence === "monthly" && b.span_end_day != null && b.span_end_day !== "" ? Number(b.span_end_day) : null;
+        if (spanDays != null && !(Number.isInteger(spanDays) && spanDays >= 1 && spanDays <= 23)) throw new BadRequest("Working days must be 1–23");
+        if (spanEnd != null && !(Number.isInteger(spanEnd) && spanEnd >= 1 && spanEnd <= 31)) throw new BadRequest("The end day must be 1–31");
+        const until = b.until ? isoDate(b.until, "block.until") : null;
+        if (until && until < plannedDate) throw new BadRequest("The end date is before the start");
+        const carryOver = b.carry_over === true;
 
         const row = {
           title, task_type: "block_out", block_kind: kind, service, assignee_id: assignee,
           recurring: true, recurrence, weekdays, status: "not_started", source: "manual",
           planned_date: new Date(`${plannedDate}T00:00:00`).toISOString(), planned_hour: null, planned_min: 0,
           duration, entity_id: null, updated_at: now,
+          span_days: recurrence === "monthly" && !spanEnd ? (spanDays ?? 1) : null, span_end_day: spanEnd, until, carry_over: carryOver,
         };
         let blockId = id;
         if (blockId) {
@@ -151,10 +159,12 @@ Deno.serve(async (req) => {
       case "complete": {
         const blockId = uuid(p.block_id, "block_id");
         const occ = isoDate(p.occurrence_date, "occurrence_date");
-        const { data: block, error } = await db.from("scheduled_tasks").select("id, title, service, assignee_id, block_kind").eq("id", blockId).maybeSingle();
+        const { data: block, error } = await db.from("scheduled_tasks").select("id, title, service, assignee_id, block_kind, carry_over").eq("id", blockId).maybeSingle();
         if (error) throw new Error(error.message);
         if (!block) throw new BadRequest("Block not found", 404);
         const notRequired = p.not_required === true;
+        // A block that does not carry over is explained, not silently dropped.
+        if (notRequired && !block.carry_over && !text(p.note, 1000)) throw new BadRequest("Say briefly why it did not happen");
         const items = Array.isArray(p.items) ? p.items.slice(0, 200) : [];
         const perItem = items.map((it: Record<string, unknown>, i: number) => ({
           entity_id: optUuid(it?.entity_id, `items[${i}].entity_id`),

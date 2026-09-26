@@ -24,7 +24,7 @@ export default function CalendarGuide({ onClose }) {
         <div style={h}>Where the tasks come from</div>
         <p style={p}><b>Purple jobs</b> come from BrightManager. Every job in BM is imported and placed on a day by the scheduling rules, worked back from its deadline.</p>
         <p style={p}><b>Coloured stages</b> come from a job plan. When an accounts job is planned (Work → Plan the Job), Athena works back from the year end and puts each step on a date: request records, records in, prepare, review, meeting or send, approval, file. They move by themselves if the client is late.</p>
-        <p style={p}><b>Teal standing blocks</b> are repeating time that is not a BM job: mail, onboarding, confirmation statements, weekly and monthly payroll. They are set up under Standing blocks and count against your capacity. A payroll block breaks down by client when you complete it.</p>
+        <p style={p}><b>Teal blocks</b> are repeating time that is not a BM job: mail, onboarding, confirmation statements, weekly and monthly payroll. They are set up under Blocks and count against your capacity. A block with clients tagged breaks down by client when you complete it. A block that does not carry over is not pushed to the next day when it is missed, but you say briefly why.</p>
         <p style={p}><b>Dashed quick tasks</b> are the ones you or a colleague added by hand.</p>
 
         <div style={h}>How to use it</div>

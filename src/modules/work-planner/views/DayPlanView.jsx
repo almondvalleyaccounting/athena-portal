@@ -105,7 +105,9 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
     return out;
   }, [milestones, bmRows, doneInAthena, quickTasks, scheduledTasks, overridesMap, completedKeys, personId, entityMap, dayDate, weekEnd]);
 
-  const incomplete = useMemo(() => all.filter((x) => x.date < day).sort((a, b) => a.date.localeCompare(b.date)), [all, day]);
+  const incomplete = useMemo(() => all.filter((x) => x.date < day && !(x.type === 'block' && !x.item.carry_over)).sort((a, b) => a.date.localeCompare(b.date)), [all, day]);
+  // Blocks that do not carry over: missed days wait for a reason, not for the work.
+  const unexplained = useMemo(() => all.filter((x) => x.type === 'block' && !x.item.carry_over && x.date < day).sort((a, b) => a.date.localeCompare(b.date)), [all, day]);
   const todayList = useMemo(() => {
     const list = all.filter((x) => x.date === day);
     const pos = new Map(order.map((k, i) => [k, i]));
@@ -243,7 +245,18 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           <div style={col}>
             <div style={colHead}>Incomplete <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {incomplete.length}</span></div>
             <div style={{ overflowY: 'auto', padding: 6, flex: 1 }}>
-              {incomplete.length === 0 && <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: 8 }}>Nothing left over from earlier days.</div>}
+              {unexplained.length > 0 && (
+                <div style={{ marginBottom: 8, padding: '6px 8px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fcd34d' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>Missed blocks · say why</div>
+                  {unexplained.map((x) => (
+                    <div key={x.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '2px 0' }}>
+                      <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title} <span style={{ color: '#94a3b8' }}>· {fmtDay(x.date)}</span></span>
+                      <button onClick={() => onCompleteBlock && onCompleteBlock(x.item)} style={BTN.secondary.sm}>Explain / log</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {incomplete.length === 0 && unexplained.length === 0 && <div style={{ fontSize: 12.5, color: '#cbd5e1', padding: 8 }}>Nothing left over from earlier days.</div>}
               {incomplete.map((x) => <Draggable key={x.key} id={x.key} disabled={x.type === 'block'}><Tile x={x} showDate /></Draggable>)}
             </div>
             <div style={{ padding: '6px 10px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb' }}>Planned for an earlier day, still open. Drag into the day or use →.</div>
