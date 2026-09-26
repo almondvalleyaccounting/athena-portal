@@ -140,9 +140,23 @@ export default function WorkPlannerModule() {
     });
     return m;
   }, [holidays]);
+  const [covers, setCovers] = useState([]); // staff_holiday_handovers, decision covered (sql/320)
+  // `${type}:${id}` (+`:${date}` for a block) -> where it sits while the owner is off.
+  const coverMap = useMemo(() => {
+    const m = {};
+    covers.forEach((c) => {
+      const h = c.staff_holidays; if (!h || !c.cover_staff_id) return;
+      m[`${c.task_type}:${c.task_id}${c.occurrence_date ? `:${c.occurrence_date}` : ''}`] = { cover: c.cover_staff_id, owner: h.staff_id, from: h.date_from, to: h.date_to };
+    });
+    return m;
+  }, [covers]);
   const refreshHolidays = useCallback(async () => {
-    const { data } = await supabase.from('staff_holidays').select('*').gte('date_to', formatISO(addDays(new Date(), -60))).order('date_from').limit(2000);
-    setHolidays(data || []);
+    const since = formatISO(addDays(new Date(), -60));
+    const [{ data }, { data: cov }] = await Promise.all([
+      supabase.from('staff_holidays').select('*').gte('date_to', since).order('date_from').limit(2000),
+      supabase.from('staff_holiday_handovers').select('*, staff_holidays!inner(staff_id, date_from, date_to)').eq('decision', 'covered').gte('staff_holidays.date_to', since).limit(5000),
+    ]);
+    setHolidays(data || []); setCovers(cov || []);
   }, []);
   useEffect(() => { refreshHolidays(); }, [refreshHolidays]);
   // Email about a quick task: the same chooser as everywhere else.
@@ -765,9 +779,9 @@ export default function WorkPlannerModule() {
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity, updateStaffCapacity,
     colourMode, staffColours, statusColours,
-    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays,
+    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays, coverMap,
   }), [
-    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays,
+    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays, coverMap,
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
@@ -916,7 +930,7 @@ export default function WorkPlannerModule() {
         <div style={{ flex: 1, overflow: 'auto', minWidth: 0, minHeight: 0 }}>
           {activeTab === 'mytasks' && (
             <>
-              <TodayView onOpenTask={setTaskModal} />
+              <TodayView onOpenTask={setTaskModal} onOpenHolidays={() => setHolidayOpen(true)} />
               <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
             </>
           )}

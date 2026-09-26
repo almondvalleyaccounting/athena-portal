@@ -39,7 +39,7 @@ function Cell({ id, children, style }) {
 // Delete live there), rather than a click-then-Open popover.
 export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete, onEditBlock, onCompleteBlock, selectorOpen, onSelectorClose, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile, holidayMap = {} } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile, holidayMap = {}, coverMap = {} } = useWorkPlanner();
   const [milestones, setMilestones] = useState([]);
   const [bmRows, setBmRows] = useState([]);
   const [doneInAthena, setDoneInAthena] = useState({}); // bm_task_schedule_id -> completion
@@ -100,7 +100,10 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
   // ── Items by person and day ──
   const items = useMemo(() => {
     const out = new Map(); // `${personId}|${iso}` -> { ms: [], bm: [], quick: [], hours }
-    const put = (pid, iso, kind, item, hours) => {
+    const put = (pid, iso, kind, item, hours, ckey) => {
+      // Cover (sql/320): inside the holiday dates the task shows on the colleague's row.
+      const cv = ckey ? coverMap[ckey] : null;
+      if (cv && iso >= cv.from && iso <= cv.to && pid === cv.owner) { pid = cv.cover; item = { ...item, _coverFor: cv.owner }; }
       const key = `${pid || 'unassigned'}|${iso}`;
       if (!out.has(key)) out.set(key, { ms: [], bm: [], quick: [], block: [], hours: 0 });
       const c = out.get(key);
@@ -109,12 +112,12 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
     };
     for (const m of milestones) {
       if (filters.clientFilter && m.job_plans.entity_id !== filters.clientFilter) continue;
-      put(m.owner_id, m.due_date, 'ms', m, m.status === 'pending' ? m.hours : 0);
+      put(m.owner_id, m.due_date, 'ms', m, m.status === 'pending' ? m.hours : 0, `ms:${m.id}`);
     }
     for (const b of bmRows) {
       if (filters.clientFilter && b.entity_id !== filters.clientFilter) continue;
       if (filters.serviceFilter && b.service !== filters.serviceFilter) continue;
-      put(b.assignee_id, b.scheduled_for_date, 'bm', b, doneInAthena[b.id] ? 0 : (b.remaining_hours ?? b.scheduled_hours));
+      put(b.assignee_id, b.scheduled_for_date, 'bm', b, doneInAthena[b.id] ? 0 : (b.remaining_hours ?? b.scheduled_hours), `bm:${b.id}`);
     }
     // Standing blocks (sql/312): occurrences in the window, hours from the block.
     for (const m of scheduledTasks) {
@@ -122,7 +125,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       for (const inst of generateInstances(m, days[0], days[days.length - 1], overridesMap, completedKeys)) {
         if (filters.serviceFilter && inst.service !== filters.serviceFilter) continue;
         if (filters.clientFilter) continue;
-        put(inst.assignee_id, formatISO(inst._date), 'block', inst, (inst.duration || 0) / 60);
+        put(inst.assignee_id, formatISO(inst._date), 'block', inst, (inst.duration || 0) / 60, `block:${inst._masterId}:${formatISO(inst._date)}`);
       }
     }
     for (const q of quickTasks) {
@@ -130,10 +133,10 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       if (filters.clientFilter && q.entity_id !== filters.clientFilter) continue;
       const d = new Date(q.planned_date);
       if (d < days[0] || d > addDays(days[days.length - 1], 1)) continue;
-      put(q.assignee_id, formatISO(d), 'quick', q, (q.duration || 15) / 60);
+      put(q.assignee_id, formatISO(d), 'quick', q, (q.duration || 15) / 60, `quick:${q.id}`);
     }
     return out;
-  }, [milestones, bmRows, quickTasks, scheduledTasks, overridesMap, completedKeys, filters.clientFilter, filters.serviceFilter, days, doneInAthena]);
+  }, [milestones, bmRows, quickTasks, scheduledTasks, overridesMap, completedKeys, filters.clientFilter, filters.serviceFilter, days, doneInAthena, coverMap]);
 
   const hasUnassigned = useMemo(() => [...items.keys()].some((k) => k.startsWith('unassigned|')), [items]);
   const rows = useMemo(() => (hasUnassigned && !filters.teamFilter ? [...people, { id: null, name: 'Unassigned', working_days: '' }] : people), [people, hasUnassigned, filters.teamFilter]);
@@ -238,7 +241,8 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
   const loadColour = (used, cap) => (cap <= 0 ? '#94a3b8' : used > cap * 1.2 ? '#991b1b' : used > cap ? '#9a3412' : used > cap * 0.8 ? '#92400e' : '#166534');
 
   const renderTile = (type, x, overlay = false) => {
-    const base = { padding: '3px 6px', marginBottom: 3, borderRadius: 5, fontSize: 11.5, lineHeight: 1.3, background: '#fff', border: '1px solid #e5e7eb', overflow: 'hidden', fontFamily: font };
+    const base = { padding: '3px 6px', marginBottom: 3, borderRadius: 5, fontSize: 11.5, lineHeight: 1.3, background: '#fff', border: x._coverFor ? '1px dashed #f59e0b' : '1px solid #e5e7eb', overflow: 'hidden', fontFamily: font };
+    if (x._coverFor) base.title = `Covering for ${staffMap[x._coverFor]?.name?.split(' ')[0] || 'a colleague'}`;
     if (type === 'ms') {
       const p = x.job_plans;
       const done = x.status === 'done';

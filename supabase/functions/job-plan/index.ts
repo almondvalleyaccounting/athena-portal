@@ -139,6 +139,99 @@ Deno.serve(async (req) => {
 
   // ── Lookups ────────────────────────────────────────────────────────────────
 
+  // ── Holiday handover helpers (sql/320) ──
+  const DOW = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  const shiftISO = (iso: string, n: number) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const shortName = (name: string | null) => String(name || "").replace(/\s*(Year End|Quarterly End|Monthly End|Period End|Tax Year).*$/i, "");
+
+  /** Rule 8: two full working days before the last working day before the holiday, on the owner's pattern; booked days off do not count. */
+  async function handoverDueFor(staffId: string, from: string, excludeHolidayId: string | null): Promise<string | null> {
+    const [{ data: sp }, { data: others }] = await Promise.all([
+      db.from("staff_profiles").select("working_days").eq("id", staffId).maybeSingle(),
+      db.from("staff_holidays").select("id, date_from, date_to").eq("staff_id", staffId).lt("date_from", from),
+    ]);
+    const days = new Set(String(sp?.working_days || "mon,tue,wed,thu,fri").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean));
+    if (!days.size) ["mon", "tue", "wed", "thu", "fri"].forEach((d) => days.add(d));
+    const off = (iso: string) => (others || []).some((o) => o.id !== excludeHolidayId && iso >= o.date_from && iso <= o.date_to);
+    const working = (iso: string) => days.has(DOW[new Date(`${iso}T12:00:00Z`).getUTCDay()]) && !off(iso);
+    let d = shiftISO(from, -1); let guard = 0;
+    while (!working(d) && guard++ < 60) d = shiftISO(d, -1);        // last working day before going off
+    for (let n = 0; n < 2 && guard < 120; guard++) { d = shiftISO(d, -1); if (working(d)) n++; } // two full working days earlier
+    return d;
+  }
+
+  interface TaskInfo { date: string | null; deadline: string | null; line: string; context: string | null }
+  /** What a task is, when it falls, its hard deadline, and a line for the handover email. */
+  async function taskInfo(t: { type: string; id: string; occurrence_date: string | null }, ownerId: string): Promise<TaskInfo | null> {
+    const fmtD = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : "");
+    if (t.type === "ms") {
+      const { data: m } = await db.from("job_milestones").select("id, label, due_date, hours, owner_id, status, note, job_plans(entity_id, period_end, ch_deadline, status, entities(name))").eq("id", t.id).maybeSingle();
+      if (!m || m.owner_id !== ownerId) return null;
+      const p = m.job_plans as Record<string, any>;
+      return { date: m.due_date, deadline: p?.ch_deadline || null, line: `${p?.entities?.name || "Client"} – ${m.label} (plan stage, ${fmtD(m.due_date)}${m.hours ? `, ${Number(m.hours)}h` : ""})`, context: `Year end ${fmtD(p?.period_end)}; Companies House deadline ${fmtD(p?.ch_deadline)}.${m.note ? ` ${m.note}` : ""}` };
+    }
+    if (t.type === "bm") {
+      const { data: b } = await db.from("bm_task_schedule").select("id, bm_task_name, scheduled_for_date, bm_deadline, bm_status, scheduled_hours, assignee_id, entities(name)").eq("id", t.id).maybeSingle();
+      if (!b || b.assignee_id !== ownerId) return null;
+      return { date: b.scheduled_for_date, deadline: b.bm_deadline, line: `${(b.entities as Record<string, any>)?.name || "Client"} – ${shortName(b.bm_task_name)} (${fmtD(b.scheduled_for_date)}${b.scheduled_hours ? `, ${Number(b.scheduled_hours)}h` : ""})`, context: `BM status ${b.bm_status || "—"}; statutory deadline ${fmtD(b.bm_deadline) || "none"}.` };
+    }
+    if (t.type === "quick") {
+      const { data: q } = await db.from("quick_tasks").select("id, title, planned_date, due_date, notes, assignee_id, entities(name)").eq("id", t.id).maybeSingle();
+      if (!q || q.assignee_id !== ownerId) return null;
+      const date = (q.planned_date || q.due_date || "").slice(0, 10) || null;
+      return { date, deadline: q.due_date ? String(q.due_date).slice(0, 10) : null, line: `${(q.entities as Record<string, any>)?.name ? `${(q.entities as Record<string, any>).name} – ` : ""}${q.title} (quick task${date ? `, ${fmtD(date)}` : ""})`, context: q.notes || null };
+    }
+    const { data: bl } = await db.from("scheduled_tasks").select("id, title, block_kind, duration, assignee_id, entity_id").eq("id", t.id).maybeSingle();
+    if (!bl || bl.assignee_id !== ownerId) return null;
+    const { data: items } = await db.from("standing_block_items").select("entity_id, entities(name)").eq("block_id", t.id);
+    const names = (items || []).map((i) => (i.entities as Record<string, any>)?.name).filter(Boolean);
+    return { date: t.occurrence_date, deadline: null, line: `${bl.title} (block, ${fmtD(t.occurrence_date)}, ${Math.round((bl.duration || 0) / 6) / 10}h)`, context: names.length ? `Clients: ${names.join(", ")}.` : null };
+  }
+
+  /** Rule 2: everything of the owner's whose date falls inside the holiday (blocks come from the browser). */
+  async function holidayTasks(h: Record<string, any>) {
+    const [{ data: ms }, { data: bm }, { data: qt }, { data: comps }] = await Promise.all([
+      db.from("job_milestones").select("id, label, due_date, hours, job_plans!inner(status, entity_id, ch_deadline, entities(name))").eq("owner_id", h.staff_id).eq("status", "pending").eq("job_plans.status", "committed").gte("due_date", h.date_from).lte("due_date", h.date_to),
+      db.from("bm_task_schedule").select("id, bm_task_name, scheduled_for_date, bm_deadline, scheduled_hours, entities(name)").eq("assignee_id", h.staff_id).eq("state", "planned").is("excluded_at", null).or(`and(scheduled_for_date.gte.${h.date_from},scheduled_for_date.lte.${h.date_to}),and(bm_deadline.gte.${h.date_from},bm_deadline.lte.${h.date_to})`),
+      db.from("quick_tasks").select("id, title, planned_date, due_date, duration, entities(name)").eq("assignee_id", h.staff_id),
+      db.from("bm_task_completions").select("bm_task_schedule_id").is("confirmed_at", null),
+    ]);
+    const done = new Set((comps || []).map((c) => c.bm_task_schedule_id));
+    const out: Array<Record<string, unknown>> = [];
+    for (const m of ms || []) out.push({ type: "ms", id: m.id, occurrence_date: null, date: m.due_date, deadline: (m.job_plans as Record<string, any>)?.ch_deadline || null, title: m.label, client: (m.job_plans as Record<string, any>)?.entities?.name || null, hours: Number(m.hours) || 0 });
+    for (const b of bm || []) if (!done.has(b.id)) out.push({ type: "bm", id: b.id, occurrence_date: null, date: b.scheduled_for_date, deadline: b.bm_deadline, title: shortName(b.bm_task_name), client: (b.entities as Record<string, any>)?.name || null, hours: Number(b.scheduled_hours) || 0 });
+    for (const q of qt || []) {
+      const date = (q.planned_date || q.due_date || "").slice(0, 10);
+      if (!date || date < h.date_from || date > h.date_to) continue;
+      out.push({ type: "quick", id: q.id, occurrence_date: null, date, deadline: q.due_date ? String(q.due_date).slice(0, 10) : null, title: q.title, client: (q.entities as Record<string, any>)?.name || null, hours: (q.duration || 15) / 60 });
+    }
+    return out;
+  }
+
+  async function moveTask(t: { type: string; id: string }, iso: string) {
+    if (t.type === "ms") {
+      const { error } = await db.from("job_milestones").update({ due_date: iso, pinned_by: me, pinned_at: now, updated_at: now }).eq("id", t.id);
+      if (error) throw new Error(error.message);
+    } else if (t.type === "bm") {
+      const { error } = await db.from("bm_task_schedule").update({ scheduled_for_date: iso, manually_overridden_at: now, manually_overridden_by: me }).eq("id", t.id);
+      if (error) throw new Error(error.message);
+    } else if (t.type === "quick") {
+      const { error } = await db.from("quick_tasks").update({ planned_date: `${iso}T09:00:00+00:00`, updated_at: now }).eq("id", t.id);
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  async function handoverUpdateEmail(coverId: string, h: Record<string, any>, line: string) {
+    const [{ data: who }, { data: meRow }, { data: settings }] = await Promise.all([
+      db.from("staff_profiles").select("name, email").eq("id", coverId).maybeSingle(),
+      db.from("staff_profiles").select("name").eq("id", me).maybeSingle(),
+      db.from("job_plan_settings").select("comms_mailbox").eq("id", true).maybeSingle(),
+    ]);
+    if (!who?.email) return;
+    const first = String(meRow?.name || "").split(" ")[0];
+    await sendGeneric(db, { entityId: null, to: who.email, subject: `Handover update – ${h.date_from} to ${h.date_to}`, text: `Hi ${String(who.name || "").split(" ")[0]},\n\nA change to my handover:\n\n• ${line}\n\nThanks,\n${first}`, ownerId: me, mailbox: settings?.comms_mailbox || null });
+  }
+
   async function template() {
     const { data: t, error } = await db.from("workflow_templates").select("id, key").eq("key", TEMPLATE_KEY).eq("active", true).maybeSingle();
     if (error) throw new Error(error.message);
@@ -571,6 +664,24 @@ Deno.serve(async (req) => {
         return json({ success: true, id: row.id, notified });
       }
 
+      // A client reply or upload (sql/319): the owner says whether the
+      // records are in. Either way the chases are released.
+      case "records_signal_handle": {
+        const planId = uuid(p.plan_id, "plan_id");
+        const outcome = p.outcome === "records_in" ? "records_in" : "still_waiting";
+        const { data: plan } = await db.from("job_plans").select("id, status").eq("id", planId).maybeSingle();
+        if (!plan) throw new BadRequest("Plan not found", 404);
+        if (outcome === "records_in") {
+          const { data: m } = await db.from("job_milestones").select("id, status").eq("plan_id", planId).eq("stage_key", "records_in").maybeSingle();
+          if (m && m.status === "pending") {
+            await db.from("job_milestones").update({ status: "done", done_at: now, done_signal: "client", updated_at: now }).eq("id", m.id);
+          }
+        }
+        const { error } = await db.from("job_plans").update({ signal_handled_at: now, chases_held: false, updated_at: now }).eq("id", planId);
+        if (error) throw new Error(error.message);
+        return json({ success: true, plan: await loadPlan(planId), milestones: await milestonesOf(planId) });
+      }
+
       // Holidays (sql/317). Anyone edits their own; can_manage_portal edits anyone's.
       case "save_holiday": {
         const { data: meRow } = await db.from("staff_profiles").select("can_manage_portal").eq("id", me).maybeSingle();
@@ -579,8 +690,9 @@ Deno.serve(async (req) => {
         const from = isoDate(p.date_from, "date_from"), to = isoDate(p.date_to, "date_to");
         if (to < from) throw new BadRequest("The end is before the start");
         const kind = ["holiday", "sick", "other"].includes(String(p.kind)) ? String(p.kind) : "holiday";
-        const row = { staff_id: staffId, date_from: from, date_to: to, kind, half_day: p.half_day === true, note: p.note ? String(p.note).slice(0, 300) : null, cover_staff_id: optUuid(p.cover_staff_id, "cover_staff_id") };
         const id = optUuid(p.id, "id");
+        const handoverDue = await handoverDueFor(staffId, from, id);
+        const row = { staff_id: staffId, date_from: from, date_to: to, kind, half_day: p.half_day === true, note: p.note ? String(p.note).slice(0, 300) : null, handover_due: handoverDue };
         if (id) {
           const { data: cur } = await db.from("staff_holidays").select("staff_id").eq("id", id).maybeSingle();
           if (!cur) throw new BadRequest("Holiday not found", 404);
@@ -602,6 +714,113 @@ Deno.serve(async (req) => {
         if (!cur) throw new BadRequest("Holiday not found", 404);
         if (cur.staff_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Not yours to remove", 403);
         const { error } = await db.from("staff_holidays").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        return json({ success: true });
+      }
+
+      // ── Task-by-task handover (sql/320) ──────────────────────────────────
+      // The tasks inside a holiday's dates, computed now (not snapshotted),
+      // with any decision already taken. Blocks are added by the browser,
+      // which holds the occurrence engine.
+      case "holiday_tasks": {
+        const hid = uuid(p.holiday_id, "holiday_id");
+        const { data: h } = await db.from("staff_holidays").select("*").eq("id", hid).maybeSingle();
+        if (!h) throw new BadRequest("Holiday not found", 404);
+        const tasks = await holidayTasks(h);
+        const { data: decisions } = await db.from("staff_holiday_handovers").select("*").eq("holiday_id", hid);
+        return json({ success: true, holiday: h, tasks, decisions: decisions || [] });
+      }
+
+      case "set_handover": {
+        const hid = uuid(p.holiday_id, "holiday_id");
+        const task = taskRef(p.task);
+        if (!task) throw new BadRequest("task is needed");
+        const decision = String(p.decision || "");
+        if (!["covered", "done_before", "moved_after", "can_wait"].includes(decision)) throw new BadRequest("Unknown decision");
+        const [{ data: h }, { data: meRow }] = await Promise.all([
+          db.from("staff_holidays").select("*").eq("id", hid).maybeSingle(),
+          db.from("staff_profiles").select("can_manage_portal").eq("id", me).maybeSingle(),
+        ]);
+        if (!h) throw new BadRequest("Holiday not found", 404);
+        if (h.staff_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Only the owner (or a manager) decides", 403);
+        const info = await taskInfo(task, h.staff_id);
+        if (!info) throw new BadRequest("That task is not theirs, or no longer exists", 404);
+        const cover = decision === "covered" ? optUuid(p.cover_staff_id, "cover_staff_id") : null;
+        if (decision === "covered" && (!cover || cover === h.staff_id)) throw new BadRequest("Pick who is covering");
+        const newDate = decision === "done_before" || decision === "moved_after" ? isoDate(p.new_date, "new_date") : null;
+        // Rule 4: a deadline inside the dates cannot wait, and a move stays on or before it.
+        const deadlineInside = !!info.deadline && info.deadline >= h.date_from && info.deadline <= h.date_to;
+        if (decision === "can_wait" && deadlineInside) throw new BadRequest(`That has a deadline on ${info.deadline} — it cannot wait`);
+        if (newDate && info.deadline && newDate > info.deadline) throw new BadRequest(`A moved date must be on or before the deadline (${info.deadline})`);
+        if (decision === "done_before" && newDate! >= h.date_from) throw new BadRequest("Done before I go: the date must be before the holiday starts");
+        if (decision === "moved_after" && newDate! <= h.date_to) throw new BadRequest("Moved to after I'm back: the date must be after the holiday ends");
+        if (task.type === "block" && newDate) throw new BadRequest("A block stays on its day; cover it or let it wait");
+        if (newDate) await moveTask(task, newDate);
+
+        let prevQ = db.from("staff_holiday_handovers").select("*").eq("holiday_id", hid).eq("task_type", task.type).eq("task_id", task.id);
+        prevQ = task.occurrence_date ? prevQ.eq("occurrence_date", task.occurrence_date) : prevQ.is("occurrence_date", null);
+        const { data: prev } = await prevQ.maybeSingle();
+        const rowData = { holiday_id: hid, task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, decision, cover_staff_id: cover, original_date: prev?.original_date || info.date, new_date: newDate, updated_at: now };
+        let rowId = prev?.id as string | undefined;
+        if (prev) {
+          const { error } = await db.from("staff_holiday_handovers").update({ ...rowData, sent_at: cover && cover === prev.cover_staff_id ? prev.sent_at : null }).eq("id", prev.id);
+          if (error) throw new Error(error.message);
+        } else {
+          const { data, error } = await db.from("staff_holiday_handovers").insert(rowData).select("id").single();
+          if (error) throw new Error(error.message);
+          rowId = data.id;
+        }
+        // Rule 7: a change after the handover went sends that colleague a short update.
+        let updated = 0;
+        if (prev?.sent_at && prev.cover_staff_id && (prev.cover_staff_id !== cover || decision !== "covered")) {
+          try { await handoverUpdateEmail(prev.cover_staff_id, h, `No longer yours to cover: ${info.line}`); updated++; } catch (e) { console.error("[job-plan] handover update", (e as Error).message); }
+        }
+        if (cover && prev?.cover_staff_id !== cover) {
+          const { data: already } = await db.from("staff_holiday_handovers").select("id").eq("holiday_id", hid).eq("cover_staff_id", cover).not("sent_at", "is", null).limit(1);
+          if (already && already.length) {
+            try { await handoverUpdateEmail(cover, h, `Added to your cover: ${info.line}`); await db.from("staff_holiday_handovers").update({ sent_at: now }).eq("id", rowId!); updated++; } catch (e) { console.error("[job-plan] handover update", (e as Error).message); }
+          }
+        }
+        return json({ success: true, id: rowId, updated });
+      }
+
+      // One draft per colleague with covered tasks not yet sent. The browser
+      // shows each in the editor; mark_handover_sent records the send.
+      case "handover_drafts": {
+        const hid = uuid(p.holiday_id, "holiday_id");
+        const { data: h } = await db.from("staff_holidays").select("*").eq("id", hid).maybeSingle();
+        if (!h) throw new BadRequest("Holiday not found", 404);
+        if (h.staff_id !== me) throw new BadRequest("Only the owner sends their handovers", 403);
+        const { data: rows } = await db.from("staff_holiday_handovers").select("*").eq("holiday_id", hid).eq("decision", "covered").is("sent_at", null).not("cover_staff_id", "is", null);
+        const byCover = new Map<string, Array<Record<string, any>>>();
+        for (const r of rows || []) { if (!byCover.has(r.cover_staff_id)) byCover.set(r.cover_staff_id, []); byCover.get(r.cover_staff_id)!.push(r); }
+        const { data: meRow } = await db.from("staff_profiles").select("name").eq("id", me).maybeSingle();
+        const first = String(meRow?.name || "").split(" ")[0];
+        const fmtD = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+        const range = h.date_from === h.date_to ? fmtD(h.date_from) : `${fmtD(h.date_from)} to ${fmtD(h.date_to)}`;
+        const drafts = [];
+        for (const [coverId, list] of byCover) {
+          const { data: who } = await db.from("staff_profiles").select("name, email").eq("id", coverId).maybeSingle();
+          const lines: string[] = [];
+          for (const r of list) {
+            const info = await taskInfo({ type: r.task_type, id: r.task_id, occurrence_date: r.occurrence_date }, h.staff_id);
+            if (info) lines.push(`• ${info.line}${info.context ? `\n  ${info.context}` : ""}`);
+          }
+          drafts.push({
+            cover_staff_id: coverId, to: who?.email || "", name: who?.name || "",
+            subject: `Handover – ${range}`,
+            text: `Hi ${String(who?.name || "").split(" ")[0]},\n\nI’m off ${range}. Could you cover these while I’m away?\n\n${lines.join("\n")}\n\nAnything you need on any of them, ask before I go. They’ll show on your Planner for those dates and come back to me after.\n\nThanks,\n${first}`,
+          });
+        }
+        return json({ success: true, drafts });
+      }
+
+      case "mark_handover_sent": {
+        const hid = uuid(p.holiday_id, "holiday_id");
+        const cover = uuid(p.cover_staff_id, "cover_staff_id");
+        const { data: h } = await db.from("staff_holidays").select("staff_id").eq("id", hid).maybeSingle();
+        if (!h || h.staff_id !== me) throw new BadRequest("Not your holiday", 403);
+        const { error } = await db.from("staff_holiday_handovers").update({ sent_at: now }).eq("holiday_id", hid).eq("cover_staff_id", cover).is("sent_at", null);
         if (error) throw new Error(error.message);
         return json({ success: true });
       }

@@ -238,6 +238,50 @@ Deno.serve(async (req) => {
       }
     } catch (e) { stats.errors.push(`completions: ${(e as Error).message}`); }
 
+    // ── Records-in signals from the client (sql/319) ─────────────────────
+    // A reply on the request/chase thread (or from the address we wrote
+    // to), or a portal upload, after we sent. It holds the chases and asks
+    // the owner; it never closes the stage by itself.
+    const notify = async (recipient: string, kind: string, title: string, body: string | null, link: string | null, sourceKey: string) => {
+      const { data: dup } = await db.from("notifications").select("id").eq("source_key", sourceKey).limit(1);
+      if (dup && dup.length) return false;
+      const { error } = await db.from("notifications").insert({ recipient_id: recipient, kind, title, body, link_path: link, source_key: sourceKey });
+      return !error;
+    };
+    try {
+      let signals = 0;
+      for (const plan of plans || []) {
+        const ms = milestonesByPlan.get(plan.id) || [];
+        const recordsIn = ms.find((m) => m.stage_key === "records_in");
+        if (!recordsIn || recordsIn.status !== "pending") continue;
+        const sent = ms.filter((m) => RECORDS_COMMS.has(m.stage_key) && m.comms_sent_at);
+        if (!sent.length) continue;
+        const since = sent.map((m) => m.comms_sent_at).sort().pop() as string;
+        const threads = sent.map((m) => m.comms_thread_id).filter(Boolean);
+        const tos = [...new Set(sent.map((m) => String(m.comms_to || "").toLowerCase()).filter(Boolean))];
+        const { data: inbound } = await db.from("client_communications")
+          .select("gmail_message_id, gmail_thread_id, from_email, occurred_at, subject")
+          .eq("entity_id", plan.entity_id).eq("direction", "in").gt("occurred_at", since).order("occurred_at", { ascending: false }).limit(20);
+        const reply = (inbound || []).find((c) => (c.gmail_thread_id && threads.includes(c.gmail_thread_id)) || tos.includes(String(c.from_email || "").toLowerCase()));
+        const { data: uploads } = await db.from("onboarding_documents").select("id, original_name, created_at")
+          .eq("entity_id", plan.entity_id).eq("uploaded_by_kind", "client").gt("created_at", since).order("created_at", { ascending: false }).limit(1);
+        const upload = uploads?.[0];
+        const cand = reply && (!upload || reply.occurred_at >= upload.created_at)
+          ? { kind: "reply", ref: reply.gmail_message_id, at: reply.occurred_at, what: reply.subject ? `replied: "${String(reply.subject).slice(0, 80)}"` : "replied" }
+          : upload ? { kind: "upload", ref: upload.id, at: upload.created_at, what: `uploaded ${upload.original_name || "a document"}` } : null;
+        if (!cand || cand.ref === plan.client_signal_ref) continue;
+        const { error } = await db.from("job_plans").update({
+          client_signal_at: cand.at, client_signal_kind: cand.kind, client_signal_ref: cand.ref, signal_handled_at: null, chases_held: true, updated_at: new Date().toISOString(),
+        }).eq("id", plan.id);
+        if (error) throw new Error(error.message);
+        plan.chases_held = true; signals++;
+        const owner = recordsIn.owner_id || ms.find((m) => m.owner_role === "preparer")?.owner_id;
+        const { data: ent } = await db.from("entities").select("name").eq("id", plan.entity_id).maybeSingle();
+        if (owner) await notify(owner, "records_signal", `${ent?.name || "A client"} ${cand.what}`, "Records in, or still waiting? Chases are on hold until you say.", "/planner", `records_signal:${plan.id}:${cand.ref}`);
+      }
+      (stats as Record<string, unknown>).clientSignals = signals;
+    } catch (e) { stats.errors.push(`signals: ${(e as Error).message}`); }
+
     // ── Client comms (sql/309) ───────────────────────────────────────────
     // Armed and past the start date: send the comms stages that are due.
     // Requests and chases on their date; the meeting invite three weeks
@@ -263,6 +307,8 @@ Deno.serve(async (req) => {
           if (sentThisRun >= 100) break;
           if (m.status !== "pending" || m.comms_sent_at) continue;
           let due = false;
+          // A chase waits while the client's reply or upload is unreviewed (sql/319).
+          if (["chase_1", "chase_2"].includes(m.stage_key) && plan.chases_held) continue;
           if (["request_records", "chase_1", "chase_2"].includes(m.stage_key)) due = m.due_date <= today && gateDone(m);
           else if (m.stage_key === "client_meeting") due = m.due_date <= inviteFrom && gateDone(m);
           else if (m.stage_key === "approval") due = m.due_date < today && gateDone(m);
@@ -277,6 +323,44 @@ Deno.serve(async (req) => {
         }
       }
     }
+
+    // ── Holiday handovers (sql/320): remind, then escalate; never send ────
+    try {
+      const { data: hols } = await db.from("staff_holidays").select("id, staff_id, date_from, date_to, handover_due").gte("date_from", today).order("date_from").limit(200);
+      const { data: managers } = await db.from("staff_profiles").select("id").eq("is_active", true).eq("can_manage_portal", true);
+      const dow = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      let reminded = 0, escalated = 0;
+      for (const h of hols || []) {
+        if (!h.handover_due) continue;
+        const { data: rows } = await db.from("staff_holiday_handovers").select("decision, sent_at, cover_staff_id").eq("holiday_id", h.id);
+        // "Undecided" needs the task list; the browser holds the block engine, so
+        // here we count the server-known tasks against the decisions taken.
+        const { data: ms } = await db.from("job_milestones").select("id, job_plans!inner(status)").eq("owner_id", h.staff_id).eq("status", "pending").eq("job_plans.status", "committed").gte("due_date", h.date_from).lte("due_date", h.date_to);
+        const { data: bm } = await db.from("bm_task_schedule").select("id").eq("assignee_id", h.staff_id).eq("state", "planned").is("excluded_at", null).or(`and(scheduled_for_date.gte.${h.date_from},scheduled_for_date.lte.${h.date_to}),and(bm_deadline.gte.${h.date_from},bm_deadline.lte.${h.date_to})`);
+        const known = (ms?.length || 0) + (bm?.length || 0);
+        const decided = (rows || []).length;
+        const unsent = (rows || []).some((r) => r.decision === "covered" && r.cover_staff_id && !r.sent_at);
+        const undecided = Math.max(0, known - decided);
+        if (!undecided && !unsent) continue;
+        const wd = new Set(String(workingDays[h.staff_id] || "mon,tue,wed,thu,fri").split(",").map((x) => x.trim().toLowerCase()));
+        // The owner's first working day of the week the deadline falls in.
+        const due = new Date(`${h.handover_due}T12:00:00Z`);
+        const monday = new Date(due); monday.setUTCDate(due.getUTCDate() - ((due.getUTCDay() + 6) % 7));
+        let firstWorking = new Date(monday);
+        for (let i = 0; i < 7 && !wd.has(dow[firstWorking.getUTCDay()]); i++) firstWorking.setUTCDate(firstWorking.getUTCDate() + 1);
+        if (today === firstWorking.toISOString().slice(0, 10) && today <= h.handover_due) {
+          if (await notify(h.staff_id, "handover_reminder", `Handover due ${h.handover_due}`, `${undecided ? `${undecided} task${undecided === 1 ? "" : "s"} with no plan. ` : ""}${unsent ? "Handovers not yet sent. " : ""}Open Holidays to sort it.`, "/planner", `handover:${h.id}:remind`)) reminded++;
+        }
+        if (today > h.handover_due && unsent) {
+          const { name } = staffById.get(h.staff_id) || { name: null };
+          for (const m of managers || []) {
+            if (await notify(m.id, "handover_overdue", `Handover overdue: ${String(name || "a team member").split(" ")[0]}`, `Off from ${h.date_from}; handovers were due ${h.handover_due} and have not been sent.`, "/planner", `handover:${h.id}:overdue:${m.id}`)) escalated++;
+          }
+        }
+      }
+      (stats as Record<string, unknown>).handoverReminders = reminded;
+      (stats as Record<string, unknown>).handoverEscalations = escalated;
+    } catch (e) { stats.errors.push(`handovers: ${(e as Error).message}`); }
 
     // ── Nudges ───────────────────────────────────────────────────────────
     // Armed, and past the start date if one is set (sql/308): the team has a

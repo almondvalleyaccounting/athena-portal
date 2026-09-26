@@ -39,12 +39,15 @@ function DropZone({ id, style, children, activeStyle }) {
 
 export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick, onQuickDone, onCompleteBlock, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile, holidayMap = {} } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile, holidayMap = {}, coverMap = {} } = useWorkPlanner();
   const [day, setDay] = useState(formatISO(today()));
   const personId = filters.teamFilter || profile?.id;
   const person = staffMap[personId];
   const [milestones, setMilestones] = useState([]);
   const [bmRows, setBmRows] = useState([]);
+  const [coverMs, setCoverMs] = useState([]); // stages I am covering while the owner is off
+  const [coverBm, setCoverBm] = useState([]);
+  const [hover, setHover] = useState(null); // tile key under the pointer
   const [doneInAthena, setDoneInAthena] = useState({});
   const [order, setOrder] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,31 +88,54 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
       if (mErr) throw mErr;
       setMilestones(ms || []);
       setBmRows((bm || []).filter((b) => b.state !== 'completed'));
+      // Tasks handed to me for the owner's holiday dates (sql/320).
+      const mineCover = Object.entries(coverMap).filter(([, c]) => c.cover === personId && c.to >= backISO && c.from <= loadEndISO);
+      const msIds = mineCover.filter(([k]) => k.startsWith('ms:')).map(([k]) => k.split(':')[1]);
+      const bmIds = mineCover.filter(([k]) => k.startsWith('bm:')).map(([k]) => k.split(':')[1]);
+      const [cm, cb] = await Promise.all([
+        msIds.length ? supabase.from('job_milestones').select('id, stage_key, label, kind, hours, owner_id, due_date, status, note, comms_sent_at, job_plans!inner(id, entity_id, period_end, status, risk, entities(name))').in('id', msIds).eq('status', 'pending').then((r) => r.data || []) : Promise.resolve([]),
+        bmIds.length ? listScheduleInRange({ startISO: backISO, endISO: loadEndISO }).then((rows) => rows.filter((r) => bmIds.includes(r.id) && r.state !== 'completed')) : Promise.resolve([]),
+      ]);
+      setCoverMs(cm); setCoverBm(cb);
       const map = {}; (comps || []).forEach((c) => { if (c.bm_task_schedule_id) map[c.bm_task_schedule_id] = true; });
       setDoneInAthena(map);
       setOrder(ord?.keys || []);
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
-  }, [personId, day, loadEndISO, backISO]);
+  }, [personId, day, loadEndISO, backISO, coverMap]);
   useEffect(() => { load(); }, [load, refreshTick]);
 
   // ── Every item as a uniform tile record ──
   const all = useMemo(() => {
     const out = [];
-    milestones.forEach((m) => out.push({ key: `ms:${m.id}`, type: 'ms', item: m, date: m.due_date, hours: Number(m.hours) || 0, title: m.label, client: m.job_plans?.entities?.name, entity_id: m.job_plans?.entity_id }));
-    bmRows.forEach((b) => { if (!doneInAthena[b.id]) out.push({ key: `bm:${b.id}`, type: 'bm', item: b, date: b.scheduled_for_date, hours: Number(b.remaining_hours ?? b.scheduled_hours) || 0, title: shortTask(b.bm_task_name), client: entityMap[b.entity_id]?.name, entity_id: b.entity_id }); });
+    // A task covered by someone else during the owner's holiday leaves the owner's day.
+    const away = (ckey, date) => { const c = coverMap[ckey]; return c && c.owner === personId && date >= c.from && date <= c.to; };
+    milestones.forEach((m) => { if (!away(`ms:${m.id}`, m.due_date)) out.push({ key: `ms:${m.id}`, type: 'ms', item: m, date: m.due_date, hours: Number(m.hours) || 0, title: m.label, client: m.job_plans?.entities?.name, entity_id: m.job_plans?.entity_id }); });
+    bmRows.forEach((b) => { if (!doneInAthena[b.id] && !away(`bm:${b.id}`, b.scheduled_for_date)) out.push({ key: `bm:${b.id}`, type: 'bm', item: b, date: b.scheduled_for_date, hours: Number(b.remaining_hours ?? b.scheduled_hours) || 0, title: shortTask(b.bm_task_name), client: entityMap[b.entity_id]?.name, entity_id: b.entity_id }); });
     quickTasks.forEach((q) => {
-      if (!q.planned_date || q.assignee_id !== personId) return;
-      out.push({ key: `quick:${q.id}`, type: 'quick', item: q, date: formatISO(new Date(q.planned_date)), hours: (q.duration || 15) / 60, title: q.title, client: entityMap[q.entity_id]?.name, entity_id: q.entity_id });
+      if (!q.planned_date) return;
+      const date = formatISO(new Date(q.planned_date));
+      const cv = coverMap[`quick:${q.id}`];
+      const coveringForMe = cv && cv.cover === personId && date >= cv.from && date <= cv.to;
+      if (q.assignee_id !== personId && !coveringForMe) return;
+      if (q.assignee_id === personId && away(`quick:${q.id}`, date)) return;
+      out.push({ key: `quick:${q.id}`, type: 'quick', item: q, date, hours: (q.duration || 15) / 60, title: q.title, client: entityMap[q.entity_id]?.name, entity_id: q.entity_id, coverFor: coveringForMe ? cv.owner : null });
     });
     scheduledTasks.forEach((m) => {
-      if (m.assignee_id !== personId || !m.planned_date) return;
+      if (!m.planned_date) return;
       generateInstances(m, addDays(dayDate, -14), pageEnd, overridesMap, completedKeys).forEach((inst) => {
-        out.push({ key: `block:${inst._key}`, type: 'block', item: inst, date: formatISO(inst._date), hours: (inst.duration || 0) / 60, title: inst.title, client: inst.entity_id ? entityMap[inst.entity_id]?.name : null, entity_id: inst.entity_id || null });
+        const date = formatISO(inst._date);
+        const cv = coverMap[`block:${m.id}:${date}`];
+        const coveringForMe = cv && cv.cover === personId && date >= cv.from && date <= cv.to;
+        if (m.assignee_id !== personId && !coveringForMe) return;
+        if (m.assignee_id === personId && cv && cv.owner === personId && date >= cv.from && date <= cv.to) return;
+        out.push({ key: `block:${inst._key}`, type: 'block', item: inst, date, hours: (inst.duration || 0) / 60, title: inst.title, client: inst.entity_id ? entityMap[inst.entity_id]?.name : null, entity_id: inst.entity_id || null, coverFor: coveringForMe ? cv.owner : null });
       });
     });
+    coverMs.forEach((m) => { const cv = coverMap[`ms:${m.id}`]; if (cv && m.due_date >= cv.from && m.due_date <= cv.to) out.push({ key: `ms:${m.id}`, type: 'ms', item: m, date: m.due_date, hours: Number(m.hours) || 0, title: m.label, client: m.job_plans?.entities?.name, entity_id: m.job_plans?.entity_id, coverFor: cv.owner }); });
+    coverBm.forEach((b) => { const cv = coverMap[`bm:${b.id}`]; if (cv && b.scheduled_for_date >= cv.from && b.scheduled_for_date <= cv.to && !doneInAthena[b.id]) out.push({ key: `bm:${b.id}`, type: 'bm', item: b, date: b.scheduled_for_date, hours: Number(b.remaining_hours ?? b.scheduled_hours) || 0, title: shortTask(b.bm_task_name), client: entityMap[b.entity_id]?.name, entity_id: b.entity_id, coverFor: cv.owner }); });
     return out;
-  }, [milestones, bmRows, doneInAthena, quickTasks, scheduledTasks, overridesMap, completedKeys, personId, entityMap, dayDate, pageEnd]);
+  }, [milestones, bmRows, coverMs, coverBm, doneInAthena, quickTasks, scheduledTasks, overridesMap, completedKeys, personId, entityMap, dayDate, pageEnd, coverMap]);
 
   const incomplete = useMemo(() => all.filter((x) => x.date < day && !(x.type === 'block' && !x.item.carry_over)).sort((a, b) => a.date.localeCompare(b.date)), [all, day]);
   // Blocks that do not carry over: missed days wait for a reason, not for the work.
@@ -212,24 +238,29 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
   const closeMenu = useCallback(() => setMenu(null), []);
 
   // ── Tile ──
+  // One compact tile everywhere (Bobby, 2026-09-26): a click opens the task
+  // modal, the buttons appear on hover, right-click has the same options.
   const Tile = ({ x, showDate, compact }) => {
     const risk = x.type === 'ms' ? RISK_PILL[x.item.job_plans?.risk] : null;
     const border = x.type === 'ms' ? `3px solid ${KIND_COLOUR[x.item.kind] || '#64748b'}` : x.type === 'bm' ? `3px ${x.item.status === 'draft' ? 'dashed' : 'solid'} #7c3aed` : x.type === 'block' ? '3px solid #0f766e' : '3px dashed #38bdf8';
     const n = x.type === 'block' ? (blockItemsMap[x.item._masterId] || []).length : 0;
+    const showButtons = !compact && hover === x.key;
     return (
-      <div onContextMenu={(e) => openMenu(e, x)} style={{ background: x.type === 'block' ? '#f0fdfa' : '#fff', border: '1px solid #e5e7eb', borderLeft: border, borderRadius: 7, padding: compact ? '5px 8px' : '7px 10px', marginBottom: 5, fontFamily: font }}>
+      <div onContextMenu={(e) => openMenu(e, x)} onClick={() => openFor(x)} onMouseEnter={() => setHover(x.key)} onMouseLeave={() => setHover((h) => (h === x.key ? null : h))}
+        style={{ background: x.type === 'block' ? '#f0fdfa' : '#fff', border: x.coverFor ? '1px dashed #f59e0b' : '1px solid #e5e7eb', borderLeft: border, borderRadius: 7, padding: '5px 8px', marginBottom: 5, fontFamily: font, cursor: 'pointer' }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-          <div style={{ flex: 1, minWidth: 0, fontSize: compact ? 12.5 : 13.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</div>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</div>
           {x.hours > 0 && <div style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{Math.round(x.hours * 10) / 10}h</div>}
         </div>
         <div style={{ fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {x.client || (x.type === 'block' ? `${kindOf(x.item.block_kind).label}${n ? ` · ${n} clients` : ''}` : 'General')}
           {showDate ? ` · ${fmtDay(x.date)}` : ''}
           {x.type === 'ms' && x.item.comms_sent_at ? ' · sent' : ''}
+          {x.coverFor ? <span style={{ color: '#b45309', fontWeight: 600 }}> · covering for {staffMap[x.coverFor]?.name?.split(' ')[0] || 'a colleague'}</span> : ''}
           {risk && <span style={{ marginLeft: 5, padding: '0 5px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: risk.bg, color: risk.fg }}>{risk.label}</span>}
         </div>
-        {!compact && (
-          <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'nowrap' }} onPointerDown={(e) => e.stopPropagation()}>
+        {showButtons && (
+          <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'nowrap' }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <button onClick={() => openFor(x)} style={BTN.secondary.sm}>Open</button>
             <button onClick={() => doneFor(x)} style={BTN.primary.sm}>{x.type === 'bm' ? 'Complete' : x.type === 'block' ? 'Log time' : 'Done'}</button>
             {x.entity_id && <button onClick={() => setEmail(x)} style={BTN.secondary.sm}>Email</button>}
@@ -261,7 +292,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
         {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}<button onClick={() => setError(null)} style={{ ...BTN.secondary.sm, marginLeft: 8 }}>OK</button></div>}
         {holiday && <div style={{ padding: '6px 12px', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 13, fontWeight: 600 }}>{person?.name?.split(' ')[0]} is off this day ({holiday.kind}{holiday.half_day ? ', half day' : ''}){holiday.cover_staff_id ? ` · cover ${staffMap[holiday.cover_staff_id]?.name?.split(' ')[0] || ''}` : ''}. Anything planned here needs to move or be handed over.</div>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '340px minmax(340px, 1fr) 300px', gap: 10, flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(340px, 1fr) 300px', gap: 10, flex: 1, minHeight: 0 }}>
           <DropZone id="incomplete" style={col} activeStyle={{ background: '#eff6ff' }}>
             <div style={colHead}>Incomplete <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {incomplete.length}</span></div>
             <div style={{ overflowY: 'auto', padding: 6, flex: 1 }}>
