@@ -39,7 +39,7 @@ function DropZone({ id, style, children, activeStyle }) {
 
 export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick, onQuickDone, onCompleteBlock, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile, holidayMap = {}, coverMap = {} } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, scheduledTasks, overridesMap, completedKeys, blockItemsMap, filters, updateQuickTask, profile, holidayMap = {}, coverMap = {}, bankHolidays = {} } = useWorkPlanner();
   const [day, setDay] = useState(formatISO(today()));
   const personId = filters.teamFilter || profile?.id;
   const person = staffMap[personId];
@@ -284,6 +284,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           <button onClick={() => setDay(formatISO(today()))} style={BTN.secondary.sm}>Today</button>
           <div style={{ fontSize: 14, fontWeight: 600, marginLeft: 4 }}>{dayDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
           <div style={{ fontSize: 12.5, color: '#64748b' }}>· {person?.name || '—'}{filters.teamFilter && filters.teamFilter !== profile?.id ? ' (viewing)' : ''}</div>
+          {bankHolidays[day] && <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 600 }} title="For information; working days are unchanged">· {bankHolidays[day]} (bank holiday)</div>}
           <div style={{ flex: 1 }} />
           {undo && <button onClick={undoMove} style={BTN.secondary.sm} title={`Put "${undo.x.title}" back on ${fmtDay(undo.from)}`}>Undo move</button>}
           <div style={{ fontSize: 12.5, fontWeight: 600, color: loadColour(todayHours, cap) }}>{Math.round(todayHours * 10) / 10}h planned / {Math.round(cap * 10) / 10}h</div>

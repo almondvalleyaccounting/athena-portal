@@ -39,7 +39,7 @@ function Cell({ id, children, style }) {
 // Delete live there), rather than a click-then-Open popover.
 export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, onQuickDone, onQuickNotRequired, onQuickDelete, onEditBlock, onCompleteBlock, selectorOpen, onSelectorClose, onOpenTask, refreshTick }) {
   const navigate = useNavigate();
-  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile, holidayMap = {}, coverMap = {} } = useWorkPlanner();
+  const { staffList, staffMap, entityMap, quickTasks, filters, updateQuickTask, staffColours, scheduledTasks, overridesMap, completedKeys, blockItemsMap, profile, holidayMap = {}, coverMap = {}, bankHolidays = {} } = useWorkPlanner();
   const [milestones, setMilestones] = useState([]);
   const [bmRows, setBmRows] = useState([]);
   const [doneInAthena, setDoneInAthena] = useState({}); // bm_task_schedule_id -> completion
@@ -373,7 +373,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
             const weekend = d.getDay() === 0 || d.getDay() === 6;
             return (
               <div key={i} onClick={() => setDayModal(iso)} style={{ minHeight: 78, padding: 6, borderRight: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', opacity: other ? 0.4 : 1, background: sameDay(d, now) ? '#eff6ff' : weekend ? '#fafafa' : '#fff', cursor: 'pointer' }}>
-                <div style={{ fontSize: 13, fontWeight: sameDay(d, now) ? 700 : 500, color: sameDay(d, now) ? '#0e7fe0' : '#64748b' }}>{d.getDate()}</div>
+                <div style={{ fontSize: 13, fontWeight: sameDay(d, now) ? 700 : 500, color: sameDay(d, now) ? '#0e7fe0' : '#64748b' }}>{d.getDate()}{bankHolidays[iso] && <span style={{ fontSize: 10, color: '#9a3412', marginLeft: 4 }} title={bankHolidays[iso]}>BH</span>}</div>
                 {c && (
                   <div style={{ fontSize: 11.5, color: '#475569', marginTop: 4 }}>
                     {c.stages > 0 && <div>{c.stages} stage{c.stages === 1 ? '' : 's'}</div>}
@@ -416,6 +416,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
             {days.map((d, i) => (
               <div key={i} style={{ position: 'sticky', top: 0, zIndex: 3, background: '#fff', textAlign: 'center', padding: 6, fontSize: 13, fontWeight: 600, color: sameDay(d, now) ? '#0e7fe0' : '#64748b', borderBottom: '1px solid #e5e7eb', borderRight: '1px solid #f1f5f9' }}>
                 {d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                {bankHolidays[formatISO(d)] && <div style={{ fontSize: 10.5, fontWeight: 600, color: '#9a3412' }} title="Bank holiday (for information; working days are unchanged)">{bankHolidays[formatISO(d)]}</div>}
               </div>
             ))}
             {rows.map((p) => {

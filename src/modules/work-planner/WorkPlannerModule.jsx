@@ -145,13 +145,16 @@ export default function WorkPlannerModule() {
     });
     return m;
   }, [covers]);
+  const [bankHolidays, setBankHolidays] = useState({}); // iso -> name (sql/323, FYI only: no effect on capacity)
   const refreshHolidays = useCallback(async () => {
     const since = formatISO(addDays(new Date(), -60));
-    const [{ data }, { data: cov }] = await Promise.all([
+    const [{ data }, { data: cov }, { data: bh }] = await Promise.all([
       supabase.from('staff_holidays').select('*').gte('date_to', since).order('date_from').limit(2000),
       supabase.from('staff_holiday_handovers').select('*, staff_holidays!inner(staff_id, date_from, date_to)').eq('decision', 'covered').gte('staff_holidays.date_to', since).limit(5000),
+      supabase.from('bank_holidays').select('day, name').gte('day', since).limit(200),
     ]);
     setHolidays(data || []); setCovers(cov || []);
+    setBankHolidays(Object.fromEntries((bh || []).map((b) => [b.day, b.name])));
   }, []);
   useEffect(() => { refreshHolidays(); }, [refreshHolidays]);
   // Email about a quick task: the same chooser as everywhere else.
@@ -774,9 +777,9 @@ export default function WorkPlannerModule() {
     saveOverride, deleteOverride,
     completeTask, markNotRequired, addEntity, updateStaffCapacity,
     colourMode, staffColours, statusColours,
-    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays, coverMap,
+    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays, coverMap, bankHolidays,
   }), [
-    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays, coverMap,
+    blockItemsMap, refreshBlocks, holidays, holidayMap, refreshHolidays, coverMap, bankHolidays,
     quickTasks, scheduledTasks, overrides, completedTasks,
     overridesMap, completedKeys,
     staffList, entityList, staffMap, entityMap,
