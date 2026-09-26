@@ -4,7 +4,7 @@
 //   { action, mailbox, ... }   mailbox = connected account email
 //
 //   list_labels    → user's labels (system + custom)
-//   list_threads   { labelIds?, q?, pageToken?, maxResults? }
+//   list_threads   { labelIds?, q?, pageToken?, maxResults?, excludeOwn? }
 //   get_thread     { threadId }        full messages, parsed bodies + attachments
 //   send           { to, cc?, bcc?, subject, bodyText, bodyHtml?, threadId?,
 //                    inReplyTo?, references? }   new mail / reply / forward
@@ -168,7 +168,26 @@ function buildMime(opts: {
 // of 10 is 100 units. Small pages go at full tilt; anything bigger paces
 // itself, because a get lost to a 429 would silently drop a conversation from
 // the list. One retry, then it's counted and reported as `missed`.
-async function fetchThreadSummaries(accessToken: string, ids: string[], selfEmail = "") {
+// Every address this mailbox sends as — the account plus its Send-mail-as
+// aliases. A mailbox that still sends from an old address had its own sent
+// mail treated as a stranger's: shown in the inbox under its own name.
+async function selfAddresses(accessToken: string, accountEmail: string): Promise<Set<string>> {
+  const self = new Set([accountEmail.toLowerCase()]);
+  try {
+    const data = await gmailFetch(accessToken, "/settings/sendAs");
+    for (const a of data.sendAs || []) if (a.sendAsEmail) self.add(String(a.sendAsEmail).toLowerCase());
+  } catch { /* the account address alone is still right, just incomplete */ }
+  return self;
+}
+
+// focusLabel: the folder being listed. Gmail files a whole conversation under
+// a label when ANY message carries it, so a row built from the thread's last
+// message showed our own reply in the Inbox. The row describes the latest
+// message that is actually in the folder instead; onlySelf marks threads
+// whose in-folder messages are all our own.
+async function fetchThreadSummaries(
+  accessToken: string, ids: string[], self: Set<string> = new Set(), focusLabel = "",
+) {
   const summaries: any[] = [];
   const CHUNK = 10;
   const pace = ids.length > CHUNK * 2 ? 300 : 0;
@@ -186,7 +205,9 @@ async function fetchThreadSummaries(accessToken: string, ids: string[], selfEmai
       if (!t) { missed++; continue; }
       const msgs = t.messages || [];
       const first = msgs[0];
-      const last = msgs[msgs.length - 1];
+      const inFolder = focusLabel ? msgs.filter((m: any) => (m.labelIds || []).includes(focusLabel)) : [];
+      const last = inFolder.length ? inFolder[inFolder.length - 1] : msgs[msgs.length - 1];
+      const isSelf = (m: any) => self.has(extractEmail(header(m?.payload?.headers, "From")));
       const labelIds = new Set<string>();
       for (const m of msgs) for (const l of m.labelIds || []) labelIds.add(l);
       // Most recent From that isn't the mailbox itself — the conversation
@@ -195,10 +216,12 @@ async function fetchThreadSummaries(accessToken: string, ids: string[], selfEmai
       for (let j = msgs.length - 1; j >= 0; j--) {
         const f = header(msgs[j]?.payload?.headers, "From");
         const e = extractEmail(f);
-        if (e && e !== selfEmail) { counterpartFrom = f; break; }
+        if (e && !self.has(e)) { counterpartFrom = f; break; }
       }
       summaries.push({
         counterpartFrom,
+        fromSelf: isSelf(last),
+        onlySelf: inFolder.length > 0 && inFolder.every(isSelf),
         id: t.id,
         messageCount: msgs.length,
         snippet: last?.snippet || "",
@@ -272,10 +295,14 @@ Deno.serve(async (req) => {
         params.set("maxResults", String(Math.min(Number(body.maxResults) || 25, 100)));
         const list = await gmailFetch(tok.accessToken, `/threads?${params.toString()}`);
         const ids = (list.threads || []).map((t: any) => t.id);
-        const { summaries, missed } = await fetchThreadSummaries(
-          tok.accessToken, ids, tok.accountEmail.toLowerCase());
+        const labels = (body.labelIds || []).map(String);
+        const focus = labels.length === 1 ? labels[0] : "";
+        const self = await selfAddresses(tok.accessToken, tok.accountEmail);
+        const { summaries, missed } = await fetchThreadSummaries(tok.accessToken, ids, self, focus);
+        // -from:me in q only knows the account address, not its aliases.
+        const threads = body.excludeOwn ? summaries.filter((t) => !t.onlySelf) : summaries;
         return jsonResponse({
-          success: true, threads: summaries, missed,
+          success: true, threads, missed, scanned: ids.length,
           nextPageToken: list.nextPageToken || null,
           resultSizeEstimate: list.resultSizeEstimate || 0,
         });

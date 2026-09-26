@@ -344,7 +344,8 @@ const senderKey = (t) => parseAddress(t.counterpartFrom || t.from).email.toLower
 // only ours.
 function rowParty(t, mailbox, showRecipient) {
   const last = parseAddress(t.from);
-  const own = last.email.toLowerCase() === mailbox;
+  // fromSelf comes from the server, which also knows the mailbox's aliases.
+  const own = t.fromSelf ?? last.email.toLowerCase() === mailbox;
   const [rcpt, count] = recipients(t);
   const rcptLabel = rcpt ? `${rcpt.name}${count > 1 ? ` +${count - 1}` : ''}` : null;
   // We replied last: name the person we're talking to, not ourselves.
@@ -504,7 +505,7 @@ export default function EmailView() {
   const listQuery = useMemo(() => {
     const folder = labelId === 'ALL' ? {} : { labelIds: [labelId] };
     if (q) return searchAll ? { q } : { ...folder, q };
-    if (labelId === 'INBOX' && hideOwn) return { ...folder, q: '-from:me' };
+    if (labelId === 'INBOX' && hideOwn) return { ...folder, q: '-from:me', excludeOwn: true };
     return folder;
   }, [q, searchAll, labelId, hideOwn]);
 
@@ -542,7 +543,7 @@ export default function EmailView() {
           setPageTokens(tokensRef.current);
           added += rows.length;
           missed += res.missed || 0;
-          if (!rows.length) break; // a token with nothing behind it
+          if (!(res.scanned ?? rows.length)) break; // a token with nothing behind it
         } while (token && added < perBox);
       } catch (e) {
         if (e.code !== 'no_gmail_connection') {
