@@ -335,7 +335,7 @@ export default function WaitingView() {
                 // Per-working-day rate derived from the person's configured
                 // weekly hours (÷ their working days per week), so capacity
                 // means the same thing here as on the Capacity heatmap.
-                const hoursPerDay = a.weekly_capacity_hours && wdSet.size > 0
+                const hoursPerDay = a.weekly_capacity_hours != null && wdSet.size > 0
                   ? Number(a.weekly_capacity_hours) / wdSet.size
                   : FALLBACK_HOURS_PER_WORKING_DAY;
                 const capHours = wdCount * hoursPerDay;

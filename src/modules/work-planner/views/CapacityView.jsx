@@ -143,7 +143,8 @@ export default function CapacityView() {
 
   // Monthly capacity per staff: weekly_capacity_hours (or working days × 7.5) × 4.33
   const monthlyCapacity = useCallback((s) => {
-    const weekly = Number(s.weekly_capacity_hours) || defaultWeeklyCapacity(s);
+    // Zero is a real answer (no planner capacity), not "unset".
+    const weekly = s.weekly_capacity_hours != null ? Number(s.weekly_capacity_hours) : defaultWeeklyCapacity(s);
     return weekly * WORKING_WEEKS_PER_MONTH;
   }, []);
 
