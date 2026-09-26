@@ -1083,7 +1083,11 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
     if (!window.confirm(`Record this ${kind} as issued without an email (for example, sent by post)?`)) return;
     setBusy('issue');
     setError(null);
-    try { await issue(); }
+    try {
+      const { id } = await issue();
+      // Sent another way counts as sent: it has reached the client.
+      await supabase.functions.invoke('fee-proposal', { body: { action: 'mark_sent', proposal_id: id, sent_from: 'not by email' } });
+    }
     catch (e) { setError(e.message || String(e)); }
     finally { setBusy(null); }
   };

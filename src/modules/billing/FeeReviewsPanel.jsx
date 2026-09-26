@@ -19,6 +19,7 @@ import { fetchAllRows } from '../../lib/fetchAllRows';
 
 export const REVIEW_STATE = {
   unsent:    { label: 'Not sent', bg: '#fee2e2', fg: '#991b1b' },
+  drafted:   { label: 'Email drafted — not sent', bg: '#fee2e2', fg: '#991b1b' },
   notice:    { label: 'Sent — fee notice', bg: '#e0f2fe', fg: '#075985' },
   awaiting:  { label: 'Sent — awaiting acceptance', bg: '#fef3c7', fg: '#92400e' },
   accepted:  { label: 'Accepted', bg: '#dcfce7', fg: '#166534' },
@@ -31,6 +32,7 @@ export const REVIEW_STATE = {
 // 'review_draft' has its own card (Draft (reviews)); withdrawn counts nowhere.
 export const STAGE = {
   unsent: 'review_draft',
+  drafted: 'review_draft',
   notice: 'sent',
   awaiting: 'sent',
   accepted: 'accepted',
@@ -49,7 +51,7 @@ export function useFeeReviews() {
     (async () => {
       const [{ data: props }, billing] = await Promise.all([
         supabase.from('fee_proposals')
-          .select('id, entity_id, kind, status, effective_at, issued_at, accepted_at, accepted_via, summary, entity:entities(name)')
+          .select('id, entity_id, kind, status, effective_at, issued_at, sent_at, accepted_at, accepted_via, summary, entity:entities(name)')
           .order('issued_at', { ascending: false }),
         fetchAllRows(() => supabase.from('live_billing')
           .select('id, entity_id, services, entity:entities(name)').eq('status', 'active').order('id')).catch(() => []),
@@ -60,7 +62,10 @@ export function useFeeReviews() {
       // Latest issued fee change per client.
       for (const p of props || []) {
         if (byEntity.has(p.entity_id)) continue;
-        const state = p.status === 'issued' ? (p.kind === 'proposal' ? 'awaiting' : 'notice') : p.status;
+        // Issued but never sent: the letter exists, the email is still a
+        // Gmail draft. It hasn't reached the client, so it's still a draft.
+        const state = p.status === 'issued' && !p.sent_at ? 'drafted'
+          : p.status === 'issued' ? (p.kind === 'proposal' ? 'awaiting' : 'notice') : p.status;
         byEntity.set(p.entity_id, {
           entityId: p.entity_id, name: p.entity?.name || 'Client', state, kind: p.kind,
           current: p.summary?.current, next: p.summary?.next, effectiveAt: p.effective_at, when: p.issued_at,
