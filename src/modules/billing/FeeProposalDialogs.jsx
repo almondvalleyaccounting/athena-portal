@@ -226,7 +226,8 @@ export function GoLiveDialog({ row, clientName, onClose, onDone }) {
             Raise a one-off catch-up invoice for {gbp(preview.net)} + VAT
           </label>
           <div style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0 24px' }}>
-            {preview.lines.map((l) => `${l.service}: ${missed} × ${gbp(l.delta)}`).join(' · ')}. Created as a draft in Billing to check and push.
+            {/* delta is monthly; a quarterly or yearly invoice covers interval_months of it */}
+            {preview.lines.map((l) => `${l.service}: ${missed} × ${gbp(l.delta * (preview.interval_months || 1))}`).join(' · ')}. Created as a draft in Billing to check and push.
           </div>
           {raise && (
             <div style={{ margin: '10px 0 0 24px' }}>

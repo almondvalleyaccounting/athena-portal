@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missedInvoices, catchupPeriod, catchupFor, catchupInvoiceLines } from '../../supabase/functions/_shared/catchup.ts';
+import { missedInvoices, catchupPeriod, catchupFor, catchupInvoiceLines, templateIntervalMonths } from '../../supabase/functions/_shared/catchup.ts';
 
 describe('missedInvoices — a template on the 31st (130 of 141 live templates)', () => {
   // Next run 31 Oct 2026, so the template raised 31 Aug and 30 Sep before it.
@@ -104,5 +104,51 @@ describe('catchupInvoiceLines', () => {
   it('says what it is for on the invoice', () => {
     expect(inv.itemLines[0].description).toBe(
       'Accounts: new fee from August 2026 to September 2026 (2 months at +£5.00), not yet billed — client approval not received on time');
+  });
+});
+
+describe('quarterly and yearly templates (3 of 147 live)', () => {
+  it('a yearly template steps back a year at a time', () => {
+    // next run 31 Mar 2027, so the last one went out 31 Mar 2026
+    expect(missedInvoices('2027-03-31', '2026-10-01', 12)).toEqual([]);
+    expect(missedInvoices('2027-03-31', '2026-03-01', 12)).toEqual(['2026-03-31']);
+    expect(missedInvoices('2026-09-30', '2024-09-01', 12)).toEqual(['2024-09-30', '2025-09-30']);
+  });
+
+  it('a quarterly template steps back three months at a time', () => {
+    expect(missedInvoices('2026-10-30', '2026-06-01', 3)).toEqual(['2026-07-30']);
+    expect(missedInvoices('2026-10-30', '2026-04-01', 3)).toEqual(['2026-04-30', '2026-07-30']);
+  });
+
+  it('the catch-up is the monthly increase × the months each missed invoice covers', () => {
+    // £300 a year → £360 a year is +£5 a month; one missed yearly invoice owes £60
+    const staged = [{ service_id: 'MTD', monthly_amount: 25, pending_monthly_amount: 30 }];
+    expect(catchupFor(staged, 1, (s) => s.service_id, 12)).toMatchObject({ net: 60, vat: 12, gross: 72 });
+    expect(catchupFor(staged, 2, (s) => s.service_id, 3)).toMatchObject({ net: 30, vat: 6, gross: 36 });
+  });
+
+  it('the invoice says how many of which invoices, at the per-invoice increase', () => {
+    const staged = [{ service_id: 'MTD', monthly_amount: 25, pending_monthly_amount: 30 }];
+    const yearly = catchupInvoiceLines(catchupFor(staged, 1, (s) => s.service_id, 12).lines, 'March 2026', 1, 'other', 12);
+    expect(yearly.itemLines[0].description).toBe('MTD: new fee from March 2026 (1 annual invoice at +£60.00), not yet billed — other');
+    const quarterly = catchupInvoiceLines(catchupFor(staged, 2, (s) => s.service_id, 3).lines, 'April 2026 to July 2026', 2, 'other', 3);
+    expect(quarterly.itemLines[0].description).toBe('MTD: new fee from April 2026 to July 2026 (2 quarterly invoices at +£15.00), not yet billed — other');
+  });
+});
+
+describe('templateIntervalMonths', () => {
+  it('reads the interval every line on the template shares', () => {
+    expect(templateIntervalMonths([{ cadence: 'monthly', cadence_months: 1 }, { cadence: 'monthly', cadence_months: 1 }])).toBe(1);
+    expect(templateIntervalMonths([{ cadence: 'annual', cadence_months: 3 }])).toBe(3);
+    expect(templateIntervalMonths([{ cadence: 'annual' }])).toBe(12);   // older rows without cadence_months
+  });
+
+  it('ignores one-off lines', () => {
+    expect(templateIntervalMonths([{ cadence: 'annual', cadence_months: 12 }, { cadence: 'one_off' }])).toBe(12);
+  });
+
+  it('refuses to guess when lines disagree, or there is nothing recurring', () => {
+    expect(templateIntervalMonths([{ cadence: 'monthly', cadence_months: 1 }, { cadence: 'annual', cadence_months: 12 }])).toBeNull();
+    expect(templateIntervalMonths([{ cadence: 'one_off' }])).toBeNull();
   });
 });

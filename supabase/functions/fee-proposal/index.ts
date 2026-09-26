@@ -56,7 +56,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { signFeeAcceptToken, feeAcceptUrl } from "../_shared/fee-accept-token.ts";
-import { missedInvoices, catchupPeriod, catchupFor, catchupInvoiceLines } from "../_shared/catchup.ts";
+import { missedInvoices, catchupPeriod, catchupFor, catchupInvoiceLines, templateIntervalMonths } from "../_shared/catchup.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -357,7 +357,13 @@ async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null,
 
   // What was missed since the go-live date, line by line.
   const nextRun = row.qbo_next_run_date ? String(row.qbo_next_run_date).slice(0, 10) : null;
-  const missed = missedInvoices(nextRun, date);
+  // Counted in the template's own interval (monthly, quarterly, yearly).
+  const interval = templateIntervalMonths(services);
+  if (interval == null && nextRun) {
+    return json({ success: false, error: "This template's lines don't share one billing interval, so missed invoices can't be counted — check the template in QuickBooks and refresh" }, 409);
+  }
+  const every = interval ?? 1;
+  const missed = missedInvoices(nextRun, date, every);
   const { data: adhoc } = await sb.from("qbo_service_items").select("service_id, qbo_item_id").eq("is_adhoc", true);
   const labelFor = (s: Service) => {
     const hit = ((adhoc || []) as Service[]).find((a) => s.qbo_item_id && String(a.qbo_item_id) === String(s.qbo_item_id));
@@ -366,8 +372,8 @@ async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null,
   };
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const period = catchupPeriod(missed);
-  const { lines, net, vat } = catchupFor(staged, missed.length, labelFor);
-  const catchup = { next_run: nextRun, missed_invoices: missed, period, lines, net, vat, gross: r2(net + vat) };
+  const { lines, net, vat } = catchupFor(staged, missed.length, labelFor, every);
+  const catchup = { next_run: nextRun, interval_months: every, missed_invoices: missed, period, lines, net, vat, gross: r2(net + vat) };
 
   if (!commit) return json({ success: true, catchup });
 
@@ -395,7 +401,7 @@ async function goLive(sb: Sb, b: Record<string, unknown>, userId: string | null,
     if (!(net > 0)) return json({ success: false, error: "Nothing was under-billed, so there is no catch-up to raise" }, 400);
     const { data: ent } = await sb.from("entities").select("qbo_customer_id").eq("id", row.entity_id).maybeSingle();
     const why = reason === "other" ? note : CATCHUP_REASON_LABEL[reason];
-    const { itemLines, net: inet, vat: ivat } = catchupInvoiceLines(lines, period, missed.length, why);
+    const { itemLines, net: inet, vat: ivat } = catchupInvoiceLines(lines, period, missed.length, why, every);
     const { data: bi, error: biErr } = await sb.from("billing_items").insert({
       entity_id: row.entity_id,
       service: itemLines.length > 1 ? `${itemLines[0].service} +${itemLines.length - 1} more` : itemLines[0].service,
