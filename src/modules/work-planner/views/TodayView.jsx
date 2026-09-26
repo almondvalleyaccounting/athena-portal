@@ -75,6 +75,10 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
   const [toUpdate, setToUpdate] = useState([]); // BM jobs done here, not yet confirmed in BM (sql/311)
   const [jobs3m, setJobs3m] = useState([]); // my BM jobs due in the next three months
   const [tile, setTile] = useState(null); // { month, type } open in the list modal
+  // Tiles by statutory deadline or by planned date (Bobby, 2026-09-26: a simple toggle), remembered per browser.
+  const [tileBasis, setTileBasis] = useState(() => { try { return localStorage.getItem('overview.tileBasis') || 'deadline'; } catch { return 'deadline'; } });
+  const setBasis = (b) => { setTileBasis(b); try { localStorage.setItem('overview.tileBasis', b); } catch { /* private window */ } };
+  const tileCol = tileBasis === 'planned' ? 'scheduled_for_date' : 'bm_deadline';
   const today = todayISO();
   const months = useMemo(() => { const d = new Date(); return [0, 1, 2].map((i) => { const m = new Date(d.getFullYear(), d.getMonth() + i, 1); return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`; }); }, []);
 
@@ -103,11 +107,11 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
       const m3 = new Date(`${months[2]}-01T12:00:00`); m3.setMonth(m3.getMonth() + 1);
       const [{ data: bm }, { data: openC }] = await Promise.all([
         supabase.from('bm_task_schedule').select('id, service, bm_task_name, bm_deadline, scheduled_for_date, scheduled_hours, entity_id, entities(name)')
-          .eq('assignee_id', profile.id).eq('state', 'planned').is('excluded_at', null).gte('bm_deadline', m0).lt('bm_deadline', `${m3.getFullYear()}-${String(m3.getMonth() + 1).padStart(2, '0')}-01`).order('bm_deadline').limit(2000),
+          .eq('assignee_id', profile.id).eq('state', 'planned').is('excluded_at', null).gte(tileCol, m0).lt(tileCol, `${m3.getFullYear()}-${String(m3.getMonth() + 1).padStart(2, '0')}-01`).order(tileCol).limit(2000),
         supabase.from('bm_task_completions').select('bm_task_schedule_id').is('confirmed_at', null).limit(2000),
       ]);
       const done = new Set((openC || []).map((c) => c.bm_task_schedule_id));
-      setJobs3m((bm || []).filter((r) => !done.has(r.id)).map((r) => ({ ...r, type: tileTypeOf(r.service), month: monthKey(r.bm_deadline) })));
+      setJobs3m((bm || []).filter((r) => !done.has(r.id)).map((r) => ({ ...r, type: tileTypeOf(r.service), month: monthKey(r[tileCol]) })));
       setStages(ms || []);
       const seen = new Set();
       setAttention((mine || []).filter((r) => (seen.has(r.plan_id) ? false : seen.add(r.plan_id))).map((r) => r.job_plans));
@@ -119,7 +123,7 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
       setSignals((sig || []).filter((r) => (seen2.has(r.plan_id) ? false : seen2.add(r.plan_id))).map((r) => r.job_plans));
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
-  }, [profile?.id, today, months]);
+  }, [profile?.id, today, months, tileCol]);
   useEffect(() => { load(); }, [load]);
 
   // Handover state for my upcoming holidays, and overdue ones for a manager (sql/320).
@@ -243,7 +247,14 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
         <>
           <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '170px repeat(3, 1fr)', fontSize: 13 }}>
-              <div style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 600, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>Due in the next three months</div>
+              <div style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 600, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span>{tileBasis === 'planned' ? 'Planned in the next three months' : 'Due in the next three months'}</span>
+                <span style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden', alignSelf: 'flex-start' }}>
+                  {[['deadline', 'By deadline'], ['planned', 'By planned date']].map(([id, label]) => (
+                    <button key={id} onClick={() => setBasis(id)} style={{ ...BTN.secondary.sm, border: 'none', borderRadius: 0, padding: '2px 8px', fontSize: 11.5, background: tileBasis === id ? '#dbeafe' : '#fff', color: tileBasis === id ? '#0e7fe0' : '#334155', fontWeight: tileBasis === id ? 600 : 500 }}>{label}</button>
+                  ))}
+                </span>
+              </div>
               {months.map((mo) => (
                 <div key={mo} style={{ padding: '8px 12px', fontSize: 12.5, fontWeight: 700, color: '#475569', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', borderLeft: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                   <span>{monthLabel(mo)}</span>
@@ -271,7 +282,7 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
             <div onClick={() => setTile(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 640, maxWidth: '94vw', maxHeight: '85vh', overflow: 'auto', padding: 16, fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{TILE_TYPES.find((t) => t.id === tile.type)?.label} · due {monthLabel(tile.month)} · {tileJobs(tile.month, tile.type).length}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{TILE_TYPES.find((t) => t.id === tile.type)?.label} · {tileBasis === 'planned' ? 'planned' : 'due'} {monthLabel(tile.month)} · {tileJobs(tile.month, tile.type).length}</div>
                   <button onClick={() => setTile(null)} style={BTN.secondary.sm}>Close</button>
                 </div>
                 {tileJobs(tile.month, tile.type).map((j) => (
