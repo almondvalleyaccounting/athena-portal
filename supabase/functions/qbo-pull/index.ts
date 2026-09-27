@@ -229,6 +229,7 @@ Deno.serve(async (req) => {
       one_off_created: 0, one_off_skipped: 0,
       duplicates_cancelled: 0,
       staged_lines_kept: 0,
+      template_annual_rows: 0,
     };
 
     // ScheduleInfo → monthly factor: monthlyFactor() in ../_shared/billing-interval.ts.
@@ -609,6 +610,30 @@ Deno.serve(async (req) => {
       if (entId) entitiesWithRecurring.add(entId);
     }
 
+    // Services each entity's live template already bills. A template client
+    // can also be invoiced by hand once a year for something else (JL Tree:
+    // monthly payroll template + an annual accounts invoice). Until v58 the
+    // whole customer was skipped, so that annual fee never reached Athena.
+    // Now it is inferred like anyone else's, but only for services the
+    // template does NOT carry, and only as annual: anything the template
+    // bills, or anything seen month after month, is the template's business.
+    const templateServiceIds = new Map<string, Set<string>>();
+    {
+      const { data: tplRows, error: tplErr } = await sb
+        .from("live_billing")
+        .select("entity_id, services")
+        .eq("status", "active")
+        .not("qbo_recurring_txn_id", "is", null);
+      if (tplErr) throw new Error(`template services lookup: ${tplErr.message}`);
+      for (const r of (tplRows || []) as Array<{ entity_id: string; services: unknown }>) {
+        const set = templateServiceIds.get(r.entity_id) || new Set<string>();
+        for (const s of (Array.isArray(r.services) ? r.services : []) as Array<Record<string, unknown>>) {
+          if (s.service_id) set.add(String(s.service_id));
+        }
+        templateServiceIds.set(r.entity_id, set);
+      }
+    }
+
     // "YYYY-MM" → prior-month "YYYY-MM" helper.
     const priorMonth = (ym: string): string => {
       const [y, m] = ym.split("-").map(Number);
@@ -619,11 +644,6 @@ Deno.serve(async (req) => {
 
     for (const [qboCustomerId, custInvoices] of invoicesByCustomer) {
       try {
-        if (customersWithRecurring.has(qboCustomerId)) {
-          stats.one_off_skipped++;
-          continue;
-        }
-
         const customerName = String(
           (custInvoices[0].CustomerRef as Record<string, unknown>).name || "Unknown",
         );
@@ -632,21 +652,25 @@ Deno.serve(async (req) => {
         const entity = entityId ? entityById.get(entityId) : null;
 
         if (!entity) {
+          if (customersWithRecurring.has(qboCustomerId)) {
+            stats.one_off_skipped++;
+            continue;
+          }
           if (!stats.unmatched_customers.includes(customerName)) {
             stats.unmatched_customers.push(customerName);
           }
           continue;
         }
 
-        // Sibling-customer guard: if this entity already has a live
-        // QBO template (e.g. Cruse Joinery Limited's primary customer
-        // #826 has template 22556), don't synthesise a manual row
-        // from a different customer (#317 "Mark Cruse Joinery") whose
-        // historic invoices roll into the same entity.
-        if (entitiesWithRecurring.has(entity.id as string)) {
-          stats.one_off_skipped++;
-          continue;
-        }
+        // Template client: annual fees for services the template doesn't
+        // carry. See templateServiceIds above.
+        const templateMode = customersWithRecurring.has(qboCustomerId)
+          || entitiesWithRecurring.has(entity.id as string);
+        const onTemplate = templateServiceIds.get(entity.id as string) || new Set<string>();
+
+        // Sibling-customer guard (Cruse Joinery: template on #826, legacy
+        // invoices on #317) is now templateMode: the sibling's history can
+        // only contribute annual fees the template doesn't already bill.
 
         // Per-service monthly buckets:
         //   svcBuckets: service_id → { description, monthsSeen: Map<'YYYY-MM', amount> }
@@ -659,6 +683,8 @@ Deno.serve(async (req) => {
         for (const inv of custInvoices) {
           const txnDate = String(inv.TxnDate || "");
           if (!txnDate) continue;
+          // An invoice the template itself raised is the template's.
+          if (templateMode && inv.RecurDataRef) continue;
           const ym = txnDate.slice(0, 7); // YYYY-MM
           const lines = ((inv.Line || []) as Array<Record<string, unknown>>)
             .filter((l: Record<string, unknown>) => l.DetailType === "SalesItemLineDetail");
@@ -670,6 +696,7 @@ Deno.serve(async (req) => {
               : "service";
             const amt = Number(l.Amount) || 0;
             if (amt === 0) continue;
+            if (templateMode && onTemplate.has(svcId)) continue;
             let bucket = svcBuckets.get(svcId);
             if (!bucket) {
               bucket = {
@@ -681,6 +708,20 @@ Deno.serve(async (req) => {
             }
             bucket.monthsSeen.set(ym, (bucket.monthsSeen.get(ym) || 0) + amt);
           }
+        }
+
+        // Template client: keep only single sightings (annual) that aren't
+        // one-offs. Same test the classifier below applies, so a service
+        // seen in consecutive months (monthly) never lands beside the
+        // template as a second monthly bill.
+        if (templateMode) {
+          for (const [id, b] of [...svcBuckets.entries()]) {
+            const yms = [...b.monthsSeen.keys()].sort();
+            const latest = yms[yms.length - 1];
+            if (oneOffNames.has(id) || b.monthsSeen.has(priorMonth(latest))) svcBuckets.delete(id);
+          }
+          if (svcBuckets.size === 0) { stats.one_off_skipped++; continue; }
+          stats.template_annual_rows++;
         }
 
         if (svcBuckets.size === 0) continue;
