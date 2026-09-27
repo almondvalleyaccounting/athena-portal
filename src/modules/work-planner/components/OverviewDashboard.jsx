@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import Avatar from './Avatar';
-import { shortTask } from './PlannerBits';
+import { MinutesModal, shortTask } from './PlannerBits';
+import EmailModal from './EmailModal';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../shell/AppShell';
+import { callJobPlan } from '../plan/planQueries';
+import { rescheduleTask } from '../setup/queries';
 import { BTN } from '../../../lib/buttonStyles';
 
 // The Overview dashboard (Bobby, 2026-09-26/27): BrightManager jobs in the
@@ -66,6 +71,29 @@ const NUM = { fontVariantNumeric: 'tabular-nums' };
 
 export default function OverviewDashboard({ onOpenTask }) {
   const { staffList, staffMap, staffColours, holidays = [], filters, quickTasks = [], entityMap = {} } = useWorkPlanner();
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const [menu, setMenu] = useState(null); // { job, x, y } — the row's Actions menu
+  const [ask, setAsk] = useState(null); // MinutesModal
+  const [emailFor, setEmailFor] = useState(null); // EmailModal ctx
+  const todayISO_ = todayISO();
+  const clientOf = (j) => (j.quick ? (entityMap[j.entity_id]?.name || '') : j.entities?.name) || '';
+  const labelOf = (j) => (j.quick ? j.title : shortTask(j.bm_task_name));
+  // The same actions the task modal offers, reachable from a row without opening it.
+  const actionsFor = (j) => {
+    const ref = { type: j.quick ? 'quick' : 'bm', id: j.id };
+    const after = async (fn) => { await fn(); await load(); };
+    const list = [
+      { label: 'Open', run: () => onOpenTask && onOpenTask(ref) },
+      j.entity_id ? { label: 'Open the client', run: () => navigate(`/clients/${j.entity_id}`) } : null,
+      !j.quick ? { label: 'Mark complete…', run: () => setAsk({ title: labelOf(j), subtitle: clientOf(j), cta: 'Mark complete', defaultMins: j.scheduled_hours ? Math.round(Number(j.scheduled_hours) * 60) : null, note: 'The minutes go to your timesheet. The job then sits on your "Update in BrightManager" list until the next import confirms it.', run: (m) => after(() => callJobPlan({ action: 'complete_bm_job', schedule_id: j.id, minutes: m })) }) } : null,
+      { label: 'Log time…', run: () => setAsk({ title: 'Log time', subtitle: [labelOf(j), clientOf(j)].filter(Boolean).join(' · '), cta: 'Log', note: 'Goes straight to your timesheet. The task stays open.', run: (m) => { if (!(m > 0)) throw new Error('Enter the minutes'); return callJobPlan({ action: 'log_time', task: ref, minutes: m }); } }) },
+      !j.quick && j.scheduled_for_date !== todayISO_ ? { label: 'Move to today', run: () => after(() => rescheduleTask(j.id, todayISO_)) } : null,
+      !j.quick ? { label: 'Reassign…', run: () => onOpenTask && onOpenTask({ ...ref, reassign: true }) } : null,
+      { label: 'Email…', run: () => setEmailFor({ entity_id: j.entity_id || null, entity_name: clientOf(j) || null, task_label: labelOf(j), task: ref }) },
+    ].filter(Boolean);
+    return list;
+  };
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -309,7 +337,7 @@ export default function OverviewDashboard({ onOpenTask }) {
                 <button onClick={() => setTile(null)} style={BTN.secondary.sm}>Close</button>
               </div>
               <div style={{ overflowY: 'auto', padding: '0 16px 12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 70px', gap: 8, fontSize: 11.5, fontWeight: 600, color: '#94a3b8', padding: '4px 4px', borderBottom: '1px solid #e5e7eb' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 84px', gap: 8, fontSize: 11.5, fontWeight: 600, color: '#94a3b8', padding: '4px 4px', borderBottom: '1px solid #e5e7eb' }}>
                   <span /><span>Client</span><span>Task</span><span>Due</span><span>Planned</span><span>Hours</span><span />
                 </div>
                 {groups.map((g) => (<React.Fragment key={g.id}>
@@ -319,14 +347,16 @@ export default function OverviewDashboard({ onOpenTask }) {
                   </div>
                 )}
                 {g.items.map((j) => (
-                  <div key={j.id} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 70px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                  <div key={j.id} onClick={() => onOpenTask && onOpenTask({ type: j.quick ? 'quick' : 'bm', id: j.id })} title="Open"
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }} onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                    style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 84px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13, cursor: onOpenTask ? 'pointer' : 'default', borderRadius: 6 }}>
                     <span title={staffMap[j.assignee_id]?.name || 'Unassigned'}>{j.assignee_id ? <Avatar id={j.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[j.assignee_id]} /> : null}</span>
                     <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? (entityMap[j.entity_id]?.name || '') : j.entities?.name}</span>
                     <span style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? j.title : shortTask(j.bm_task_name)}</span>
                     <span style={{ fontSize: 12, color: '#475569' }}>{fmt(j.bm_deadline)}</span>
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>{j.scheduled_for_date ? fmt(j.scheduled_for_date) : '—'}</span>
                     <span style={{ fontSize: 12, color: '#475569', textAlign: 'right' }}>{j.scheduled_hours ? `${Number(j.scheduled_hours)}h` : ''}</span>
-                    {onOpenTask ? <button onClick={() => { setTile(null); onOpenTask({ type: j.quick ? 'quick' : 'bm', id: j.id }); }} style={BTN.secondary.sm}>Open</button> : <span />}
+                    <button onClick={(e) => { e.stopPropagation(); setMenu({ job: j, x: e.clientX, y: e.clientY }); }} style={BTN.secondary.sm}>Actions ▾</button>
                   </div>
                 ))}
                 </React.Fragment>))}
@@ -340,6 +370,20 @@ export default function OverviewDashboard({ onOpenTask }) {
           </div>
         );
       })()}
+
+      {menu && (
+        <div onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} style={{ position: 'fixed', inset: 0, zIndex: 120 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 40 - actionsFor(menu.job).length * 32), background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: 200, padding: 4, fontFamily: font }}>
+            {actionsFor(menu.job).map((a) => (
+              <button key={a.label} onClick={() => { setMenu(null); Promise.resolve(a.run()).catch((e) => setError(e.message || String(e))); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 13.5, color: '#0f172a' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>{a.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
+      {emailFor && <EmailModal ctx={emailFor} staffList={staffList} profile={profile} onClose={() => setEmailFor(null)} />}
     </div>
   );
 }

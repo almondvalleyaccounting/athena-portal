@@ -131,6 +131,39 @@ function allocationFamily(service: string | null, name: string | null): { canoni
   return { canonical: null, siblings: (svc) => svc === service };
 }
 
+// Move a BM job to someone (sql/330). One-off: this task. Permanent: every
+// planned task of the client in the same allocation family, plus the
+// allocation_changes draft the Allocations screen would write.
+// deno-lint-ignore no-explicit-any
+async function reassignBmJob(db: any, me: string, now: string, row: { id: string; entity_id: string; bm_task_name: string | null; service: string | null; assignee_id: string | null }, to: string, mode: "one_off" | "permanent", note: string | null, targetName: string) {
+  const override = { assignee_override_id: to, assignee_override_kind: mode, assignee_override_at: now, assignee_override_by: me, assignee_override_note: note, updated_at: now };
+  let ids = [row.id];
+  let canonical: string | null = null;
+  let draftId: string | null = null;
+  if (mode === "permanent") {
+    const fam = allocationFamily(row.service, row.bm_task_name);
+    canonical = fam.canonical;
+    const { data: sib, error: sErr } = await db.from("bm_task_schedule").select("id, service, bm_task_name").eq("entity_id", row.entity_id).eq("state", "planned").is("excluded_at", null);
+    if (sErr) throw new Error(sErr.message);
+    ids = Array.from(new Set([row.id, ...(sib || []).filter((x: any) => fam.siblings(x.service, x.bm_task_name)).map((x: any) => x.id as string)]));
+    if (canonical) {
+      const payload = { entity_id: row.entity_id, canonical_service_id: canonical, proposed_fee_earner_id: to, proposed_manager_id: null, note: note || "Reassigned from the task in Athena", status: "draft", created_by: me };
+      const { data: existing } = await db.from("allocation_changes").select("id").eq("entity_id", row.entity_id).eq("canonical_service_id", canonical).eq("status", "draft").maybeSingle();
+      const w = existing ? db.from("allocation_changes").update(payload).eq("id", existing.id).select("id").single() : db.from("allocation_changes").insert(payload).select("id").single();
+      const { data: d, error: dErr } = await w;
+      if (dErr) throw new Error(dErr.message);
+      draftId = d.id;
+    }
+  }
+  const { error: uErr } = await db.from("bm_task_schedule").update(override).in("id", ids);
+  if (uErr) throw new Error(uErr.message);
+  await db.from("task_comments").insert({
+    task_type: "bm", task_id: row.id, entity_id: row.entity_id, task_label: row.bm_task_name, author_id: me, kind: "comment",
+    body: `${mode === "permanent" ? "Reassigned permanently" : "Reassigned (one-off)"} to ${targetName}${ids.length > 1 ? ` with ${ids.length - 1} related task${ids.length > 2 ? "s" : ""}` : ""}${draftId ? "; on the admin list to move in BrightManager" : ""}${note ? ` — ${note}` : ""}`,
+  });
+  return { ids, canonical, draftId };
+}
+
 function optUuid(v: unknown, field: string): string | null {
   if (v === null || v === undefined || v === "") return null;
   return uuid(v, field);
@@ -1094,32 +1127,90 @@ Deno.serve(async (req) => {
         if (!target?.is_active) throw new BadRequest("That person is not an active member of staff");
         if (row.assignee_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Only the assignee or a manager can reassign a job", 403);
         if (row.assignee_id === to) throw new BadRequest(`${target.name} already has this job`);
-        const override = { assignee_override_id: to, assignee_override_kind: mode, assignee_override_at: now, assignee_override_by: me, assignee_override_note: note, updated_at: now };
-        let ids = [sid];
-        let canonical: string | null = null;
-        let draftId: string | null = null;
-        if (mode === "permanent") {
-          const fam = allocationFamily(row.service, row.bm_task_name);
-          canonical = fam.canonical;
-          const { data: sib, error: sErr } = await db.from("bm_task_schedule").select("id, service, bm_task_name").eq("entity_id", row.entity_id).eq("state", "planned").is("excluded_at", null);
-          if (sErr) throw new Error(sErr.message);
-          ids = Array.from(new Set([sid, ...(sib || []).filter((x) => fam.siblings(x.service, x.bm_task_name)).map((x) => x.id as string)]));
-          if (canonical) {
-            const payload = { entity_id: row.entity_id, canonical_service_id: canonical, proposed_fee_earner_id: to, proposed_manager_id: null, note: note || `Reassigned from the task in Athena (was ${row.assignee_id ? "assigned" : "unassigned"})`, status: "draft", created_by: me };
-            const { data: existing } = await db.from("allocation_changes").select("id").eq("entity_id", row.entity_id).eq("canonical_service_id", canonical).eq("status", "draft").maybeSingle();
-            const w = existing ? db.from("allocation_changes").update(payload).eq("id", existing.id).select("id").single() : db.from("allocation_changes").insert(payload).select("id").single();
-            const { data: d, error: dErr } = await w;
-            if (dErr) throw new Error(dErr.message);
-            draftId = d.id;
-          }
+        const r = await reassignBmJob(db, me, now, { ...row, id: sid }, to, mode, note, target.name);
+        return json({ success: true, moved: r.ids.length, canonical_service_id: r.canonical, draft_id: r.draftId });
+      }
+
+      // Reassign a plan stage. One-off: this stage. Permanent: every pending
+      // stage of that role on the job, and if the role is the preparer the
+      // client's accounts preparation moves in BM terms too (override + draft).
+      case "reassign_stage": {
+        const mid = uuid(p.milestone_id, "milestone_id");
+        const to = uuid(p.to_staff_id, "to_staff_id");
+        const mode = p.mode === "permanent" ? "permanent" : "one_off";
+        const note = p.note ? String(p.note).slice(0, 500) : null;
+        const { data: m, error } = await db.from("job_milestones").select("id, plan_id, label, owner_id, owner_role, status, job_plans(id, entity_id, prep_job_id, entities(name))").eq("id", mid).maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!m) throw new BadRequest("Stage not found", 404);
+        if (m.status !== "pending") throw new BadRequest("Only a pending stage can be reassigned");
+        const plan = m.job_plans as Record<string, any>;
+        const [{ data: meRow }, { data: target }] = await Promise.all([
+          db.from("staff_profiles").select("can_manage_portal").eq("id", me).maybeSingle(),
+          db.from("staff_profiles").select("id, name, is_active").eq("id", to).maybeSingle(),
+        ]);
+        if (!target?.is_active) throw new BadRequest("That person is not an active member of staff");
+        if (m.owner_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Only the owner or a manager can reassign a stage", 403);
+        if (m.owner_id === to) throw new BadRequest(`${target.name} already owns this stage`);
+        let stagesMoved = 1;
+        if (mode === "one_off") {
+          const { error: uErr } = await db.from("job_milestones").update({ owner_id: to, updated_at: now }).eq("id", mid);
+          if (uErr) throw new Error(uErr.message);
+        } else {
+          let q = db.from("job_milestones").update({ owner_id: to, updated_at: now }).eq("plan_id", m.plan_id).eq("status", "pending").eq("owner_role", m.owner_role);
+          q = m.owner_id ? q.eq("owner_id", m.owner_id) : q.is("owner_id", null);
+          const { data: moved, error: uErr } = await q.select("id");
+          if (uErr) throw new Error(uErr.message);
+          stagesMoved = (moved || []).length;
         }
-        const { error: uErr } = await db.from("bm_task_schedule").update(override).in("id", ids);
-        if (uErr) throw new Error(uErr.message);
+        let bm: { ids: string[]; canonical: string | null; draftId: string | null } | null = null;
+        if (mode === "permanent" && m.owner_role === "preparer" && plan?.prep_job_id) {
+          const { data: row } = await db.from("bm_task_schedule").select("id, entity_id, bm_task_name, service, assignee_id").eq("id", plan.prep_job_id).maybeSingle();
+          if (row && row.assignee_id !== to) bm = await reassignBmJob(db, me, now, row, to, "permanent", note, target.name);
+        }
         await db.from("task_comments").insert({
-          task_type: "bm", task_id: sid, entity_id: row.entity_id, task_label: row.bm_task_name, author_id: me, kind: "comment",
-          body: `${mode === "permanent" ? "Reassigned permanently" : "Reassigned (one-off)"} to ${target.name}${ids.length > 1 ? ` with ${ids.length - 1} related task${ids.length > 2 ? "s" : ""}` : ""}${draftId ? "; on the admin list to move in BrightManager" : ""}${note ? ` — ${note}` : ""}`,
+          task_type: "ms", task_id: mid, entity_id: plan?.entity_id ?? null, task_label: m.label, author_id: me, kind: "comment",
+          body: `${mode === "permanent" ? "Reassigned permanently" : "Reassigned (one-off)"} to ${target.name}${stagesMoved > 1 ? ` with ${stagesMoved - 1} other stage${stagesMoved > 2 ? "s" : ""} on this job` : ""}${bm?.draftId ? "; accounts preparation on the admin list to move in BrightManager" : ""}${note ? ` — ${note}` : ""}`,
         });
-        return json({ success: true, moved: ids.length, canonical_service_id: canonical, draft_id: draftId });
+        return json({ success: true, stages_moved: stagesMoved, bm_moved: bm?.ids.length ?? 0, draft_id: bm?.draftId ?? null, plan: await loadPlan(m.plan_id), milestones: await milestonesOf(m.plan_id) });
+      }
+
+      // Log time against any task without completing it: a timesheet entry
+      // for the caller, and a note on the task's thread.
+      case "log_time": {
+        const task = taskRef(p.task);
+        if (!task) throw new BadRequest("task required");
+        const minutes = Math.round(Number(p.minutes ?? 0));
+        if (!Number.isFinite(minutes) || minutes <= 0) throw new BadRequest("minutes must be more than 0");
+        let entityId: string | null = null; let service: string | null = null; let label = "";
+        if (task.type === "bm") {
+          const { data: b } = await db.from("bm_task_schedule").select("entity_id, service, bm_task_name").eq("id", task.id).maybeSingle();
+          if (!b) throw new BadRequest("Job not found", 404);
+          entityId = b.entity_id; service = b.service; label = b.bm_task_name;
+        } else if (task.type === "quick") {
+          const { data: q } = await db.from("quick_tasks").select("entity_id, service, title").eq("id", task.id).maybeSingle();
+          if (!q) throw new BadRequest("Task not found", 404);
+          entityId = q.entity_id; service = q.service; label = q.title;
+        } else if (task.type === "ms") {
+          const { data: m } = await db.from("job_milestones").select("label, job_plans(entity_id, period_end)").eq("id", task.id).maybeSingle();
+          if (!m) throw new BadRequest("Stage not found", 404);
+          const jp = m.job_plans as Record<string, any>;
+          entityId = jp?.entity_id ?? null; service = "Annual Accounts"; label = `${m.label} — year end ${jp?.period_end ?? ""}`;
+        } else {
+          const { data: bl } = await db.from("scheduled_tasks").select("entity_id, service, title").eq("id", task.id).maybeSingle();
+          if (!bl) throw new BadRequest("Block not found", 404);
+          entityId = bl.entity_id; service = bl.service; label = bl.title + (task.occurrence_date ? ` (${task.occurrence_date})` : "");
+        }
+        const note = p.note ? String(p.note).slice(0, 500) : null;
+        const { data: ts, error: tErr } = await db.from("timesheet_entries").insert({
+          staff_id: me, entity_id: entityId, service: service || "Other", work_date: (p.work_date ? isoDate(p.work_date, "work_date") : now.slice(0, 10)),
+          minutes, notes: note ? `${label} — ${note}` : label, source: "manual", source_task_id: task.id,
+        }).select("id").single();
+        if (tErr) throw new Error(tErr.message);
+        await db.from("task_comments").insert({
+          task_type: task.type, task_id: task.id, occurrence_date: task.occurrence_date, entity_id: entityId, task_label: label,
+          author_id: me, kind: "comment", body: `Logged ${minutes} min${note ? ` — ${note}` : ""}`,
+        });
+        return json({ success: true, timesheet_id: ts.id });
       }
 
       default:

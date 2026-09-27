@@ -41,7 +41,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
   const [error, setError] = useState(null);
   const [ask, setAsk] = useState(null);
   const [email, setEmail] = useState(false);
-  const [reassign, setReassign] = useState(null); // { to, mode, note } while the reassign panel is open
+  const [reassign, setReassign] = useState(task.reassign ? { to: '', mode: 'one_off', note: '' } : null); // { to, mode, note } while the reassign panel is open
   const { type, id, occurrence_date: occ } = task;
 
   const load = useCallback(async () => {
@@ -142,6 +142,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         {pending && <button onClick={() => { if (window.confirm(`Skip "${detail.label}" on this job?`)) act({ action: 'skip', milestone_id: id }).catch((e) => setError(e.message)); }} style={BTN.secondary.sm}>Not required</button>}
         {pending && detail.due_date !== todayISO && <button onClick={() => act({ action: 'move_milestone', milestone_id: id, due_date: todayISO }).catch((e) => setError(e.message))} style={BTN.secondary.sm}>Move to today</button>}
         {!pending && <button onClick={() => act({ action: 'reopen', milestone_id: id }).catch((e) => setError(e.message))} style={BTN.secondary.sm}>Reopen</button>}
+        {pending && <button onClick={() => setReassign((r) => (r ? null : { to: '', mode: 'one_off', note: '' }))} style={reassign ? { ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' } : BTN.secondary.sm}>Reassign…</button>}
       </>
     );
   } else if (detail && type === 'bm') {
@@ -224,19 +225,23 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
             <div style={{ marginTop: 12, padding: 12, border: '1px solid #e5e7eb', borderRadius: 8, background: '#f8fafc' }}>{details}</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
               {actions}
+              <button onClick={() => setAsk({ title: 'Log time', subtitle: [label, entityName].filter(Boolean).join(' · '), cta: 'Log', note: 'Goes straight to your timesheet. The task stays open.', run: (m) => { if (!(m > 0)) throw new Error('Enter the minutes'); return act({ action: 'log_time', task: { type, id, occurrence_date: occ || null }, minutes: m }); } })} style={BTN.secondary.sm}>Log time…</button>
               <button onClick={() => setEmail(true)} style={BTN.secondary.sm}>Email…</button>
             </div>
-            {reassign && type === 'bm' && (
+            {reassign && (type === 'bm' || type === 'ms') && (
               <div style={{ marginTop: 10, padding: 12, border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e3a8a' }}>Reassign this job</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e3a8a' }}>{type === 'ms' ? 'Reassign this stage' : 'Reassign this job'}</div>
                 <select value={reassign.to} onChange={(e) => setReassign((r) => ({ ...r, to: e.target.value }))} style={{ padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', maxWidth: 320 }}>
                   <option value="">Who takes it…</option>
-                  {(staffList || []).filter((s) => s.work_planner !== false && s.id !== detail.assignee_id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {(staffList || []).filter((s) => s.work_planner !== false && s.id !== (type === 'ms' ? detail.owner_id : detail.assignee_id)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                {[
+                {(type === 'ms' ? [
+                  ['one_off', 'One-off', 'This stage only.'],
+                  ['permanent', 'Permanent', `Every stage of this role still to do on this job${detail.owner_role === 'preparer' ? ", and the client's accounts preparation moves with it — on the admin task list to be moved in BrightManager, the same as the Allocations screen" : ''}.`],
+                ] : [
                   ['one_off', 'One-off', 'This task only. Athena keeps it with them until BrightManager agrees or the job is done.'],
                   ['permanent', 'Permanent', `The client's ${detail.service || 'this'} work moves with it, and it goes on the admin task list to be moved in BrightManager — the same as changing it on the Allocations screen.`],
-                ].map(([id, lab, hint]) => (
+                ]).map(([id, lab, hint]) => (
                   <label key={id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
                     <input type="radio" name="reassign-mode" checked={reassign.mode === id} onChange={() => setReassign((r) => ({ ...r, mode: id }))} style={{ marginTop: 3 }} />
                     <span><b>{lab}</b> <span style={{ color: '#475569' }}>· {hint}</span></span>
@@ -246,7 +251,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button disabled={!reassign.to || busy} onClick={async () => {
                     setBusy(true); setError(null);
-                    try { await act({ action: 'reassign_bm_job', schedule_id: id, to_staff_id: reassign.to, mode: reassign.mode, note: reassign.note || null }); setReassign(null); }
+                    try { await act(type === 'ms' ? { action: 'reassign_stage', milestone_id: id, to_staff_id: reassign.to, mode: reassign.mode, note: reassign.note || null } : { action: 'reassign_bm_job', schedule_id: id, to_staff_id: reassign.to, mode: reassign.mode, note: reassign.note || null }); setReassign(null); }
                     catch (e) { setError(e.message || String(e)); }
                     finally { setBusy(false); }
                   }} style={BTN.primary.sm}>{busy ? 'Reassigning…' : 'Reassign'}</button>
