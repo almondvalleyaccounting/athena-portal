@@ -137,7 +137,13 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [staff, setStaff] = useState([]);
   const [rechecking, setRechecking] = useState(false);
   const [previewInfo, setPreviewInfo] = useState(null); // keep preview for re-checks
+  // Task types to leave out. `savedExcluded` is what app_settings holds;
+  // `excludedPrefixes` is this run's working copy. Ticking a box changes
+  // only the working copy — it is saved when you press Import, because
+  // leaving a type out closes every planned Athena task of that type.
+  const [savedExcluded, setSavedExcluded] = useState([]);
   const [excludedPrefixes, setExcludedPrefixes] = useState([]);
+  const [closingCount, setClosingCount] = useState(0);
   const [prefixCatalogue, setPrefixCatalogue] = useState([]);
 
   // Load staff profiles once (cheap, one list) — used by the rollup
@@ -169,6 +175,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           byPrefix.set(d.task_name_prefix, { label: d.name || d.task_name_prefix, prefix: d.task_name_prefix });
         }
         setPrefixCatalogue([...byPrefix.values()].sort((a, b) => a.label.localeCompare(b.label)));
+        setSavedExcluded(excluded);
         setExcludedPrefixes(excluded);
       } catch (e) {
         console.warn('[DataImport] failed to load exclusion catalogue:', e);
@@ -176,19 +183,48 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     })();
   }, [source.key]);
 
-  const toggleExclusion = async (prefix) => {
-    const next = excludedPrefixes.includes(prefix)
-      ? excludedPrefixes.filter((p) => p !== prefix)
-      : [...excludedPrefixes, prefix];
-    setExcludedPrefixes(next);
-    try {
-      await saveExcludedTaskPrefixes(next);
-    } catch (e) {
-      alert('Could not save exclusion: ' + e.message);
-      // Revert optimistic update
-      setExcludedPrefixes(excludedPrefixes);
-    }
+  const toggleExclusion = (prefix) => {
+    setExcludedPrefixes((cur) => (cur.includes(prefix)
+      ? cur.filter((p) => p !== prefix)
+      : [...cur, prefix]));
   };
+  const resetExclusions = () => setExcludedPrefixes(savedExcluded);
+  const exclusionsChanged = useMemo(() => {
+    const a = [...savedExcluded].sort().join('|');
+    const b = [...excludedPrefixes].sort().join('|');
+    return a !== b;
+  }, [savedExcluded, excludedPrefixes]);
+
+  // Rows this file carries that the current exclusions would leave out.
+  const excludedTaskIds = useMemo(() => {
+    if (source.key !== 'bm_tasks' || !parsedRows) return [];
+    return parsedRows
+      .filter((r) => r.bm_task_name && excludedPrefixes.some((p) => r.bm_task_name.startsWith(p)))
+      .map((r) => r.bm_task_id)
+      .filter(Boolean);
+  }, [source.key, parsedRows, excludedPrefixes]);
+
+  // Of those, how many Athena already has as planned work. The import's
+  // disappearance sweep marks each of them completed (and flags it
+  // "completed with no time"), so say so before anyone presses Import.
+  useEffect(() => {
+    if (source.key !== 'bm_tasks') return undefined;
+    if (!excludedTaskIds.length) { setClosingCount(0); return undefined; }
+    let live = true;
+    (async () => {
+      let total = 0;
+      for (let i = 0; i < excludedTaskIds.length; i += 300) {
+        const { count } = await supabase
+          .from('bm_task_schedule')
+          .select('bm_task_id', { count: 'exact', head: true })
+          .eq('state', 'planned')
+          .in('bm_task_id', excludedTaskIds.slice(i, i + 300));
+        total += count || 0;
+      }
+      if (live) setClosingCount(total);
+    })();
+    return () => { live = false; };
+  }, [source.key, excludedTaskIds]);
 
   const handleRecheck = async () => {
     if (!parsedRows || source.key !== 'bm_tasks' || !previewInfo) return;
@@ -496,11 +532,11 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           writeResult: { ...result, rekeyed: rekeyResult.rekeyed, rekey_refused: rekeyResult.refused || [], archived: archiveResult.archived, tidy_ups: tidyUps },
         }));
       } else if (source.key === 'bm_tasks') {
-        // Apply persisted task-type exclusions before writing. Any row
+        // Apply this run's task-type exclusions before writing. Any row
         // whose bm_task_name matches an excluded prefix is dropped from
-        // both parsedRows and seenTaskIds — effectively treating it as
-        // "not present in this CSV", so the disappearance sweep will
-        // delete any pre-existing schedule rows for those types.
+        // both parsedRows and seenTaskIds — treated as "not present in this
+        // CSV", so the disappearance sweep marks any planned schedule row of
+        // that type completed. The screen shows that count (closingCount).
         const isExcluded = (name) =>
           !!name && excludedPrefixes.some((p) => name.startsWith(p));
         const effectiveRows = parsedRows.filter((r) => !isExcluded(r.bm_task_name));
@@ -508,6 +544,13 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           parsedRows.filter((r) => isExcluded(r.bm_task_name)).map((r) => r.bm_task_id).filter(Boolean)
         );
         const effectiveSeen = seenTaskIds.filter((id) => !droppedIds.has(id));
+
+        // The ticks become the saved choice only now, with the import they
+        // were made for.
+        if (exclusionsChanged) {
+          const saved = await saveExcludedTaskPrefixes(excludedPrefixes);
+          setSavedExcluded(saved);
+        }
 
         const result = await writeBmTasks(run.id, effectiveRows, effectiveSeen);
         const done = await markComplete(run.id, {
@@ -552,7 +595,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     : null;
   const hasClientDecisions = source.key === 'bm_clients' && decisionCount > 0;
   const excludedCount = source.key === 'bm_tasks' && parsedRows
-    ? parsedRows.filter((r) => r.bm_task_name && excludedPrefixes.some((p) => r.bm_task_name.startsWith(p))).length
+    ? excludedTaskIds.length
     : 0;
 
   const detailBits = validation ? [
@@ -647,13 +690,22 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           {source.key === 'bm_tasks' && parsedRows && (
             <Collapsible
               title="Task types to import"
-              summary={excludedCount ? `${excludedCount} rows left out by your saved choices` : 'All task types included'}
+              summary={[
+                excludedCount ? `${excludedCount} rows left out` : 'All task types included',
+                closingCount ? `${closingCount} Athena tasks would close` : null,
+                exclusionsChanged ? 'changed, saved when you import' : null,
+              ].filter(Boolean).join(' · ')}
+              open={exclusionsChanged}
             >
               <TaskTypeExclusionsPanel
                 parsedRows={parsedRows}
                 catalogue={prefixCatalogue}
                 excluded={excludedPrefixes}
+                saved={savedExcluded}
+                changed={exclusionsChanged}
+                closingCount={closingCount}
                 onToggle={toggleExclusion}
+                onReset={resetExclusions}
               />
             </Collapsible>
           )}
@@ -672,7 +724,8 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
 
           <ImportBar
             noun={noun}
-            count={validation.valid ?? 0}
+            count={Math.max(0, (validation.valid ?? 0) - excludedCount)}
+            closingCount={closingCount}
             rekeyCount={rekeyToApply.length}
             archiveCount={archiveToApply.length}
             skippedCount={validation.skippedCount || 0}
@@ -769,9 +822,9 @@ function SectionTitle({ children, note }) {
 }
 
 // A closed-by-default box for what is worth knowing but asks nothing of you.
-function Collapsible({ title, summary, children }) {
+function Collapsible({ title, summary, open, children }) {
   return (
-    <details style={{ marginTop: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+    <details open={open || undefined} style={{ marginTop: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
       <summary style={{ cursor: 'pointer', padding: '12px 16px', fontSize: 14.5 }}>
         <span style={{ fontWeight: 600, color: '#0f172a' }}>{title}</span>
         {summary && <span style={{ fontSize: 13, color: '#64748b', marginLeft: 10 }}>{summary}</span>}
@@ -785,11 +838,12 @@ function Collapsible({ title, summary, children }) {
    Pinned to the bottom of the screen while you review, so the one button
    that does the work is always in sight. It used to sit below every panel.
    ─────────────────────────────────────────────────────────── */
-function ImportBar({ noun, count, rekeyCount, archiveCount, skippedCount, blockers, confirming, onImport, onBack, onConfirm, onCancel }) {
+function ImportBar({ noun, count, closingCount = 0, rekeyCount, archiveCount, skippedCount, blockers, confirming, onImport, onBack, onConfirm, onCancel }) {
   const blocked = blockers.length > 0;
   const n = Number(count).toLocaleString();
   const extras = [
     rekeyCount ? `${rekeyCount} moved to a new BM reference` : null,
+    closingCount ? `${closingCount} Athena tasks closed (types left out)` : null,
     archiveCount ? `${archiveCount} archived` : null,
     skippedCount ? `${skippedCount} skipped` : null,
   ].filter(Boolean);
@@ -810,6 +864,11 @@ function ImportBar({ noun, count, rekeyCount, archiveCount, skippedCount, blocke
             <div style={{ fontSize: 14.5, fontWeight: 600, color: '#78350f' }}>Import {n} {noun}? This can&apos;t be undone.</div>
             {archiveCount > 0 && (
               <div style={{ fontSize: 13, color: '#92400e' }}>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</div>
+            )}
+            {closingCount > 0 && (
+              <div style={{ fontSize: 13, color: '#92400e' }}>
+                {closingCount} planned Athena task{closingCount === 1 ? '' : 's'} will be marked completed, because {closingCount === 1 ? 'its type is' : 'their types are'} left out.
+              </div>
             )}
           </>
         ) : blocked ? (
@@ -2557,12 +2616,13 @@ function matchLabel(m) {
 }
 
 /* ─── Task-type exclusions ────────────────────────────────────
-   Lets the user toggle off task-type prefixes they never want to
-   import (e.g. Payroll, Confirmation Statement). Checkboxes persist
-   to app_settings so the same prefixes stay excluded on future
-   imports. Unchecked = excluded.
+   Task-name prefixes to leave out of the import. Ticks change this run
+   only; they are saved to app_settings when you press Import, and then
+   pre-applied next time. Leaving a type out is not neutral: the import's
+   disappearance sweep marks every planned Athena task of that type
+   completed, so the panel says how many before anyone commits to it.
    ─────────────────────────────────────────────────────────── */
-function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) {
+function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, saved = [], changed, closingCount = 0, onToggle, onReset }) {
   // Bucket parsed rows by catalogue prefix (first match). Skip NST
   // rows — they're routed to quick_tasks separately, not controllable here.
   const buckets = React.useMemo(() => {
@@ -2579,7 +2639,7 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
     const out = catalogue
       .map((c) => ({ ...c, count: counts.get(c.prefix) || 0 }))
       .filter((c) => c.count > 0)
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .sort((a, b) => a.prefix.localeCompare(b.prefix));
     return { rows: out, other, nst };
   }, [parsedRows, catalogue]);
 
@@ -2588,34 +2648,40 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
   const totalExcluded = buckets.rows.filter((b) => excluded.includes(b.prefix)).reduce((s, b) => s + b.count, 0);
 
   return (
-    <div style={{
-      marginTop: 18, padding: 18,
-      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div>
-          <h3 style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>Task types to import</h3>
-          <p style={{ fontSize: 13, color: '#64748b' }}>
-            Uncheck any type you never want in Athena. Your choices are remembered and pre-applied next time.
-          </p>
-        </div>
-        {totalExcluded > 0 && (
-          <span style={{ fontSize: 13, color: '#b45309', fontWeight: 600 }}>
-            {totalExcluded} row{totalExcluded === 1 ? '' : 's'} will be excluded
-          </span>
-        )}
-      </div>
+    <div>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>
+        Untick a type to leave it out of Athena. Changes apply when you press Import, and are remembered
+        for next time. Leaving a type out marks the tasks of that type Athena already has as completed.
+      </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
+      {changed && (
+        <div style={{ ...banner('amber'), justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <span>
+            You have changed the saved choices. They are saved when you import.
+            {closingCount > 0 && (
+              <strong> {closingCount} planned Athena task{closingCount === 1 ? '' : 's'} will be marked completed.</strong>
+            )}
+          </span>
+          <button onClick={onReset} style={BTN.secondary.sm}>Back to saved choices</button>
+        </div>
+      )}
+      {!changed && closingCount > 0 && (
+        <div style={banner('amber')}>
+          {closingCount} planned Athena task{closingCount === 1 ? '' : 's'} of the types left out will be marked completed.
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
         {buckets.rows.map((b) => {
           const isExcluded = excluded.includes(b.prefix);
+          const wasExcluded = saved.includes(b.prefix);
+          const moved = isExcluded !== wasExcluded;
           return (
-            <label key={b.prefix} style={{
+            <label key={b.prefix} title={b.label !== b.prefix ? `Rule: ${b.label}` : undefined} style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
               background: isExcluded ? '#fef2f2' : '#f8fafc',
-              border: `1px solid ${isExcluded ? '#fecaca' : '#e5e7eb'}`,
-              opacity: isExcluded ? 0.8 : 1,
+              border: `1px solid ${moved ? '#fcd34d' : isExcluded ? '#fecaca' : '#e5e7eb'}`,
             }}>
               <input
                 type="checkbox"
@@ -2623,11 +2689,13 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
                 onChange={() => onToggle(b.prefix)}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 500, color: isExcluded ? '#991b1b' : '#0f172a', textDecoration: isExcluded ? 'line-through' : 'none' }}>
-                  {b.label}
+                <div style={{ fontSize: 14, fontWeight: 500, color: isExcluded ? '#991b1b' : '#0f172a' }}>
+                  {b.prefix}
                 </div>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>
-                  {b.prefix} — {b.count} row{b.count === 1 ? '' : 's'}
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  {b.count} task{b.count === 1 ? '' : 's'}
+                  {isExcluded ? ' · left out' : ''}
+                  {moved ? ' · changed' : ''}
                 </div>
               </div>
             </label>
@@ -2635,12 +2703,11 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
         })}
       </div>
 
-      {(buckets.other > 0 || buckets.nst > 0) && (
-        <div style={{ marginTop: 10, fontSize: 12, color: '#94a3b8' }}>
-          {buckets.other > 0 && <span>{buckets.other} row{buckets.other === 1 ? '' : 's'} don't match any rule — always imported. </span>}
-          {buckets.nst > 0 && <span>{buckets.nst} NST row{buckets.nst === 1 ? '' : 's'} routed to quick tasks.</span>}
-        </div>
-      )}
+      <div style={{ marginTop: 10, fontSize: 12.5, color: '#64748b' }}>
+        {totalExcluded > 0 && <span>{totalExcluded} row{totalExcluded === 1 ? '' : 's'} in this file left out. </span>}
+        {buckets.other > 0 && <span>{buckets.other} row{buckets.other === 1 ? '' : 's'} match no type and always import. </span>}
+        {buckets.nst > 0 && <span>{buckets.nst} NST row{buckets.nst === 1 ? '' : 's'} go to quick tasks.</span>}
+      </div>
     </div>
   );
 }
