@@ -349,6 +349,24 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
             <div style={{ padding: '6px 10px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb' }}>Drop a tile on a day to move it there.</div>
           </div>
         </div>
+        {/* A quiet key for the tile colours (Bobby, 2026-09-27). */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', padding: '6px 4px 0', fontSize: 11, color: '#94a3b8', fontFamily: font }}>
+          {[
+            [KIND_COLOUR.work, 'solid', 'Workflow work'],
+            [KIND_COLOUR.comms, 'solid', 'Client step'],
+            [KIND_COLOUR.milestone, 'solid', 'Milestone'],
+            [KIND_COLOUR.calendar, 'solid', 'Meeting'],
+            ['#7c3aed', 'solid', 'BrightManager job'],
+            ['#7c3aed', 'dashed', 'BM job in draft'],
+            ['#0f766e', 'solid', 'Block'],
+            ['#38bdf8', 'dashed', 'Quick task'],
+            ['#f59e0b', 'dashed', 'Covering for someone'],
+          ].map(([c, style, label]) => (
+            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, border: `2px ${style} ${c}`, background: style === 'solid' ? c : '#fff', boxSizing: 'border-box' }} />{label}
+            </span>
+          ))}
+        </div>
       </div>
 
       <DragOverlay dropAnimation={null}>{active ? <div style={{ width: 240, pointerEvents: 'none' }}><Tile x={active} compact /></div> : null}</DragOverlay>
