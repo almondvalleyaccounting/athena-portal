@@ -141,7 +141,9 @@ export function composeRepriceEmail({ kind = 'notice', clientName, coveringText,
   const subject = kind === 'proposal'
     ? `Proposed changes to your services from ${when} — ${clientName}`
     : `Your fees from ${when} — ${clientName}`;
-  const rows = summaryRows(summary, kind);
+  // Rows that are zero say nothing — the letter drops them too.
+  const all = summaryRows(summary, kind).filter((r) => r.type !== 'step' || r.v !== 0);
+  const rows = all.filter((r, i) => r.type !== 'section' || (all[i + 1] && all[i + 1].type === 'step'));
   const cell = (r, v) => (r.type === 'step' ? signed(v) : money(v));
 
   // ─── Plain text ───

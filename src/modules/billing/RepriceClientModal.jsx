@@ -1019,8 +1019,10 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
     setSubject(composeRepriceEmail({ kind, clientName: entity.name, coveringText: '', effectiveAt, summary, lines }).subject);
     const next = defaultCoveringText({ kind, contactName: info.contactName, clientName: entity.name, effectiveAt, lines, summary, ...letterWords(letterOpts) });
     // A changed tick or date rewrites the note — unless staff have edited it.
-    setCovering((cur) => (lastDefault.current == null || cur === lastDefault.current ? next : cur));
+    // (Read the previous draft now: the updater runs after this effect.)
+    const prev = lastDefault.current;
     lastDefault.current = next;
+    setCovering((cur) => (prev == null || !cur.trim() || cur === prev ? next : cur));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info, kind, letterOpts.clientRequested, letterOpts.lastReviewed]);
 
