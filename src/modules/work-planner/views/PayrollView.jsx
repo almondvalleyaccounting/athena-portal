@@ -185,10 +185,20 @@ export default function PayrollView() {
   const complete = activeClients.filter(isComplete).length;
 
   // Click cycles open → done → n/a → open. Optimistic; the server records who and when.
+  // A step either applies to a client or it does not (right-click sets that,
+  // and it sticks for every period). When it applies, a click toggles done.
+  const [naMenu, setNaMenu] = useState(null); // { client, step, x, y }
+  const setNa = async (c, step, na) => {
+    const next = na ? [...new Set([...(c.na_steps || []), step])] : (c.na_steps || []).filter((x) => x !== step);
+    setClients((cs) => cs.map((x) => (x.id === c.id ? { ...x, na_steps: next } : x)));
+    setNaMenu(null);
+    try { await callPayroll({ action: 'save_client', id: c.id, na_steps: next }); }
+    catch (e) { setError(e.message); await load(); }
+  };
   const cycle = async (c, step) => {
     const cur = stateOf(c, step);
     if (cur === 'na-fixed') return;
-    const next = cur === 'open' ? 'done' : cur === 'done' ? 'na' : null;
+    const next = cur === 'done' ? null : 'done';
     const key = `${c.id}|${step}`;
     const prev = ticks[key];
     setTicks((t) => { const n = { ...t }; if (next) n[key] = { client_id: c.id, period_id: period.id, step, state: next, by_id: profile?.id, by_name: profile?.name, at: new Date().toISOString() }; else delete n[key]; return n; });
@@ -290,7 +300,7 @@ export default function PayrollView() {
                           const title = st === 'na-fixed' ? 'Not applicable for this client (set in the drawer)' : st === 'open' ? `${s.label} · not yet${late ? ' · past cut-off' : ''}` : `${st === 'done' ? 'Done' : 'Not applicable'} · ${t?.by_name || 'unknown'} · ${t?.source === 'import' ? 'from the spreadsheet' : fmtTs(t?.at)}`;
                           return (
                             <td key={s.id} style={td}>
-                              <span onClick={() => cycle(c, s.id)} title={title} style={tile(st, late)}>{st === 'done' ? '✓' : st === 'na' || st === 'na-fixed' ? '–' : '·'}</span>
+                              <span onClick={() => cycle(c, s.id)} onContextMenu={(e) => { e.preventDefault(); setNaMenu({ client: c, step: s.id, label: s.label, x: e.clientX, y: e.clientY }); }} title={`${title} · right-click to change whether this step applies`} style={tile(st, late)}>{st === 'done' ? '✓' : st === 'na' || st === 'na-fixed' ? '–' : '·'}</span>
                             </td>
                           );
                         })}
@@ -313,8 +323,8 @@ export default function PayrollView() {
           </table>
           <div style={{ display: 'flex', gap: 14, padding: '8px 12px', fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
             <span><span style={{ ...tile('done'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> done, hover for who and when</span>
-            <span><span style={{ ...tile('open'), width: 14, height: 14, verticalAlign: -2 }} /> not yet · click to tick</span>
-            <span><span style={{ ...tile('na'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>–</span> not applicable · click again to clear</span>
+            <span><span style={{ ...tile('open'), width: 14, height: 14, verticalAlign: -2 }} /> not yet · click to tick, click again to untick</span>
+            <span><span style={{ ...tile('na'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>–</span> not applicable for this client · right-click a cell to set or unset (it sticks for every period)</span>
             <span><span style={{ ...tile('open', true), width: 14, height: 14, verticalAlign: -2 }} /> past cut-off, still open</span>
             {freq === 'monthly' && <span><span style={{ ...tile('done'), background: '#ccfbf1', color: '#0f766e', width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> journal seen in QuickBooks (live, not tickable)</span>}
             <span><span style={{ color: '#f59e0b' }}>•</span> not linked to a client record</span>
@@ -322,6 +332,16 @@ export default function PayrollView() {
         </div>
       )}
 
+      {naMenu && (
+        <div onClick={() => setNaMenu(null)} onContextMenu={(e) => { e.preventDefault(); setNaMenu(null); }} style={{ position: 'fixed', inset: 0, zIndex: 95 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', left: Math.min(naMenu.x, window.innerWidth - 300), top: Math.min(naMenu.y, window.innerHeight - 120), width: 280, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: 6, fontFamily: font, fontSize: 13 }}>
+            <div style={{ padding: '4px 8px 6px', fontSize: 11.5, color: '#64748b' }}>{displayName(naMenu.client)} · {naMenu.label}</div>
+            {(naMenu.client.na_steps || []).includes(naMenu.step)
+              ? <button onClick={() => setNa(naMenu.client, naMenu.step, false)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 13, color: '#0f172a' }}>This step applies to this client again</button>
+              : <button onClick={() => setNa(naMenu.client, naMenu.step, true)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 13, color: '#0f172a' }}>Mark as not applicable for this client<div style={{ fontSize: 11.5, color: '#64748b' }}>Sticks for every period until changed here or in the client modal.</div></button>}
+          </div>
+        </div>
+      )}
       {filterMenu && (
         <div onClick={() => setFilterMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', left: Math.min(filterMenu.x, window.innerWidth - 260), top: Math.min(filterMenu.y + 8, window.innerHeight - 320), width: 240, maxHeight: 300, overflowY: 'auto', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: 8, fontFamily: font, fontSize: 12.5 }}>
