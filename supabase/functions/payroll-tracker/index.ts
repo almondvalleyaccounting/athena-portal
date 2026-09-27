@@ -11,6 +11,7 @@
 //   save_client  { id?, name, entity_id?, frequency, pay_day?, cutoff?, pay_type?, runner_id?,
 //                  runner_name?, cover_id?, batch?, na_steps?, standing_note?, active?, ceased_on?, sort_order? }
 //   delete_note  { id }
+//   retire_note  { id, retired: true | false }   a retired note is kept but hidden from the sheet
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
@@ -78,6 +79,14 @@ Deno.serve(async (req) => {
         const { data, error } = await db.from("payroll_period_notes").insert({ client_id: clientId, period_id: periodId, note, by_id: me, by_name: meRow.name, at: now }).select("id").single();
         if (error) throw new Error(error.message);
         return json({ success: true, id: data.id });
+      }
+
+      case "retire_note": {
+        const id = uuid(p.id, "id");
+        const retired = p.retired !== false;
+        const { error } = await db.from("payroll_period_notes").update(retired ? { retired_at: now, retired_by: me } : { retired_at: null, retired_by: null }).eq("id", id);
+        if (error) throw new Error(error.message);
+        return json({ success: true });
       }
 
       case "delete_note": {

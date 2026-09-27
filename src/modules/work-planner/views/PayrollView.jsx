@@ -110,7 +110,7 @@ export default function PayrollView() {
       const [{ data: cs, error: e1 }, { data: ts, error: e2 }, { data: ns }] = await Promise.all([
         supabase.from('payroll_clients').select('*').in('frequency', wantFreq).order('sort_order').order('name').limit(1000),
         supabase.from('payroll_ticks').select('*').eq('period_id', period.id).limit(5000),
-        supabase.from('payroll_period_notes').select('client_id').eq('period_id', period.id).limit(2000),
+        supabase.from('payroll_period_notes').select('client_id').eq('period_id', period.id).is('retired_at', null).limit(2000),
       ]);
       if (e1) throw e1; if (e2) throw e2;
       setClients(cs || []);
@@ -346,6 +346,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   }));
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
+  const [showRetired, setShowRetired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [entityQ, setEntityQ] = useState('');
@@ -355,6 +356,14 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
     if (!client || !period) return;
     supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at').then(({ data }) => setNotes(data || []));
   }, [client, period]);
+  const reloadNotes = async () => { const { data } = await supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at'); setNotes(data || []); };
+  const retire = async (n, retired) => {
+    setBusy(true); setErr(null);
+    try { await callPayroll({ action: 'retire_note', id: n.id, retired }); await reloadNotes(); await onSaved(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const live = notes.filter((n) => !n.retired_at);
+  const retired = notes.filter((n) => n.retired_at);
 
   const save = async () => {
     setBusy(true); setErr(null);
@@ -366,7 +375,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   const addNote = async () => {
     if (!note.trim() || !client || !period) return;
     setBusy(true); setErr(null);
-    try { await callPayroll({ action: 'add_note', client_id: client.id, period_id: period.id, note }); setNote(''); const { data } = await supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at'); setNotes(data || []); await onSaved(); }
+    try { await callPayroll({ action: 'add_note', client_id: client.id, period_id: period.id, note }); setNote(''); await reloadNotes(); await onSaved(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const inp = { padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: '100%', boxSizing: 'border-box', background: '#fff' };
@@ -375,8 +384,8 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   const linked = form.entity_id ? entityList.find((e) => e.id === form.entity_id) : null;
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.2)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: '96vw', height: '100%', background: '#fff', boxShadow: '-4px 0 16px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', fontFamily: font }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 720, maxWidth: '96vw', maxHeight: '90vh', background: '#fff', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 8px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{isNew ? 'New payroll client' : 'Payroll client'}</div>
@@ -434,8 +443,24 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
                     <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{na ? 'n/a for this client' : t ? `${t.state === 'done' ? 'Done' : 'n/a'} · ${t.by_name || '?'} · ${fmtTs(t.at)}` : 'not yet'}</span>
                   </React.Fragment>); })}
               </div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569' }}>Notes this period <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {notes.length}</span></div>
-              {notes.map((n) => <div key={n.id} style={{ fontSize: 12.5, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}><span style={{ color: '#94a3b8' }}>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {fmtTs(n.at)}</span><div>{n.note}</div></div>)}
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                Notes this period <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {live.length} live</span>
+                {retired.length > 0 && <button onClick={() => setShowRetired((v) => !v)} style={{ ...BTN.secondary.sm, padding: '0 7px', fontSize: 11, marginLeft: 'auto' }}>{showRetired ? 'Hide' : 'Show'} {retired.length} retired</button>}
+              </div>
+              <div style={{ fontSize: 11.5, color: '#94a3b8' }}>Notes are for live updates. Retire a note once it has been acted on so the sheet stays quiet.</div>
+              {live.length === 0 && <div style={{ fontSize: 12.5, color: '#cbd5e1' }}>No live notes.</div>}
+              {live.map((n) => (
+                <div key={n.id} style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 6, background: '#fffbeb', border: '1px solid #fde68a', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}><span style={{ color: '#94a3b8' }}>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {fmtTs(n.at)}</span><div style={{ whiteSpace: 'pre-wrap' }}>{n.note}</div></div>
+                  <button onClick={() => retire(n, true)} disabled={busy} title="Keep it, but take it off the sheet" style={{ ...BTN.secondary.sm, padding: '1px 8px', fontSize: 11 }}>Retire</button>
+                </div>
+              ))}
+              {showRetired && retired.map((n) => (
+                <div key={n.id} style={{ fontSize: 12, padding: '4px 8px', color: '#94a3b8', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}><span>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {fmtTs(n.at)} · retired {fmtTs(n.retired_at)}</span><div style={{ whiteSpace: 'pre-wrap', textDecoration: 'line-through' }}>{n.note}</div></div>
+                  <button onClick={() => retire(n, false)} disabled={busy} style={{ ...BTN.secondary.sm, padding: '1px 8px', fontSize: 11 }}>Restore</button>
+                </div>
+              ))}
               <div style={{ display: 'flex', gap: 6 }}>
                 <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note for this period…" style={inp} onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }} />
                 <button onClick={addNote} disabled={busy || !note.trim()} style={BTN.secondary.sm}>Add</button>
