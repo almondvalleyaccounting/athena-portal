@@ -9,8 +9,10 @@ import { BTN } from '../../../lib/buttonStyles';
 // next six months, months across, type of work down. Whole team unless a
 // person is picked in the team filter. Hover a number for the split by
 // person; click it for the jobs. Holidays in a month are flagged. Under the
-// grid, five tiles: overdue, this week, next week, the week after, and the
-// rest — the same jobs cut by date instead of by month.
+// grid, five tiles: overdue, this week, next week and the week after (the
+// same jobs cut by date — a week ends on Friday, so "this week" shrinks a
+// day at a time and resets to seven on Saturday morning), then the open
+// quick tasks.
 //
 // A count is a filing, not a stage: for accounts, VAT, self assessment and
 // corporation tax only the "… Submission …" task counts, so the numbers
@@ -40,14 +42,14 @@ const BUCKETS = [
   { id: 'week',    label: 'This week' },
   { id: 'next',    label: 'Next week' },
   { id: 'after',   label: 'Week after next' },
-  { id: 'other',   label: 'Other tasks' },
+  { id: 'quick',   label: 'Other tasks', sub: 'BM NSTs + quick tasks' },
 ];
 const monthShort = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 const fmt = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 const h1 = (n) => Math.round(n * 10) / 10;
 
 export default function OverviewDashboard({ onOpenTask }) {
-  const { staffList, staffMap, staffColours, holidays = [], filters } = useWorkPlanner();
+  const { staffList, staffMap, staffColours, holidays = [], filters, quickTasks = [], entityMap = {} } = useWorkPlanner();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -86,21 +88,30 @@ export default function OverviewDashboard({ onOpenTask }) {
 
   const visible = useMemo(() => (who ? jobs.filter((j) => j.assignee_id === who) : jobs), [jobs, who]);
   const today = todayISO();
-  const weekEnd = useMemo(() => { const d = new Date(`${today}T12:00:00`); const dow = (d.getDay() + 6) % 7; return addDays(today, 6 - dow); }, [today]); // Sunday
+  // Weeks end on Friday: today to the coming Friday is "this week".
+  const weekEnd = useMemo(() => { const d = new Date(`${today}T12:00:00`); return addDays(today, (5 - d.getDay() + 7) % 7); }, [today]);
+  const weekEndOf = { week: weekEnd, next: addDays(weekEnd, 7), after: addDays(weekEnd, 14) };
   const bucketOf = (j) => {
     const v = j[col];
     if (v < today) return 'overdue';
-    if (v <= weekEnd) return 'week';
-    if (v <= addDays(weekEnd, 7)) return 'next';
-    if (v <= addDays(weekEnd, 14)) return 'after';
-    return 'other';
+    if (v <= weekEndOf.week) return 'week';
+    if (v <= weekEndOf.next) return 'next';
+    if (v <= weekEndOf.after) return 'after';
+    return null;
   };
+  // The last tile: quick_tasks, which holds BrightManager's non-standard
+  // tasks (source bm_nst) and the ones added in Athena (source manual).
+  const quick = useMemo(() => (who ? quickTasks.filter((t) => t.assignee_id === who) : quickTasks).map((t) => ({
+    id: t.id, quick: true, assignee_id: t.assignee_id, entity_id: t.entity_id, title: t.title,
+    bm_deadline: t.due_date ? String(t.due_date).slice(0, 10) : null, scheduled_for_date: t.planned_date ? String(t.planned_date).slice(0, 10) : null,
+    scheduled_hours: t.duration ? t.duration / 60 : 0,
+  })), [quickTasks, who]);
   const inWindow = (j) => months.includes(j.month);
   // Counts are filings; hours (all=true) take every task.
   const cell = (month, type, all = false) => visible.filter((j) => (all || j.filing) && (month === 'all' ? inWindow(j) : j.month === month) && (type === 'all' || j.type === type));
-  const bucket = (id, all = false) => visible.filter((j) => (all || j.filing) && bucketOf(j) === id);
+  const bucket = (id, all = false) => (id === 'quick' ? quick : visible.filter((j) => (all || j.filing) && bucketOf(j) === id));
   const listFor = (sel, all = false) => (sel.bucket ? bucket(sel.bucket, all) : cell(sel.month, sel.type, all));
-  const titleFor = (sel) => (sel.bucket ? BUCKETS.find((b) => b.id === sel.bucket)?.label : `${TILE_TYPES.find((t) => t.id === sel.type)?.label} · ${basis === 'planned' ? 'planned' : 'due'} ${monthLabel(sel.month)}`);
+  const titleFor = (sel) => (sel.bucket ? `${BUCKETS.find((b) => b.id === sel.bucket)?.label}${weekEndOf[sel.bucket] ? ` · w/e ${fmt(weekEndOf[sel.bucket])}` : ''}` : `${TILE_TYPES.find((t) => t.id === sel.type)?.label} · ${basis === 'planned' ? 'planned' : 'due'} ${monthLabel(sel.month)}`);
   const hours = (list) => list.reduce((s, j) => s + (Number(j.scheduled_hours) || 0), 0);
   const byPerson = (list) => {
     const m = new Map();
@@ -199,7 +210,7 @@ export default function OverviewDashboard({ onOpenTask }) {
               onMouseLeave={() => setHover(null)}
               disabled={!n}
               style={{ textAlign: 'left', padding: '10px 14px', border: `1px solid ${red ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 10, background: red ? '#fef2f2' : '#fff', cursor: n ? 'pointer' : 'default', fontFamily: font }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: red ? '#991b1b' : '#64748b' }}>{b.label}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: red ? '#991b1b' : '#64748b' }}>{b.label}{weekEndOf[b.id] ? <span style={{ fontWeight: 500, color: '#94a3b8' }}> · w/e {fmt(weekEndOf[b.id])}</span> : b.sub ? <span style={{ fontWeight: 500, color: '#94a3b8' }}> · {b.sub}</span> : null}</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ fontSize: 24, fontWeight: 700, color: n ? (red ? '#b91c1c' : '#0e7fe0') : '#cbd5e1' }}>{n}</span>
                 {n > 0 && <span style={{ fontSize: 12, color: '#94a3b8' }}>{h1(hrs)}h</span>}
@@ -221,7 +232,7 @@ export default function OverviewDashboard({ onOpenTask }) {
                 <span>{name(id)}</span><span style={{ fontWeight: 600 }}>{n}<span style={{ color: '#94a3b8', fontWeight: 400 }}> · {h1(hours(work.filter((j) => (j.assignee_id || 'none') === id)))}h</span></span>
               </div>
             ))}
-            <div style={{ color: '#94a3b8', marginTop: 4 }}>Click for the jobs</div>
+            <div style={{ color: '#94a3b8', marginTop: 4 }}>Click for the {hover.bucket === 'quick' ? 'tasks' : 'jobs'}</div>
           </div>
         );
       })()}
@@ -232,7 +243,7 @@ export default function OverviewDashboard({ onOpenTask }) {
           <div onClick={() => setTile(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 760, maxWidth: '96vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 8px' }}>
-                <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{titleFor(tile)} · {list.length} job{list.length === 1 ? '' : 's'} · {h1(hours(listFor(tile, true)))}h</div>
+                <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{titleFor(tile)} · {list.length} {tile.bucket === 'quick' ? 'task' : 'job'}{list.length === 1 ? '' : 's'} · {h1(hours(listFor(tile, true)))}h</div>
                 <button onClick={() => setTile(null)} style={BTN.secondary.sm}>Close</button>
               </div>
               <div style={{ overflowY: 'auto', padding: '0 16px 12px' }}>
@@ -242,12 +253,12 @@ export default function OverviewDashboard({ onOpenTask }) {
                 {list.map((j) => (
                   <div key={j.id} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 70px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
                     <span title={staffMap[j.assignee_id]?.name || 'Unassigned'}>{j.assignee_id ? <Avatar id={j.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[j.assignee_id]} /> : null}</span>
-                    <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.entities?.name}</span>
-                    <span style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortTask(j.bm_task_name)}</span>
+                    <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? (entityMap[j.entity_id]?.name || '') : j.entities?.name}</span>
+                    <span style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? j.title : shortTask(j.bm_task_name)}</span>
                     <span style={{ fontSize: 12, color: '#475569' }}>{fmt(j.bm_deadline)}</span>
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>{j.scheduled_for_date ? fmt(j.scheduled_for_date) : '—'}</span>
                     <span style={{ fontSize: 12, color: '#475569', textAlign: 'right' }}>{j.scheduled_hours ? `${Number(j.scheduled_hours)}h` : ''}</span>
-                    {onOpenTask ? <button onClick={() => { setTile(null); onOpenTask({ type: 'bm', id: j.id }); }} style={BTN.secondary.sm}>Open</button> : <span />}
+                    {onOpenTask ? <button onClick={() => { setTile(null); onOpenTask({ type: j.quick ? 'quick' : 'bm', id: j.id }); }} style={BTN.secondary.sm}>Open</button> : <span />}
                   </div>
                 ))}
               </div>

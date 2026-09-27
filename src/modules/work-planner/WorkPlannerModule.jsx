@@ -929,7 +929,6 @@ export default function WorkPlannerModule() {
           {activeTab === 'mytasks' && (
             <>
               <TodayView onOpenTask={setTaskModal} onOpenHolidays={() => setHolidayOpen(true)} />
-              <MyTasksView dueFilter={dueFilter} compact={compact} searchTerm={searchTerm} onAction={handleAction} />
             </>
           )}
           {activeTab === 'day' && (
