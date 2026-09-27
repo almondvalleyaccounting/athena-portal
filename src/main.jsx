@@ -152,7 +152,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/planner/setup/*" element={<SetupModule />} />
           {/* Job Review lives under Work — must precede the /planner/* wildcard. */}
           <Route path="/planner/review/*" element={<JobReviewModule />} />
-          {/* Plan the Job (sql/304) — must precede the /planner/* wildcard. */}
+          {/* Workflows, formerly Plan the Job (sql/304) — must precede the /planner/* wildcard. */}
           <Route path="/planner/plan/*" element={<PlanJobModule />} />
           {/* Admin Task List — must precede the /planner/* wildcard. */}
           <Route path="/planner/tasks" element={<AdminTasksPage />} />

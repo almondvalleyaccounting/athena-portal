@@ -1,4 +1,4 @@
-# Draft note to the team: Plan the Job
+# Draft note to the team: Workflows (Plan the Job)
 
 *For Bobby to send from his own mailbox. Plain text, no jargon, edit freely.*
 
@@ -23,7 +23,7 @@ for the statutory buffer, it's flagged.
 
 **What I need from you**
 
-1. Open **Work → Plan the Job**. It lists your accounts jobs. Tick them,
+1. Open **Work → Workflows**. It lists your accounts jobs. Tick them,
    press **Propose defaults**, and you land on a review table showing what
    the default schedules for each job.
 2. Open any job where the default is wrong: switch the meeting on or off,

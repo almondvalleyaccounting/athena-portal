@@ -9,7 +9,7 @@ import {
 } from './planQueries';
 import EmailModal from '../components/EmailModal';
 
-// Plan the Job — docs/WORKFLOW_TEMPLATE_ACCOUNTS_2026-09-25.md §5.
+// Workflows (was Plan the Job) — docs/WORKFLOW_TEMPLATE_ACCOUNTS_2026-09-25.md §5.
 //
 // /planner/plan                        every planned accounts job, one row per
 //                                      client and year end, with its plan status
@@ -170,7 +170,7 @@ function PlanList() {
   return (
     <div style={{ padding: '16px 20px', fontFamily: font, display: 'flex', flexDirection: 'column', gap: 12, height: '100%', overflow: 'auto' }}>
       <div>
-        <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Plan the Job</div>
+        <div style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>Workflows</div>
         <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
           Every planned set of accounts and self assessment, worked back from its year end. The preparer confirms the chain; the jobs that take the default can be committed together.
         </div>

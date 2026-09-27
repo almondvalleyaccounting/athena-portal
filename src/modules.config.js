@@ -104,7 +104,7 @@ export const MODULES = [
       },
       {
         id: 'wp-plan',
-        label: 'Plan the Job',
+        label: 'Workflows',
         route: '/planner/plan',
         inDevelopment: true,
         matchPaths: ['/planner/plan'],
