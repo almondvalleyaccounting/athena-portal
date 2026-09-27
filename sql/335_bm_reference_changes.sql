@@ -1,5 +1,5 @@
 -- ============================================================
--- 334 — BM client import: a changed Internal Reference is not a departure
+-- 335 — BM client import: a changed Internal Reference is not a departure
 --
 -- On 2026-09-27 BrightManager re-referenced two clients (LITT01 → LMG001,
 -- GLAM001 → LTVAC001) with the company numbers unchanged. The import read that

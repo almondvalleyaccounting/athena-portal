@@ -32,7 +32,7 @@ export async function fetchArchiveCandidates(presentBmIds) {
 
 // Read-only: which would-be archive candidates are really in this upload under
 // a new Internal Reference (same company number, or — with no company number
-// on either side — the same name and type). See sql/334.
+// on either side — the same name and type). See sql/335.
 export async function fetchRefChanges(parsedRows) {
   const rows = (parsedRows || []).map((r) => ({
     bm_client_id: r.bm_client_id,
