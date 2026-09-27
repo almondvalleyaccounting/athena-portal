@@ -228,6 +228,7 @@ Deno.serve(async (req) => {
       errors: [] as string[], unmatched_customers: [] as string[],
       one_off_created: 0, one_off_skipped: 0,
       duplicates_cancelled: 0,
+      staged_lines_kept: 0,
     };
 
     // ScheduleInfo → monthly factor: monthlyFactor() in ../_shared/billing-interval.ts.
@@ -412,6 +413,15 @@ Deno.serve(async (req) => {
           "pending_uplift_reason",
           "pending_uplift_staged_at",
           "pending_uplift_strategy",
+          // The single-client fee review (RepriceClientModal) stages these
+          // beside pending_monthly_amount. Losing them loses the client's
+          // reasons, the acceptance rule and the build (Kirkwood, 2026-09-27).
+          "pending_changes",
+          "pending_needs_acceptance",
+          "pending_build",
+          "pending_uplift_reason_key",
+          "pending_proposal_id",
+          "fee_engine_service_id",
           "last_uplift_at",
           "last_uplift_reason",
           "last_uplift_pushed_at",
@@ -460,6 +470,19 @@ Deno.serve(async (req) => {
             ...(itemRef?.value != null ? { qbo_item_id: String(itemRef.value) } : {}),
           };
         });
+
+        // A service staged in Athena but not yet pushed (a fee review's new
+        // service, from £0) isn't on the template, so rebuilding from the
+        // template alone deleted it (Kirkwood, 2026-09-27). Carry forward
+        // any prior line with a staged amount that no template line matches;
+        // the push adds it to the template, and after that it is matched.
+        const templateIds = new Set(services.map((x: Record<string, unknown>) => String(x.service_id)));
+        for (const s of (priorRow?.services as Array<Record<string, unknown>> | null) || []) {
+          if (s.service_id && !templateIds.has(String(s.service_id)) && s.pending_monthly_amount != null) {
+            services.push(s as typeof services[number]);
+            stats.staged_lines_kept += 1;
+          }
+        }
 
         // Write into the canonical linked row, else the orphan found
         // above (attach the template to it rather than insert a
@@ -828,6 +851,15 @@ Deno.serve(async (req) => {
             "pending_uplift_reason",
             "pending_uplift_staged_at",
             "pending_uplift_strategy",
+            // The single-client fee review (RepriceClientModal) stages these
+            // beside pending_monthly_amount. Losing them loses the client's
+            // reasons, the acceptance rule and the build (Kirkwood, 2026-09-27).
+            "pending_changes",
+            "pending_needs_acceptance",
+            "pending_build",
+            "pending_uplift_reason_key",
+            "pending_proposal_id",
+            "fee_engine_service_id",
             "last_uplift_at",
             "last_uplift_reason",
             "last_uplift_pushed_at",
@@ -862,6 +894,18 @@ Deno.serve(async (req) => {
             ...preserved,
           };
         });
+
+        // As on the template path: keep services staged in Athena that the
+        // invoices can't show yet (a fee review's new service, from £0).
+        {
+          const seen = new Set(services.map((x) => String(x.service_id)));
+          for (const s of (existingForMerge?.services as Array<Record<string, unknown>> | null) || []) {
+            if (s.service_id && !seen.has(String(s.service_id)) && s.pending_monthly_amount != null) {
+              services.push(s as typeof services[number]);
+              stats.staged_lines_kept += 1;
+            }
+          }
+        }
 
         rowMonthlyNet = Math.round(rowMonthlyNet * 100) / 100;
         rowAnnualTotal = Math.round(rowAnnualTotal * 100) / 100;
