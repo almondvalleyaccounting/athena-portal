@@ -50,7 +50,7 @@ export default function StageBoardView({ onOpenTask }) {
       for (let i = 0; i < ids.length; i += 150) {
         const slice = ids.slice(i, i + 150);
         const [{ data: ms, error: mErr }, { data: ps, error: pErr }] = await Promise.all([
-          supabase.from('job_milestones').select('plan_id, stage_key, seq, label, status, due_date').in('plan_id', slice).order('seq'),
+          supabase.from('job_milestones').select('id, plan_id, stage_key, seq, label, status, due_date').in('plan_id', slice).order('seq'),
           supabase.from('job_plans').select('id, risk, risk_reason').in('id', slice),
         ]);
         if (mErr) throw mErr;

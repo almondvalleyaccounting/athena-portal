@@ -69,12 +69,12 @@ export function useWorkPlanner() { return useContext(WorkPlannerContext); }
 const TASK_PLANNER_TABS = [
   { id: 'mytasks',  label: 'Overview',    path: '/planner' },
   { id: 'day',      label: 'Day plan',    path: '/planner/day' },
+  { id: 'tracker',  label: 'Tracker',     path: '/planner/tracker' },
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched',    label: 'Blocks',      path: '/planner/scheduled' },
   { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
   { id: 'kanban',   label: 'Stage board', path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
-  { id: 'tracker',  label: 'Tracker',     path: '/planner/tracker' },
 ];
 const TEAM_TABS = [
   { id: 'team', label: 'Team', path: '/planner/team' },
@@ -825,10 +825,28 @@ export default function WorkPlannerModule() {
   }
 
   // ── Render ──
+  // A new quick task defaults to the person raising it, on their next working
+  // day by their own pattern (Bobby, 2026-09-27): raised on a Friday it lands
+  // on Monday; someone who works Tue–Thu raising on a Thursday gets Tuesday.
+  // Their booked holidays are skipped too.
+  const nextWorkingDayFor = (staffId) => {
+    const person = staffId ? staffMap[staffId] : null;
+    const days = new Set((person?.working_days || 'mon,tue,wed,thu,fri').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+    if (!days.size) ['mon', 'tue', 'wed', 'thu', 'fri'].forEach((d) => days.add(d));
+    const DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const d = new Date(today());
+    for (let i = 0; i < 14; i++) {
+      d.setDate(d.getDate() + 1);
+      const iso = formatISO(d);
+      if (days.has(DOW[d.getDay()]) && !(staffId && holidayMap[`${staffId}|${iso}`])) return iso;
+    }
+    return formatISO(d);
+  };
+
   // One + New menu on every task tab (Bobby, 2026-09-27), instead of a
   // different set of buttons per tab.
   const newItems = [
-    { label: 'Quick task', hint: 'A one-off task for someone', run: () => setQuickModal({ _new: true }) },
+    { label: 'Quick task', hint: 'A one-off task for someone', run: () => setQuickModal({ _new: true, assignee_id: profile?.id || '', due_date: nextWorkingDayFor(profile?.id) }) },
     { label: 'Block', hint: 'Standing work on a cadence', run: () => setModal('new') },
     { label: 'Holiday', hint: 'Time off, cover and handover', run: () => setHolidayOpen(true) },
     { label: 'Job Selector', hint: 'Pull BrightManager jobs onto a day', run: () => setSelectorOpen(true) },
@@ -1052,7 +1070,7 @@ export default function WorkPlannerModule() {
             if (id) {
               await updateQuickTask(id, patch);
             } else {
-              await addQuickTask({ ...patch, sort_order: 0, created_by: profile.id });
+              await addQuickTask({ ...patch, planned_date: patch.due_date || null, sort_order: 0, created_by: profile.id });
             }
             setQuickModal(null);
           }}
