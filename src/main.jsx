@@ -62,7 +62,7 @@ import EntitiesPage from './pages/EntitiesPage';
 import QuotesPage from './pages/QuotesPage';
 import QuoteFormPage from './pages/QuoteFormPage';
 import QuoteDetailPage from './pages/QuoteDetailPage';
-import PricingDefaultsPage from './pages/PricingDefaultsPage';
+import PricingProposalsPage from './pages/PricingProposalsPage';
 import GroupDetailPage from './pages/GroupDetailPage';
 import GroupsPage from './pages/GroupsPage';
 import GroupQuoteInputPage from './pages/GroupQuoteInputPage';
@@ -187,7 +187,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="/manage/clients/:id" element={<LegacyClientRedirect />} />
             <Route path="/manage/quotes" element={<QuotesPage />} />
             <Route path="/manage/quotes/new" element={<QuoteFormPage mode="new" />} />
-            <Route path="/manage/quotes/pricing" element={<PricingDefaultsPage />} />
+            <Route path="/manage/quotes/pricing" element={<PricingProposalsPage />} />
             <Route path="/manage/quotes/analysis" element={<AnalysisPage />} />
             <Route path="/manage/billing" element={<FEBillingPage />} />
             <Route path="/manage/groups" element={<GroupsPage />} />
