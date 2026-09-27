@@ -1,6 +1,6 @@
 // staff-access — Athena Portal
 //
-// Every write behind Staff & Permissions (sql/328). The browser holds SELECT on
+// Every write behind Staff & Permissions (sql/329). The browser holds SELECT on
 // app_modules / staff_module_access / staff_client_access and nothing else,
 // because a new mutating path is an edge function (CLAUDE.md). Portal admins only:
 // an admin sees every module and every client, and is the only person who can

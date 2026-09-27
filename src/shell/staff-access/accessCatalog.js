@@ -1,4 +1,4 @@
-// What Staff & Permissions offers, per module (sql/328). Labels and grouping
+// What Staff & Permissions offers, per module (sql/329). Labels and grouping
 // come from modules.config so the screen reads exactly like the sidebar.
 
 import { MODULES } from '../../modules.config';

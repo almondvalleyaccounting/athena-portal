@@ -2,7 +2,7 @@
 // Headings appear where the section changes, so keep a section's modules
 // together in this list.
 //
-// Who sees what is decided per person on Staff & Permissions (sql/328), not
+// Who sees what is decided per person on Staff & Permissions (sql/329), not
 // here: app_modules / staff_module_access, loaded onto the profile as
 // profile.access. moduleGranted() below mirrors the SQL function of the same
 // name. `permissions` now lists only ABILITIES inside a module (Pricing needs
@@ -263,7 +263,7 @@ export const MODULES = [
   },
 ];
 
-// ─── Access (sql/328) ─────────────────────────────────────────────────────────
+// ─── Access (sql/329) ─────────────────────────────────────────────────────────
 //
 // profile.access is loaded by AppShell:
 //   modules  { [key]: level }                   this person's staff_module_access rows

@@ -34,7 +34,7 @@ export default function ClientDetailView() {
   // fee-visibility flags (RLS enforces the same at the data layer, so this
   // gate is presentation — without it the tiles would show misleading £0s).
   // A client can also be switched off for one person (Staff & Permissions ›
-  // Clients, sql/328): its fees are hidden from them the same way.
+  // Clients, sql/329): its fees are hidden from them the same way.
   const figuresHidden = clientFiguresHidden(profile, id);
   const canSeeFees = profile?.can_view_client_fees === true && !figuresHidden;
   const canSeeQuotes = (profile?.can_view_quotes === true || canSeeFees) && !figuresHidden;

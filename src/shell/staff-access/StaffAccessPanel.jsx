@@ -10,7 +10,7 @@ import {
 import { staffAccess, loadAccessData, loadClients, loadClientAccess } from './staffAccessApi';
 
 /*
-  Staff & Permissions (sql/328, Bobby 2026-09-27): access by staff member, by
+  Staff & Permissions (sql/329, Bobby 2026-09-27): access by staff member, by
   module. One person at a time on the right, so the screen never becomes the
   old 21-column wall. Client figures are also switched per client, by hand, on
   the Clients tab. Portal admins see everything and can't be limited.
@@ -31,7 +31,25 @@ const line = '#e5e7eb';
 const displayName = (u) => u.name || u.email || 'Unknown';
 const FORMER = new Set(['archived', 'nlac']);
 
+// A callback ref, because the element it measures changes: the loading line
+// first, then the panel.
+function useWidth() {
+  const [node, setNode] = useState(null);
+  const [w, setW] = useState(1200);
+  useEffect(() => {
+    if (!node) return undefined;
+    const ro = new ResizeObserver(([e]) => setW(e.contentRect.width));
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, [node]);
+  return [setNode, w];
+}
+
 export default function StaffAccessPanel({ users, onUsersChange, renderProfile }) {
+  const [rootRef, width] = useWidth();
+  // Below this the two columns stop fitting: the people (or modules) list
+  // becomes a wrapping row of chips above the detail instead of a column.
+  const narrow = width < 860;
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState('person');
@@ -65,14 +83,14 @@ export default function StaffAccessPanel({ users, onUsersChange, renderProfile }
   };
 
   if (loadError) {
-    return <Notice tone="danger">Couldn't load access: {loadError}</Notice>;
+    return <div ref={rootRef}><Notice tone="danger">Couldn't load access: {loadError}</Notice></div>;
   }
-  if (!data) return <p style={{ fontFamily: font, fontSize: 14.5, color: faint }}>Loading access…</p>;
+  if (!data) return <p ref={rootRef} style={{ fontFamily: font, fontSize: 14.5, color: faint }}>Loading access…</p>;
 
   const sections = buildSections(data.meta);
 
   return (
-    <div style={{ fontFamily: font }}>
+    <div ref={rootRef} style={{ fontFamily: font }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <Segmented
           value={view}
@@ -87,10 +105,10 @@ export default function StaffAccessPanel({ users, onUsersChange, renderProfile }
       </div>
 
       {view === 'person' && selected && (
-        <div style={{ display: 'grid', gridTemplateColumns: '248px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+        <div style={twoCol(narrow)}>
           <StaffList
             active={active} inactive={inactive} selectedId={selected.id} onSelect={setSelectedId}
-            data={data}
+            data={data} narrow={narrow}
           />
           <PersonView
             key={selected.id}
@@ -100,7 +118,7 @@ export default function StaffAccessPanel({ users, onUsersChange, renderProfile }
         </div>
       )}
 
-      {view === 'module' && <ModuleView users={active} data={data} sections={sections} busy={busy} run={run} />}
+      {view === 'module' && <ModuleView users={active} data={data} sections={sections} busy={busy} run={run} narrow={narrow} />}
 
       {view === 'dev' && <DevView users={active} data={data} busy={busy} run={run} />}
     </div>
@@ -109,7 +127,31 @@ export default function StaffAccessPanel({ users, onUsersChange, renderProfile }
 
 /* ─── Left: the team ─────────────────────────────────────────────────── */
 
-function StaffList({ active, inactive, selectedId, onSelect, data }) {
+function StaffList({ active, inactive, selectedId, onSelect, data, narrow }) {
+  if (narrow) {
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {[...active, ...inactive].map((u) => {
+          const on = u.id === selectedId;
+          return (
+            <button
+              key={u.id}
+              onClick={() => onSelect(u.id)}
+              style={{
+                fontFamily: font, fontSize: 13.5, fontWeight: on ? 600 : 500, cursor: 'pointer',
+                padding: '5px 11px', borderRadius: 999,
+                border: `1px solid ${on ? brand.solid : '#cbd5e1'}`,
+                background: on ? brand.solid : '#fff', color: on ? brand.onSolid : '#334155',
+                opacity: u.is_active === false ? 0.55 : 1,
+              }}
+            >
+              {displayName(u).split(' ')[0]}{u.is_portal_admin ? ' · Admin' : ''}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
   const row = (u) => {
     const on = u.id === selectedId;
     const admin = u.is_portal_admin === true;
@@ -163,7 +205,7 @@ function PersonView({ user, users, data, sections, busy, run, renderProfile }) {
       <div style={{ background: '#fff', border: `1px solid ${line}`, borderRadius: 12, padding: '16px 20px', marginBottom: 14 }}>
         {renderProfile(user)}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid #f1f5f9`, flexWrap: 'wrap' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flex: '1 1 280px', minWidth: 0 }}>
             <Switch
               on={admin}
               busy={busy === `admin:${user.id}`}
@@ -238,7 +280,7 @@ function ModulesTab({ user, data, sections, busy, run }) {
           {displayName(user)} is a portal admin, so every module below is on and can't be switched off. Turn admin off to set modules one by one.
         </Notice>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 12, opacity: admin ? 0.6 : 1, pointerEvents: admin ? 'none' : 'auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 12, opacity: admin ? 0.6 : 1, pointerEvents: admin ? 'none' : 'auto' }}>
         {sections.map((s) => (
           <Card key={s.section} title={s.section}>
             {s.rows.map((r, i) => {
@@ -447,14 +489,19 @@ function ClientsTab({ user, busy, run }) {
 
 /* ─── By module ──────────────────────────────────────────────────────── */
 
-function ModuleView({ users, data, sections, busy, run }) {
+function ModuleView({ users, data, sections, busy, run, narrow }) {
   const keys = sections.flatMap((s) => s.rows.flatMap((r) => [r, ...r.devChildren.map((c) => ({ ...c, child: true }))]));
   const [key, setKey] = useState(keys[0]?.key);
   const inDev = data.meta[key]?.status === 'in_development';
   const locked = LOCKED[key];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '248px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+    <div style={twoCol(narrow)}>
+      {narrow ? (
+        <select value={key} onChange={(e) => setKey(e.target.value)} style={{ ...selectStyle, fontSize: 14.5, padding: '8px 12px' }}>
+          {keys.map((k) => <option key={k.key} value={k.key}>{k.child ? '   ' : ''}{fullLabel(k.key)}</option>)}
+        </select>
+      ) : (
       <div style={{ background: '#fff', border: `1px solid ${line}`, borderRadius: 12, padding: 6, maxHeight: 640, overflowY: 'auto' }}>
         {keys.map((k) => (
           <button
@@ -472,6 +519,7 @@ function ModuleView({ users, data, sections, busy, run }) {
           </button>
         ))}
       </div>
+      )}
 
       <Card title={fullLabel(key)}>
         {locked && <div style={{ fontSize: 13.5, color: muted, padding: '6px 0' }}>{locked}</div>}
@@ -521,7 +569,7 @@ function DevView({ users, data, busy, run }) {
   const testers = (key) => users.filter((u) => u.is_portal_admin !== true && data.access[u.id]?.[key]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 12, alignItems: 'start' }}>
       <Card title="In development">
         <p style={{ fontSize: 13.5, color: muted, margin: '0 0 6px' }}>
           Hidden from everyone except admins and the testers ticked on each person's Modules tab. Release a module when it's ready to rely on.
@@ -673,6 +721,10 @@ function Notice({ tone, children }) {
     </div>
   );
 }
+
+const twoCol = (narrow) => (narrow
+  ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }
+  : { display: 'grid', gridTemplateColumns: '248px minmax(0, 1fr)', gap: 20, alignItems: 'start' });
 
 const inputStyle = {
   width: '100%', border: `1px solid ${line}`, borderRadius: 8, padding: '8px 12px', fontSize: 14,

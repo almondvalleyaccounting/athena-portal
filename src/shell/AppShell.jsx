@@ -23,7 +23,7 @@ export function useAuth() {
 }
 
 /* ─── App shell — layout route ─────────────────────────────────── */
-// What this person can see (sql/328), read by modules.config's access rules.
+// What this person can see (sql/329), read by modules.config's access rules.
 // Null if any part fails to load: the nav then falls back to the static config
 // and the database, which enforces all of this anyway, still decides.
 async function loadAccess(staffId) {

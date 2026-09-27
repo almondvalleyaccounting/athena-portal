@@ -1,4 +1,4 @@
-// Per-client figures check for edge functions (sql/328).
+// Per-client figures check for edge functions (sql/329).
 //
 // Staff & Permissions switches client figures on/off per person per client, and
 // the database enforces it with RLS. An edge function running as service_role
