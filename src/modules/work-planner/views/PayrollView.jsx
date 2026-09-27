@@ -195,9 +195,18 @@ export default function PayrollView() {
     try { await callPayroll({ action: 'save_client', id: c.id, na_steps: next }); }
     catch (e) { setError(e.message); await load(); }
   };
+  // n/a for this period only: a tick row with state 'na' (right-click sets it)
+  const setNaPeriod = async (c, step, na) => {
+    const key = `${c.id}|${step}`;
+    const prev = ticks[key];
+    setNaMenu(null);
+    setTicks((t) => { const n = { ...t }; if (na) n[key] = { client_id: c.id, period_id: period.id, step, state: 'na', by_id: profile?.id, by_name: profile?.name, at: new Date().toISOString() }; else delete n[key]; return n; });
+    try { await callPayroll({ action: 'set_tick', client_id: c.id, period_id: period.id, step, state: na ? 'na' : null }); }
+    catch (e) { setError(e.message); setTicks((t) => { const n = { ...t }; if (prev) n[key] = prev; else delete n[key]; return n; }); }
+  };
   const cycle = async (c, step) => {
     const cur = stateOf(c, step);
-    if (cur === 'na-fixed') return;
+    if (cur === 'na-fixed' || cur === 'na') return; // right-click to make it apply again
     const next = cur === 'done' ? null : 'done';
     const key = `${c.id}|${step}`;
     const prev = ticks[key];
@@ -324,7 +333,7 @@ export default function PayrollView() {
           <div style={{ display: 'flex', gap: 14, padding: '8px 12px', fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
             <span><span style={{ ...tile('done'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> green tick · done, hover for who and when</span>
             <span><span style={{ ...tile('open'), width: 14, height: 14, verticalAlign: -2 }} /> white · not done · click to tick, click again to untick</span>
-            <span><span style={{ ...tile('na'), width: 14, height: 14, verticalAlign: -2 }} /> greyed out · not applicable for this client · right-click a cell to set or unset (it sticks for every period)</span>
+            <span><span style={{ ...tile('na'), width: 14, height: 14, verticalAlign: -2 }} /> grey · not applicable · right-click a cell: this period, or going forward</span>
             <span><span style={{ ...tile('open', true), width: 14, height: 14, verticalAlign: -2 }} /> past cut-off, still open</span>
             {freq === 'monthly' && <span><span style={{ ...tile('done'), background: '#ccfbf1', color: '#0f766e', width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> journal seen in QuickBooks (live, not tickable)</span>}
             <span><span style={{ color: '#f59e0b' }}>•</span> not linked to a client record</span>
@@ -336,9 +345,17 @@ export default function PayrollView() {
         <div onClick={() => setNaMenu(null)} onContextMenu={(e) => { e.preventDefault(); setNaMenu(null); }} style={{ position: 'fixed', inset: 0, zIndex: 95 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', left: Math.min(naMenu.x, window.innerWidth - 300), top: Math.min(naMenu.y, window.innerHeight - 120), width: 280, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: 6, fontFamily: font, fontSize: 13 }}>
             <div style={{ padding: '4px 8px 6px', fontSize: 11.5, color: '#64748b' }}>{displayName(naMenu.client)} · {naMenu.label}</div>
-            {(naMenu.client.na_steps || []).includes(naMenu.step)
-              ? <button onClick={() => setNa(naMenu.client, naMenu.step, false)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 13, color: '#0f172a' }}>This step applies to this client again</button>
-              : <button onClick={() => setNa(naMenu.client, naMenu.step, true)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 13, color: '#0f172a' }}>Mark as not applicable for this client<div style={{ fontSize: 11.5, color: '#64748b' }}>Sticks for every period until changed here or in the client modal.</div></button>}
+            {(() => {
+              const item = { display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 13, color: '#0f172a' };
+              const hint = { fontSize: 11.5, color: '#64748b' };
+              const c = naMenu.client, step = naMenu.step;
+              if ((c.na_steps || []).includes(step)) return <button onClick={() => setNa(c, step, false)} style={item}>This step applies again, going forward<div style={hint}>Takes it off the not-applicable list for this client.</div></button>;
+              if (tickOf(c, step)?.state === 'na') return <button onClick={() => setNaPeriod(c, step, false)} style={item}>This step applies this period after all<div style={hint}>Back to a white box for this period.</div></button>;
+              return (<>
+                <button onClick={() => setNaPeriod(c, step, true)} style={item}>Not applicable this period<div style={hint}>Grey for this period only.</div></button>
+                <button onClick={() => setNa(c, step, true)} style={item}>Not applicable going forward<div style={hint}>Grey in every period for this client until changed.</div></button>
+              </>);
+            })()}
           </div>
         </div>
       )}
