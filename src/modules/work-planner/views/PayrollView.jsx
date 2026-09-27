@@ -459,7 +459,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {err && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{err}</div>}
-          <div style={{ borderLeft: '5px solid #0891b2', background: '#ecfeff', borderRadius: '0 8px 8px 0', padding: '10px 14px' }}>
+          <div style={{ border: '3px solid #0891b2', background: '#ecfeff', borderRadius: 10, padding: '10px 14px' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#0e7490', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>Important notes <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· shown on every sheet</span></div>
             <textarea value={form.standing_note} onChange={(e) => set('standing_note', e.target.value)} rows={Math.min(8, Math.max(2, (form.standing_note || '').split(String.fromCharCode(10)).length + 1))} placeholder="Anything the runner must know every time: who sends the hours, when, how payslips go out…"
               style={{ width: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', resize: 'vertical', fontFamily: font, fontSize: 15, fontWeight: 500, lineHeight: 1.5, color: '#164e63', outline: 'none', padding: 0 }} />
