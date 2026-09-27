@@ -98,10 +98,15 @@ export default function FilterBar({
         </>
       )}
 
-      {/* Calendar controls */}
+      {rightSlot && (
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>{rightSlot}</div>
+      )}
+
+      {/* Calendar controls on their own line under the filters, so the
+          new-item buttons keep the right of the first line: view buttons,
+          then Today, then the arrows either side of the range. */}
       {view === 'calendar' && (
-        <>
-          <div style={sepStyle} />
+        <div style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
           {CALENDAR_VIEWS.map((v) => (
             <button
               key={v.id}
@@ -112,13 +117,13 @@ export default function FilterBar({
             </button>
           ))}
           <div style={sepStyle} />
+          <button style={btnStyle} onClick={onCalToday}>Today</button>
           <button style={btnStyle} onClick={() => onCalNav(-1)}>&#8592;</button>
           <span style={{ fontSize: 14, fontWeight: 500, minWidth: 120, textAlign: 'center' }}>
             {calTitle}
           </span>
           <button style={btnStyle} onClick={() => onCalNav(1)}>&#8594;</button>
-          <button style={btnStyle} onClick={onCalToday}>Today</button>
-        </>
+        </div>
       )}
 
       {/* Compact toggle — quick tasks */}
@@ -153,9 +158,6 @@ export default function FilterBar({
           those with no entries in entityList. Null = All; a chosen
           letter filters lists by entity first-letter. Only Quick Tasks
           applies clientLetter, so it only shows there. */}
-      {rightSlot && (
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>{rightSlot}</div>
-      )}
       {view === 'quick' && (
         <div style={{ flexBasis: '100%', marginTop: 4 }}>
           <AlphabetFilter
