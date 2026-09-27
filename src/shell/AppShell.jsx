@@ -3,6 +3,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import AccessGuard from './AccessGuard';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import { BTN } from '../lib/buttonStyles';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -22,6 +23,30 @@ export function useAuth() {
 }
 
 /* ─── App shell — layout route ─────────────────────────────────── */
+// What this person can see (sql/328), read by modules.config's access rules.
+// Null if any part fails to load: the nav then falls back to the static config
+// and the database, which enforces all of this anyway, still decides.
+async function loadAccess(staffId) {
+  try {
+    const [mods, meta, hidden] = await Promise.all([
+      supabase.from('staff_module_access').select('module_key, level').eq('staff_id', staffId),
+      supabase.from('app_modules').select('key, parent_key, grantable, status'),
+      // Paged: with the new-client default switched off, one person could have
+      // hundreds of switched-off clients.
+      fetchAllRows(() => supabase.from('staff_client_access').select('entity_id')
+        .eq('staff_id', staffId).eq('enabled', false).order('entity_id')),
+    ]);
+    if (mods.error || meta.error) return null;
+    return {
+      modules: Object.fromEntries((mods.data || []).map((r) => [r.module_key, r.level])),
+      meta: Object.fromEntries((meta.data || []).map((r) => [r.key, { parent: r.parent_key, grantable: r.grantable, status: r.status }])),
+      hiddenClients: new Set(hidden.map((r) => r.entity_id)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function AppShell() {
   const navigate = useNavigate();
   const [session, setSession] = useState(null);
@@ -176,7 +201,7 @@ export default function AppShell() {
         if (error || !data) {
           setProfile(null);
         } else {
-          setProfile(data);
+          setProfile({ ...data, access: await loadAccess(data.id) });
         }
       } catch {
         setProfile(null);

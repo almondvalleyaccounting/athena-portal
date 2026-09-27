@@ -25,6 +25,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
+import { visibleRealms } from "../_shared/client-figures.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -146,12 +147,14 @@ Deno.serve(async (req) => {
     const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
     const isService = bearer.length > 0
       && (bearer === SUPABASE_SERVICE_ROLE_KEY || roleFromJwt(bearer) === "service_role");
+    let staffId: string | null = null;
     if (!isService) {
       const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
       const { data: { user } } = await anon.auth.getUser();
       if (!user) return jr({ error: "Invalid token" }, 401);
       const { data: p } = await sb.from("staff_profiles").select("can_view_reports").eq("id", user.id).maybeSingle();
       if (!p?.can_view_reports) return jr({ error: "Not authorised" }, 403);
+      staffId = user.id;
     }
 
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
@@ -196,9 +199,16 @@ Deno.serve(async (req) => {
     const { data: toks } = await sb.from("qbo_report_tokens").select("realm_id").eq("status", "active");
     const haveToken = new Set((toks || []).map((t: any) => t.realm_id));
 
+    // Clients whose figures are switched off for a staff caller are left out
+    // (sql/328). null = everyone (the cron).
+    const allowed = staffId
+      ? await visibleRealms({ kind: "staff", userId: staffId }, ["cw-dashboard", "cw-portfolio", "cw-reports", "working-papers"], (conns || []).map((c: any) => c.realm_id))
+      : null;
+
     const pairs: any[] = [];
     for (const c of (conns || [])) {
       if (!haveToken.has(c.realm_id)) continue;
+      if (allowed && !allowed.has(c.realm_id)) continue;
       const k = norm(c.company_name);
       const emp = expected.find((e: any) => e.destination_realm === c.realm_id)
         || expected.find((e: any) => [e.destination_company, e.brightpay_name, e.sheet_name]

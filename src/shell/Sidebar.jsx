@@ -26,7 +26,7 @@ import {
   Settings,
   Home,
 } from 'lucide-react';
-import { MODULES } from '../modules.config';
+import { MODULES, isItemVisible, isAdmin, landingRoute, isModuleInDevelopment } from '../modules.config';
 import { useAuth } from './AppShell';
 
 /* ─── Icon map — Lucide icons keyed by modules.config icon string ── */
@@ -57,10 +57,9 @@ function isModuleVisible(mod, profile) {
   const isManager = false; // role column not yet in DB
 
   if (mod.status === 'live') {
-    // No permissions required → visible to all
-    if (!mod.permissions || mod.permissions.length === 0) return true;
-    // Check each permission flag on profile
-    return mod.permissions.every((perm) => profile?.[perm] === true);
+    // Module access per person (Staff & Permissions) plus any ability flags —
+    // the same rule the route guard applies (modules.config isItemVisible).
+    return isItemVisible(profile, mod);
   }
 
   if (mod.status === 'planned') {
@@ -164,7 +163,8 @@ export default function Sidebar() {
   const adminChildren = [
     { id: 'settings-me', label: 'My settings', route: '/settings/me' },
     { id: 'settings-shortcuts', label: 'Keyboard shortcuts', route: '/settings/shortcuts' },
-    isOwner && { id: 'admin-staff', label: 'Staff & permissions', route: '/admin/staff' },
+    // Only a portal admin can change what anyone else sees.
+    isAdmin(profile) && { id: 'admin-staff', label: 'Staff & permissions', route: '/admin/staff' },
     isOwner && { id: 'admin-portal-clients', label: 'Portal clients', route: '/admin/portal-clients' },
     isOwner && { id: 'admin-dashboard-access', label: 'Client dashboard access', route: '/admin/dashboard-access' },
     isOwner && { id: 'admin-kpi-packs', label: 'KPI packs', route: '/admin/kpi-packs' },
@@ -263,13 +263,7 @@ export default function Sidebar() {
   };
 
   // Filter children by permissions
-  const visibleChildren = (children) => {
-    if (!children) return [];
-    return children.filter((child) => {
-      if (!child.permissions || child.permissions.length === 0) return true;
-      return child.permissions.every((p) => profile?.[p] === true);
-    });
-  };
+  const visibleChildren = (mod) => (mod.children || []).filter((child) => isItemVisible(profile, mod, child));
 
   // The main modules that will actually be drawn: a parent with children but
   // none visible to this user is skipped (Work always has Admin Task List for
@@ -277,7 +271,7 @@ export default function Sidebar() {
   const shownMain = mainModules.filter((mod) => {
     if (!mod.children || mod.children.length === 0) return true;
     if (mod.id === 'work-planner' && canAdminTasks) return true;
-    return visibleChildren(mod.children).length > 0;
+    return visibleChildren(mod).length > 0;
   });
 
   return (
@@ -376,7 +370,10 @@ export default function Sidebar() {
           const clickable = isModuleClickable(mod);
           const hasChildren = mod.children && mod.children.length > 0;
           const isExpanded = expandedModules[mod.id] && !collapsed;
-          let kids = visibleChildren(mod.children);
+          let kids = visibleChildren(mod);
+          // A module's own route can be a page this person can't see (Work's is
+          // the in-development Planner), so land on its first visible page.
+          const landing = landingRoute(profile, mod);
           // Admin Task List lives under Work now — it's practice admin (BM
           // task keying, escalations), not system admin. Its OR-based
           // permission (see canAdminTasks above) doesn't fit the AND-only
@@ -395,13 +392,13 @@ export default function Sidebar() {
               <NavItem
                 icon={IconComp}
                 label={mod.label}
-                href={mod.route}
+                href={landing}
                 active={active}
                 collapsed={collapsed}
                 clickable={clickable}
                 planned={mod.status === 'planned'}
                 beta={mod.status === 'beta'}
-                inDevelopment={mod.inDevelopment}
+                inDevelopment={isModuleInDevelopment(profile, mod.id)}
                 hasChevron={hasChildren && !collapsed}
                 chevronOpen={isExpanded}
                 onClick={() => {
@@ -413,13 +410,13 @@ export default function Sidebar() {
                     } else {
                       // Collapsed — expand and navigate to module root
                       toggleExpand(mod.id);
-                      navigate(mod.route);
+                      navigate(landing);
                     }
                   } else {
-                    navigate(mod.route);
+                    navigate(landing);
                   }
                 }}
-                onContextMenu={(e) => clickable && openCtxMenu(e, mod.route, mod.label)}
+                onContextMenu={(e) => clickable && openCtxMenu(e, landing, mod.label)}
               />
               {/* Sub-items */}
               {isExpanded && kids.length > 0 && (
@@ -463,7 +460,7 @@ export default function Sidebar() {
                       }}>
                         {child.label}
                       </span>
-                      {child.inDevelopment && <span style={{ marginLeft: 'auto', paddingLeft: 4, display: 'flex' }}><InDevelopmentTag short /></span>}
+                      {isModuleInDevelopment(profile, child.id) && <span style={{ marginLeft: 'auto', paddingLeft: 4, display: 'flex' }}><InDevelopmentTag short /></span>}
                     </a>
                   ))}
                 </div>

@@ -55,6 +55,7 @@
 // live_billing itself.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { requireClientFigures } from "../_shared/client-figures.ts";
 import { signFeeAcceptToken, feeAcceptUrl } from "../_shared/fee-accept-token.ts";
 import { missedInvoices, catchupPeriod, catchupFor, catchupInvoiceLines, templateIntervalMonths } from "../_shared/catchup.ts";
 
@@ -94,6 +95,19 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const audit = (action: string, id: string, detail: Record<string, unknown>) =>
     sb.from("audit_log").insert({ user_id: userId, action, entity_type: "fee_proposal", entity_id: id, detail });
+
+  // This client's fees can be switched off for this person (Staff &
+  // Permissions, sql/328). Every action names the client directly or through
+  // its proposal; this function writes with the service role, so it checks.
+  let targetEntity = body.entity_id ? String(body.entity_id) : null;
+  if (!targetEntity && body.proposal_id) {
+    const { data: fp } = await sb.from("fee_proposals").select("entity_id").eq("id", String(body.proposal_id)).maybeSingle();
+    targetEntity = fp?.entity_id ?? null;
+  }
+  if (targetEntity) {
+    try { await requireClientFigures(caller, ["clients", "fee-engine", "billing"], { entityId: targetEntity }); }
+    catch (err) { return authErrorResponse(err, corsHeaders); }
+  }
 
   switch (body.action) {
     case "issue": return await issue(sb, body, userId, audit);

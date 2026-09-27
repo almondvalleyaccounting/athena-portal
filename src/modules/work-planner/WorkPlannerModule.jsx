@@ -902,7 +902,6 @@ export default function WorkPlannerModule() {
           clientFilter={clientFilter} setClientFilter={setClientFilter}
           clientLetter={clientLetter} setClientLetter={setClientLetter}
           serviceFilter={serviceFilter} setServiceFilter={setServiceFilter}
-          statusFilter={statusFilter} setStatusFilter={setStatusFilter}
           view={activeTab}
           calendarView={calendarView} setCalendarView={setCalendarView}
           calTitle={calTitle()} onCalNav={calNav} onCalToday={() => setAnchor(new Date(today()))}

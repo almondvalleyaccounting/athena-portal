@@ -2,10 +2,19 @@
 // Headings appear where the section changes, so keep a section's modules
 // together in this list.
 //
-// `inDevelopment: true` marks a module or sub-item Bobby has said is only
-// partly built (2026-09-24). It stays in the nav, tagged, so the team can tell
-// what to rely on. Everything unmarked is trusted. Re-ask as modules graduate —
-// don't flip a flag on your own judgement.
+// Who sees what is decided per person on Staff & Permissions (sql/328), not
+// here: app_modules / staff_module_access, loaded onto the profile as
+// profile.access. moduleGranted() below mirrors the SQL function of the same
+// name. `permissions` now lists only ABILITIES inside a module (Pricing needs
+// can_edit_fee_schedule); whether someone has the module at all is their
+// module access.
+//
+// `inDevelopment: true` is only the fallback if the database hasn't loaded. The
+// live status is app_modules.status, which Bobby changes from Staff &
+// Permissions. An in-development module is hidden from everyone except admins
+// and the testers ticked for it (Bobby, 2026-09-27 — this replaced the
+// 2026-09-24 "tag, don't hide" treatment). Don't flip a status on your own
+// judgement.
 export const MODULES = [
   {
     id: 'fee-engine',
@@ -13,7 +22,7 @@ export const MODULES = [
     label: 'Fee Engine',
     route: '/manage',
     icon: 'receipt',
-    permissions: ['can_view_quotes'],
+    permissions: [],
     status: 'live',
     group: 'billing',
     children: [
@@ -32,7 +41,7 @@ export const MODULES = [
     label: 'Billing',
     route: '/billing',
     icon: 'file-text',
-    permissions: ['can_view_billing'],
+    permissions: [],
     status: 'live',
     group: 'billing',
   },
@@ -52,7 +61,7 @@ export const MODULES = [
     label: 'Onboarding',
     route: '/onboarding',
     icon: 'user-plus',
-    permissions: ['can_view_onboarding'],
+    permissions: [],
     status: 'live',
     group: 'billing',
     children: [
@@ -85,7 +94,7 @@ export const MODULES = [
     label: 'Work',
     route: '/planner',
     icon: 'clock',
-    permissions: ['work_planner'],
+    permissions: [],
     status: 'live',
     group: 'team',
     children: [
@@ -143,7 +152,6 @@ export const MODULES = [
         label: 'Timesheets',
         route: '/timesheets',
         inDevelopment: true,
-        permissions: ['can_view_timesheets'],
         matchPaths: ['/timesheets'],
       },
       { id: 'wp-triage', label: 'Triage Board', route: '/triage', matchPaths: ['/triage'], inDevelopment: true },
@@ -159,9 +167,9 @@ export const MODULES = [
     status: 'live',
     group: 'data',
     children: [
-      { id: 'cw-dashboard', label: 'Client Dashboard', route: '/client-dashboard', permissions: ['can_view_reports'] },
-      { id: 'cw-portfolio', label: 'Portfolio', route: '/portfolio', permissions: ['can_view_reports'] },
-      { id: 'cw-reports', label: 'Client Reports', route: '/reports', permissions: ['can_view_reports'] },
+      { id: 'cw-dashboard', label: 'Client Dashboard', route: '/client-dashboard' },
+      { id: 'cw-portfolio', label: 'Portfolio', route: '/portfolio' },
+      { id: 'cw-reports', label: 'Client Reports', route: '/reports' },
       {
         id: 'cw-hmrc',
         label: 'HMRC',
@@ -176,7 +184,7 @@ export const MODULES = [
                      '/hmrc/client', '/hmrc/statement', '/hmrc/payments', '/hmrc/trend', '/hmrc/balance',
                      '/hmrc/reconciliation', '/hmrc/authorisations'],
       },
-      { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['can_manage_portal'] },
+      { id: 'cw-forecast', label: 'Client Forecast', route: '/forecast', permissions: ['is_portal_admin'] },
     ],
   },
   {
@@ -185,9 +193,7 @@ export const MODULES = [
     label: 'Working Papers',
     route: '/working-papers',
     icon: 'file-spreadsheet',
-    // Same gate as the HMRC module and Client Reports: these papers put HMRC's
-    // account, a client's ledger and their payroll on one page.
-    permissions: ['can_view_reports'],
+    permissions: [],
     status: 'live',
     inDevelopment: true,
     group: 'data',
@@ -204,7 +210,8 @@ export const MODULES = [
     label: 'Practice Planning',
     route: '/planning',
     icon: 'trending-up',
-    permissions: ['can_manage_portal'],
+    // The practice's own books.
+    permissions: ['can_view_practice_financials'],
     status: 'live',
     inDevelopment: true,
     group: 'data',
@@ -215,7 +222,7 @@ export const MODULES = [
     label: 'CPD Tracker',
     route: '/team/pd',
     icon: 'graduation-cap',
-    permissions: ['can_view_pd_tracker'],
+    permissions: [],
     status: 'live',
     group: 'team',
   },
@@ -225,7 +232,7 @@ export const MODULES = [
     label: 'Recruitment',
     route: '/recruitment',
     icon: 'user-check',
-    permissions: ['can_view_recruitment'],
+    permissions: [],
     status: 'live',
     inDevelopment: true,
     group: 'team',
@@ -256,27 +263,99 @@ export const MODULES = [
   },
 ];
 
-// Pages that belong to an in-development area, for the "In development" tag
-// in the top bar. Explicit because several areas are reached through routes
-// the nav doesn't list (onboarding detail pages, planner tabs, planner setup)
-// and because trusted pages share prefixes with unfinished ones — /planner/ready
-// and /planner/tasks are trusted, the rest of /planner is not.
-const DEV_EXACT = ['/planner', '/onboarding'];
-const DEV_PREFIXES = [
-  '/manage/billing',
-  '/onboarding/list', '/onboarding/board', '/onboarding/cross-check', '/onboarding/new', '/onboarding/updates',
-  '/planner/day', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed',
-  '/planner/bookkeeping-health', '/planner/drift',
-  '/planner/allocations', '/planner/capacity',
-  '/planner/review', '/planner/setup',
-  '/timesheets', '/triage', '/hmrc', '/working-papers', '/planning', '/recruitment',
-];
-const ONBOARDING_DETAIL = /^\/onboarding\/[0-9a-f-]{36}(\/|$)/i;
+// ─── Access (sql/328) ─────────────────────────────────────────────────────────
+//
+// profile.access is loaded by AppShell:
+//   modules  { [key]: level }                   this person's staff_module_access rows
+//   meta     { [key]: { parent, grantable, status } }   app_modules
+//   hiddenClients  Set of entity ids whose figures are switched off for them
+// If it failed to load, access is null and the nav falls back to the static
+// inDevelopment tags and the ability flags alone — the database still enforces.
 
-export function isInDevelopmentPath(pathname) {
-  if (DEV_EXACT.includes(pathname)) return true;
-  if (ONBOARDING_DETAIL.test(pathname)) return true;
-  return DEV_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+const byId = (() => {
+  const m = {};
+  for (const mod of MODULES) {
+    m[mod.id] = { item: mod, parent: null };
+    for (const c of mod.children || []) m[c.id] = { item: c, parent: mod.id };
+  }
+  return m;
+})();
+
+// The one heading that isn't a module: Client Work's children are the modules.
+export const CONTAINER_IDS = new Set(['client-work']);
+
+export function isAdmin(profile) {
+  return profile?.is_portal_admin === true;
+}
+
+export function moduleStatus(profile, key) {
+  const s = profile?.access?.meta?.[key]?.status;
+  if (s) return s;
+  return byId[key]?.item?.inDevelopment ? 'in_development' : 'live';
+}
+
+export const isModuleInDevelopment = (profile, key) => moduleStatus(profile, key) === 'in_development';
+
+// Mirrors public.module_granted(): admins always; otherwise the parent must be
+// granted, and a grantable or in-development key needs this person's own row.
+export function moduleGranted(profile, key) {
+  if (!profile) return false;
+  if (isAdmin(profile)) return true;
+  const access = profile.access;
+  const meta = access?.meta?.[key];
+  if (!access || !meta) {
+    // Not loaded, or a key the database doesn't know (the injected Admin task
+    // list). Fall back to hiding only what the static config calls unfinished.
+    const parent = byId[key]?.parent;
+    if (parent && !moduleGranted(profile, parent)) return false;
+    return !byId[key]?.item?.inDevelopment || !access;
+  }
+  if (meta.parent && !moduleGranted(profile, meta.parent)) return false;
+  if (meta.grantable || meta.status === 'in_development') return key in access.modules;
+  return true;
+}
+
+export const moduleLevel = (profile, key) => (isAdmin(profile) ? 'approver' : profile?.access?.modules?.[key] ?? null);
+
+const hasAll = (profile, perms) => (perms || []).every((perm) => profile?.[perm] === true);
+
+// Is this sidebar item shown to this person? Admins see everything.
+export function isItemVisible(profile, mod, child = null) {
+  if (!profile) return false;
+  if (isAdmin(profile)) return true;
+  if (child) {
+    return (CONTAINER_IDS.has(mod.id) || isItemVisible(profile, mod))
+      && moduleGranted(profile, child.id) && hasAll(profile, child.permissions);
+  }
+  if (CONTAINER_IDS.has(mod.id)) return (mod.children || []).some((c) => moduleGranted(profile, c.id) && hasAll(profile, c.permissions));
+  return moduleGranted(profile, mod.id) && hasAll(profile, mod.permissions);
+}
+
+// Where clicking a module should land: its own route if this person can see it,
+// otherwise its first visible child (Work's own route is the in-development
+// Planner, so most of the team lands on Ready Now).
+export function landingRoute(profile, mod) {
+  const kids = (mod.children || []).filter((c) => isItemVisible(profile, mod, c));
+  const own = kids.find((c) => c.route === mod.route);
+  if (own || kids.length === 0) return mod.route;
+  return kids[0].route;
+}
+
+// Pages outside the nav that belong to an in-development area, keyed by the
+// module whose status they follow.
+const ONBOARDING_DETAIL = /^\/onboarding\/[0-9a-f-]{36}(\/|$)/i;
+const EXTRA_DEV_PATHS = [
+  { key: 'onboarding-list', test: (p) => ONBOARDING_DETAIL.test(p) || ['/onboarding/new', '/onboarding/updates'].some((x) => p === x || p.startsWith(x + '/')) },
+  { key: 'wp-task', test: (p) => p === '/planner/setup' || p.startsWith('/planner/setup/') },
+];
+
+export function isInDevelopmentPath(pathname, profile) {
+  const extra = EXTRA_DEV_PATHS.find((x) => x.test(pathname));
+  if (extra) return isModuleInDevelopment(profile, extra.key);
+  const match = findNavMatch(pathname);
+  if (!match) return false;
+  if (match.child && isModuleInDevelopment(profile, match.child.id)) return true;
+  return isModuleInDevelopment(profile, match.mod.id);
 }
 
 // Which module (and child) a path belongs to. Children are matched first,
@@ -300,9 +379,7 @@ export function findNavMatch(pathname) {
   return mod ? { mod, child: null } : null;
 }
 
-const hasAll = (profile, perms) => (perms || []).every((perm) => profile?.[perm] === true);
-
-// Can this person open this page? The same flags that decide what the sidebar
+// Can this person open this page? The same rule that decides what the sidebar
 // shows (Bobby, 2026-09-24: "match the sidebar strictly"), so a page that isn't
 // in your sidebar can't be reached by typing its address or following a link.
 // The database's own rules still apply underneath — this is the front door,
@@ -313,6 +390,7 @@ export function canAccessPath(pathname, profile) {
 
   // Screens outside modules.config, with the rules the sidebar uses for them.
   if (pathname.startsWith('/admin/import')) return any('can_import_data', 'is_portal_admin');
+  if (pathname.startsWith('/admin/staff')) return isAdmin(profile);
   if (pathname.startsWith('/admin') || pathname.startsWith('/kpis')) return any('can_manage_portal');
   if (pathname.startsWith('/planner/tasks')) return any('work_planner', 'can_view_onboarding', 'is_portal_admin');
   if (pathname.startsWith('/planner/setup')) return any('is_portal_admin', 'can_import_data');
@@ -320,5 +398,15 @@ export function canAccessPath(pathname, profile) {
   const match = findNavMatch(pathname);
   if (!match) return true; // /home, /settings, /security, unknown paths (the router sends those home)
   if (match.mod.status !== 'live') return any('can_manage_portal');
-  return hasAll(profile, match.mod.permissions) && hasAll(profile, match.child?.permissions);
+  if (match.child) return isItemVisible(profile, match.mod, match.child);
+  if (CONTAINER_IDS.has(match.mod.id)) return isItemVisible(profile, match.mod);
+  return isItemVisible(profile, match.mod);
+}
+
+// Figures for this client are switched off for this person (Staff & Permissions
+// › Clients). The database already returns nothing; screens use this to say so
+// instead of showing a misleading £0 or an empty chart.
+export function clientFiguresHidden(profile, entityId) {
+  if (!profile || !entityId || isAdmin(profile)) return false;
+  return profile.access?.hiddenClients?.has(entityId) === true;
 }

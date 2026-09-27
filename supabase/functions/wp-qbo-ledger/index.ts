@@ -34,6 +34,7 @@
 
 import { qboFetch, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { requireClientFigures } from "../_shared/client-figures.ts";
 
 const cors = corsHeaders();
 
@@ -156,7 +157,8 @@ function harvestAccount(report: unknown, accountId: string) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
-  try { await requireStaffOrService(req, "can_view_reports"); }
+  let caller;
+  try { caller = await requireStaffOrService(req, "can_view_reports"); }
   catch (e) { return authErrorResponse(e, cors); }
 
   try {
@@ -168,6 +170,11 @@ Deno.serve(async (req) => {
     const accountId = pick("account_id");
     if (!realmId) return jsonResponse({ success: false, error: "realm_id is required" }, 400);
     if (!accountId) return jsonResponse({ success: false, error: "account_id is required" }, 400);
+
+    // Working Papers access, this client switched on, and the practice-books
+    // rule (sql/328). Machines pass.
+    try { await requireClientFigures(caller, ["working-papers"], { realmId }); }
+    catch (e) { return authErrorResponse(e, cors); }
 
     const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
     const start = pick("start") || LEDGER_EPOCH;

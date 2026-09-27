@@ -29,6 +29,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
 import { requireStaffOrService, authErrorResponse, type Caller } from "../_shared/require-staff.ts";
+import { requireClientFigures } from "../_shared/client-figures.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -1061,6 +1062,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const realmId = String(body.realmId || body.realm_id || "");
     if (!realmId) return jr({ success: false, error: "realmId required" }, 400);
+
+    // 2a. This client's figures can be switched off for this person (Staff &
+    // Permissions, sql/328). RLS enforces it on the cache; this function reads
+    // with the service role, so it asks the same question itself.
+    try { await requireClientFigures(caller, ["cw-dashboard", "cw-portfolio", "cw-reports", "cw-forecast"], { realmId }); }
+    catch (e) { return authErrorResponse(e, cors); }
 
     // 2b. Practice books (AVA's own QBO) are locked behind a separate flag —
     // this mirrors the restrictive RLS on qbo_report_connections/cache, and

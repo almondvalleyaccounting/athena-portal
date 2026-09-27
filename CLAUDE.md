@@ -120,6 +120,20 @@ is why `qbo_connections`, `gdrive_connections`, `reminder_emails` and
 [sql/256](sql/256_hardening_authz_and_secrets.sql). A `select('*')` against such a
 table fails, so the frontend must name its columns.
 
+### Client figures are switched per person, per client
+
+Since [sql/329](sql/329_staff_module_client_access.sql), Staff & Permissions decides
+access by staff member and by module (`staff_module_access`), and client figures
+per staff member per client too (`staff_client_access`, set by hand; a missing row
+is off). The old module flags (`can_view_billing`, `can_view_reports`, `work_planner`
+…) are derived from module access by trigger, so don't write them directly.
+
+A new table, view or RPC that shows a client's figures must use the same helpers:
+a restrictive policy on `my_figure_entities(modules)` / `my_figure_realms(modules)`
+(short-circuited by `has_all_figures()`), `figures_visible()` inside a definer RPC,
+or `requireClientFigures()` from `_shared/client-figures.ts` in an edge function,
+which runs as `service_role` and so bypasses RLS. Portal admins see everything.
+
 ### A secret belongs to `service_role`, not to staff
 
 Tokens, API keys, cron secrets and magic-link tokens are read by edge functions running

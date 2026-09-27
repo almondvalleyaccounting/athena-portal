@@ -152,7 +152,7 @@ export default function TopBar() {
             </React.Fragment>
           );
         })}
-        {isInDevelopmentPath(location.pathname) && (
+        {isInDevelopmentPath(location.pathname, profile) && (
           <span style={{ marginLeft: 6 }}><InDevelopmentTag /></span>
         )}
       </div>

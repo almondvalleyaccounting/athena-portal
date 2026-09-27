@@ -35,6 +35,7 @@ import {
   getServiceClient, qboFetch, qboQuery, jsonResponse, corsHeaders,
 } from "../_shared/qbo-client.ts";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { requireClientFigures } from "../_shared/client-figures.ts";
 
 const cors = corsHeaders();
 
@@ -198,6 +199,11 @@ Deno.serve(async (req) => {
     const mode = String(body.mode ?? url.searchParams.get("mode") ?? "chart");
     const realmId = String(body.realm_id ?? url.searchParams.get("realm_id") ?? "");
     if (!realmId) return jsonResponse({ success: false, error: "realm_id is required" }, 400);
+
+    // Working Papers access, this client switched on, and the practice-books
+    // rule — all in one question (sql/328). Machines pass.
+    try { await requireClientFigures(caller, ["working-papers"], { realmId }); }
+    catch (e) { return authErrorResponse(e, cors); }
 
     if (mode === "chart") {
       const accounts = await fetchChart(realmId);

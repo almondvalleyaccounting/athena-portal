@@ -19,6 +19,8 @@
 // shape keeps every invocation short and gives the run log a truthful row each.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getValidTokenPair } from "../_shared/qbo-client.ts";
+import { AuthError } from "../_shared/require-staff.ts";
+import { requireClientFigures } from "../_shared/client-figures.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -102,6 +104,11 @@ Deno.serve(async (req) => {
     }
     if (conn.is_practice && !profile.can_view_practice_financials) {
       return jr({ success: false, error: "Not authorised for practice financials" }, 403);
+    }
+    // This client's figures can be switched off for this person (sql/328).
+    try { await requireClientFigures({ kind: "staff", userId: user.id }, ["cw-reports"], { realmId }); }
+    catch (e) {
+      return jr({ success: false, error: e instanceof AuthError ? e.message : "Access check failed" }, e instanceof AuthError ? e.status : 500);
     }
 
     // The sheet keys its Clients tab on realm_id but names files from the client

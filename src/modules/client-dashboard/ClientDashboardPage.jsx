@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { getReportsAuthUrl } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
+import { clientFiguresHidden } from '../../modules.config';
 import { BTN } from '../../lib/buttonStyles';
 import {
   money, timeAgo, shortDate,
@@ -731,7 +732,18 @@ export default function ClientDashboardPage() {
             </div>
           )}
 
-          {realmId && (
+          {/* Figures switched off for this person on Staff & Permissions. The
+              database returns nothing for this client, so say why rather than
+              show an empty dashboard. */}
+          {realmId && clientFiguresHidden(profile, selectedEntityId) && (
+            <div style={{ ...cardStyle, textAlign: 'center', padding: '48px 24px' }}>
+              <div style={{ fontFamily: OUTFIT, fontSize: '14.5px', color: '#64748b' }}>
+                This client's figures are switched off for you. Ask an admin if you need them.
+              </div>
+            </div>
+          )}
+
+          {realmId && !clientFiguresHidden(profile, selectedEntityId) && (
             <>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid #e5e7eb', marginBottom: '20px', flexWrap: 'wrap' }}>

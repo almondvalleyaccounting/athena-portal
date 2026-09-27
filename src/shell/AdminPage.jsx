@@ -4,39 +4,7 @@ import { Palette, UserPlus, Pencil, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { fetchPortalClientIdentifiers } from './portalAccessApi';
 import { BTN } from '../lib/buttonStyles';
-
-/*
-  Permission columns on staff_profiles that map to module access.
-  Each entry: { key: DB column name, label: display label }
-*/
-const PERMISSION_COLS = [
-  { key: 'can_view_quotes', label: 'Quotes' },
-  { key: 'can_edit_quotes', label: 'Edit quotes' },
-  { key: 'can_approve_quotes', label: 'Approve quotes' },
-  { key: 'can_edit_fee_schedule', label: 'Edit pricing' },
-  { key: 'can_view_client_fees', label: 'Client fees' },
-  { key: 'can_view_reports', label: 'Reports' },
-  { key: 'work_planner', label: 'Work planner' },
-  { key: 'can_view_timesheets', label: 'Timesheets' },
-  { key: 'can_view_billing', label: 'Billing' },
-  { key: 'can_approve_billing', label: 'Approve billing' },
-  { key: 'can_view_pd_tracker', label: 'CPD tracker' },
-  { key: 'can_view_onboarding', label: 'Onboarding' },
-  { key: 'can_view_job_review', label: 'Job review' },
-  { key: 'can_view_ch_codes', label: 'Companies House codes' },
-  { key: 'can_import_data', label: 'Data import' },
-  { key: 'can_view_pushed_invoices', label: 'Pushed invoices' },
-  { key: 'can_view_admin_report', label: 'Admin report' },
-  { key: 'can_manage_portal', label: 'System admin' },
-  // AVA's own QBO books — deliberately separate from Portal admin so practice
-  // financials stay director-only even among admins.
-  { key: 'can_view_practice_financials', label: 'Practice financials' },
-  // See Draft admin tasks + release Billed → To Do in the admin-task pipeline.
-  { key: 'can_manage_task_pipeline', label: 'Manage task stages' },
-  // Edit sector KPI packs. Separate from entering one client's figures because
-  // a pack edit reaches every client in the sector at once.
-  { key: 'can_manage_kpi_packs', label: 'KPI packs' },
-];
+import StaffAccessPanel from './staff-access/StaffAccessPanel';
 
 // Use select('*') to avoid failing on missing columns — the admin page
 // renders whatever columns exist and toggles create them on first use
@@ -111,21 +79,12 @@ export default function AdminPage() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  const togglePermission = async (userId, key, currentValue) => {
-    const tag = `${userId}:${key}`;
-    setSaving(tag);
-
-    const { error } = await supabase
-      .from('staff_profiles')
-      .update({ [key]: !currentValue })
-      .eq('id', userId);
-
-    if (!error) {
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, [key]: !currentValue } : u))
-      );
-    }
-    setSaving(null);
+  // After an access change: refetch the profiles (module switches move the
+  // derived flags) without the loading state, which would unmount the panel
+  // and lose who is selected.
+  const refreshUsers = async () => {
+    const { data } = await supabase.from('staff_profiles').select(SELECT_COLS).order('name', { ascending: true });
+    if (data) setUsers(data);
   };
 
   const setUserColour = async (userId, colour) => {
@@ -302,6 +261,73 @@ export default function AdminPage() {
 
   const displayName = (u) => u.name || u.email || 'Unknown';
 
+  const renderProfile = (user) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', fontFamily: font }}>
+      {editingId === user.id ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <input
+            value={editForm.name}
+            onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="Name"
+            style={{ fontFamily: font, fontSize: '14px', padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: '8px', outline: 'none', width: 180 }}
+          />
+          <input
+            value={editForm.email}
+            onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+            placeholder="Email"
+            style={{ fontFamily: font, fontSize: '14px', padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: '8px', outline: 'none', width: 240 }}
+          />
+          <button onClick={() => saveEdit(user.id)} disabled={saving === `${user.id}:edit`} style={{ ...BTN.primary.sm, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Check size={14} /> Save
+          </button>
+          <button onClick={() => setEditingId(null)} style={{ ...BTN.secondary.sm, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <X size={14} /> Cancel
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>{displayName(user)}</div>
+            <div style={{ fontSize: '13px', color: '#94a3b8' }}>{user.email}</div>
+          </div>
+          <button
+            onClick={() => startEdit(user)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+            title="Edit name and email"
+          >
+            <Pencil size={13} style={{ color: '#64748b' }} />
+          </button>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#64748b' }}>
+          Colour
+          <ColourPicker colour={user.colour} onChange={(c) => setUserColour(user.id, c)} />
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#64748b' }}>
+          Working days
+          <WorkingDaysEditor
+            value={user.working_days || 'mon,tue,wed,thu,fri'}
+            onChange={async (days) => {
+              setSaving(`${user.id}:working_days`);
+              await supabase.from('staff_profiles').update({ working_days: days }).eq('id', user.id);
+              setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, working_days: days } : u));
+              setSaving(null);
+            }}
+          />
+        </span>
+        <button
+          onClick={() => handleDelete(user)}
+          disabled={deleting === user.id}
+          style={{ ...BTN.danger.sm, cursor: deleting === user.id ? 'wait' : 'pointer' }}
+          title={`Delete ${displayName(user)}`}
+        >
+          {deleting === user.id ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
+    </div>
+  );
+
   const inputStyle = {
     width: '100%',
     border: '1px solid #e5e7eb',
@@ -342,7 +368,7 @@ export default function AdminPage() {
           marginBottom: '24px',
         }}
       >
-        Manage user access to portal modules.
+        Who can see which modules, and whose figures. Pick a person on the left, or switch to By module.
       </p>
 
       {/* Invite user form */}
@@ -540,280 +566,12 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Permissions grid */}
       {loading ? (
         <p style={{ fontFamily: "'Outfit', sans-serif", fontSize: '14.5px', color: '#94a3b8' }}>
           Loading users...
         </p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'separate',
-              borderSpacing: 0,
-              fontFamily: "'Outfit', sans-serif",
-              fontSize: '14px',
-            }}
-          >
-            <thead>
-              <tr>
-                <th
-                  style={{
-                    textAlign: 'left',
-                    padding: '10px 16px',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                    borderBottom: '2px solid #e5e7eb',
-                    whiteSpace: 'nowrap',
-                    position: 'sticky',
-                    left: 0,
-                    backgroundColor: '#fafafa',
-                    zIndex: 1,
-                  }}
-                >
-                  User
-                </th>
-                <th
-                  style={{
-                    textAlign: 'center',
-                    padding: '10px 12px',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                    borderBottom: '2px solid #e5e7eb',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Colour
-                </th>
-                <th
-                  style={{
-                    textAlign: 'center',
-                    padding: '10px 12px',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                    borderBottom: '2px solid #e5e7eb',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Working Days
-                </th>
-                {PERMISSION_COLS.map((col) => (
-                  <th
-                    key={col.key}
-                    style={{
-                      textAlign: 'center',
-                      padding: '10px 12px',
-                      fontWeight: 600,
-                      color: '#0f172a',
-                      borderBottom: '2px solid #e5e7eb',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {col.label}
-                  </th>
-                ))}
-                <th
-                  style={{
-                    textAlign: 'center',
-                    padding: '10px 12px',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                    borderBottom: '2px solid #e5e7eb',
-                    whiteSpace: 'nowrap',
-                    width: '1%',
-                  }}
-                />
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td
-                    style={{
-                      padding: '10px 16px',
-                      borderBottom: '1px solid #f1f5f9',
-                      whiteSpace: 'nowrap',
-                      position: 'sticky',
-                      left: 0,
-                      backgroundColor: '#fafafa',
-                      zIndex: 1,
-                      minWidth: '200px',
-                    }}
-                  >
-                    {editingId === user.id ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <input
-                          value={editForm.name}
-                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
-                          placeholder="Name"
-                          style={{
-                            fontFamily: font, fontSize: '14px', padding: '4px 8px',
-                            border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', width: '100%',
-                          }}
-                          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
-                          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-                        />
-                        <input
-                          value={editForm.email}
-                          onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                          placeholder="Email"
-                          style={{
-                            fontFamily: font, fontSize: '12px', padding: '4px 8px',
-                            border: '1px solid #e5e7eb', borderRadius: '6px', outline: 'none', width: '100%',
-                          }}
-                          onFocus={(e) => (e.target.style.borderColor = '#38bdf8')}
-                          onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-                        />
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button
-                            onClick={() => saveEdit(user.id)}
-                            disabled={saving === `${user.id}:edit`}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-                              color: '#22c55e', display: 'flex', alignItems: 'center',
-                            }}
-                            title="Save"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-                              color: '#94a3b8', display: 'flex', alignItems: 'center',
-                            }}
-                            title="Cancel"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div>
-                          <div style={{ fontWeight: 500, color: '#0f172a' }}>
-                            {displayName(user)}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                            {user.email}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => startEdit(user)}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-                            opacity: 0.3, transition: 'opacity 0.15s', display: 'flex', alignItems: 'center',
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
-                          title="Edit name and email"
-                        >
-                          <Pencil size={12} style={{ color: '#64748b' }} />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                  <td
-                    style={{
-                      textAlign: 'center',
-                      padding: '6px 8px',
-                      borderBottom: '1px solid #f1f5f9',
-                    }}
-                  >
-                    <ColourPicker
-                      colour={user.colour}
-                      onChange={(c) => setUserColour(user.id, c)}
-                    />
-                  </td>
-                  <td style={{ textAlign: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9' }}>
-                    <WorkingDaysEditor
-                      value={user.working_days || 'mon,tue,wed,thu,fri'}
-                      onChange={async (days) => {
-                        setSaving(`${user.id}:working_days`);
-                        await supabase.from('staff_profiles').update({ working_days: days }).eq('id', user.id);
-                        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, working_days: days } : u));
-                        setSaving(null);
-                      }}
-                    />
-                  </td>
-                  {PERMISSION_COLS.map((col) => {
-                    const val = user[col.key] === true;
-                    const isSaving = saving === `${user.id}:${col.key}`;
-                    return (
-                      <td
-                        key={col.key}
-                        style={{
-                          textAlign: 'center',
-                          padding: '10px 12px',
-                          borderBottom: '1px solid #f1f5f9',
-                        }}
-                      >
-                        <button
-                          onClick={() => togglePermission(user.id, col.key, val)}
-                          disabled={isSaving}
-                          style={{
-                            width: '22px',
-                            height: '22px',
-                            borderRadius: '6px',
-                            border: val ? 'none' : '2px solid #d1d5db',
-                            backgroundColor: val ? '#1E4560' : '#ffffff',
-                            cursor: isSaving ? 'wait' : 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.15s ease',
-                            opacity: isSaving ? 0.5 : 1,
-                          }}
-                          title={`${val ? 'Remove' : 'Grant'} ${col.label} for ${displayName(user)}`}
-                        >
-                          {val && (
-                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                              <path
-                                d="M2.5 6L5 8.5L9.5 3.5"
-                                stroke="#ffffff"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </td>
-                    );
-                  })}
-                  <td
-                    style={{
-                      textAlign: 'center',
-                      padding: '10px 8px',
-                      borderBottom: '1px solid #f1f5f9',
-                    }}
-                  >
-                    <button
-                      onClick={() => handleDelete(user)}
-                      disabled={deleting === user.id}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: deleting === user.id ? 'wait' : 'pointer',
-                        padding: '4px',
-                        opacity: deleting === user.id ? 0.4 : 0.4,
-                        transition: 'opacity 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => { if (deleting !== user.id) e.currentTarget.style.opacity = '1'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.4'; }}
-                      title={`Delete ${displayName(user)}`}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <path d="M2 4h10M5 4V3a1 1 0 011-1h2a1 1 0 011 1v1M11 4v7a1 1 0 01-1 1H4a1 1 0 01-1-1V4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <StaffAccessPanel users={users} onUsersChange={refreshUsers} renderProfile={renderProfile} />
       )}
     </div>
   );

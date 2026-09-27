@@ -2,7 +2,7 @@ import React from 'react';
 import TypeAhead from './TypeAhead';
 import Avatar from './Avatar';
 import AlphabetFilter from '../../../components/AlphabetFilter';
-import { SERVICES, STATUSES, CALENDAR_VIEWS } from '../lib/constants';
+import { SERVICES, CALENDAR_VIEWS } from '../lib/constants';
 import { teamColour } from '../lib/helpers';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -25,7 +25,6 @@ export default function FilterBar({
   clientFilter, setClientFilter,
   clientLetter, setClientLetter,
   serviceFilter, setServiceFilter,
-  statusFilter, setStatusFilter,
   // Calendar-specific
   view,
   calendarView, setCalendarView,
@@ -49,7 +48,6 @@ export default function FilterBar({
 
   const entityItems = entityList.map((e) => ({ id: e.id, label: e.name }));
   const serviceItems = SERVICES.map((s) => ({ id: s, label: s }));
-  const statusItems = STATUSES.map((s) => ({ id: s.id, label: s.label }));
 
   return (
     <div
@@ -80,24 +78,21 @@ export default function FilterBar({
         </div>
       ))}
 
-      {view !== 'ready' && view !== 'mytasks' && (
+      {/* Only the controls a view reads (audit 2026-09-27): Client on Quick
+          Tasks, Planner, Stage board, Completed; Service on Quick Tasks,
+          Blocks, Planner, Completed. No view reads Status, so it is gone. */}
+      {['quick', 'calendar', 'kanban', 'completed'].includes(view) && (
         <>
           <div style={sepStyle} />
           <span style={labelStyle}>Client</span>
           <TypeAhead items={entityItems} value={clientFilter} onChange={setClientFilter} placeholder="Client..." />
-
+        </>
+      )}
+      {['quick', 'sched', 'calendar', 'completed'].includes(view) && (
+        <>
           <div style={sepStyle} />
           <span style={labelStyle}>Service</span>
           <TypeAhead items={serviceItems} value={serviceFilter} onChange={setServiceFilter} placeholder="Service..." />
-
-          {/* Quick tasks carry no status, so the filter is meaningless there. */}
-          {view !== 'quick' && (
-            <>
-              <div style={sepStyle} />
-              <span style={labelStyle}>Status</span>
-              <TypeAhead items={statusItems} value={statusFilter} onChange={setStatusFilter} placeholder="Status..." />
-            </>
-          )}
         </>
       )}
 

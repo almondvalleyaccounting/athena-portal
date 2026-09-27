@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, Copy, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../shell/AppShell';
+import { clientFiguresHidden } from '../../modules.config';
 import { Btn } from '../../components/ui';
 import { approvedServicesOf, feeTotals, underBillingOf, yearlyFeeOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
@@ -32,9 +33,12 @@ export default function ClientDetailView() {
   // Client fees are confidential: money renders only for staff with the
   // fee-visibility flags (RLS enforces the same at the data layer, so this
   // gate is presentation — without it the tiles would show misleading £0s).
-  const canSeeFees = profile?.can_view_client_fees === true;
-  const canSeeQuotes = profile?.can_view_quotes === true || canSeeFees;
-  const canSeeBillingQueue = profile?.can_view_billing === true || canSeeFees;
+  // A client can also be switched off for one person (Staff & Permissions ›
+  // Clients, sql/328): its fees are hidden from them the same way.
+  const figuresHidden = clientFiguresHidden(profile, id);
+  const canSeeFees = profile?.can_view_client_fees === true && !figuresHidden;
+  const canSeeQuotes = (profile?.can_view_quotes === true || canSeeFees) && !figuresHidden;
+  const canSeeBillingQueue = (profile?.can_view_billing === true || canSeeFees) && !figuresHidden;
   const [entity, setEntity] = useState(null);
   const [billing, setBilling] = useState([]);
   const [quotes, setQuotes] = useState([]);

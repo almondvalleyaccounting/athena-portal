@@ -1,5 +1,5 @@
 -- ============================================================
--- 328 — Reassign a BrightManager job inside Athena, and make it stick
+-- 330 — Reassign a BrightManager job inside Athena, and make it stick
 --
 -- import_bm_tasks rewrites assignee_id from BM's assignee name on every
 -- nightly import, so an assignee changed in Athena lasted one night. This
@@ -65,4 +65,4 @@ create trigger bm_task_schedule_assignee_override
   for each row execute function public.bm_task_schedule_apply_assignee_override();
 
 comment on column public.bm_task_schedule.assignee_override_id is
-  'Athena-side reassignment (sql/328). Wins over the imported assignee until an import shows BM agreeing, then clears itself.';
+  'Athena-side reassignment (sql/330). Wins over the imported assignee until an import shows BM agreeing, then clears itself.';

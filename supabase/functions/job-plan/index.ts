@@ -1074,7 +1074,7 @@ Deno.serve(async (req) => {
         return json({ success: true, timesheet_id: timesheetId, plan: await loadPlan(plan.id as string), milestones: await milestonesOf(plan.id as string) });
       }
 
-      // Reassign a BM job (sql/328). One-off moves this task; permanent moves
+      // Reassign a BM job (sql/330). One-off moves this task; permanent moves
       // every planned task of the client in the same allocation family and
       // writes the allocation_changes draft the Allocations screen would, so
       // it reaches the admin task list to be moved in BrightManager. The

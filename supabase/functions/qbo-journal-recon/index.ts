@@ -33,6 +33,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { failureUpdate, refreshWithRetry } from "../_shared/oauth-refresh.ts";
 import { monthKey, nameMatches, norm, probeEntry, reconcile } from "../_shared/journal-recon.ts";
+import { AuthError } from "../_shared/require-staff.ts";
+import { requireClientFigures } from "../_shared/client-figures.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -296,6 +298,11 @@ Deno.serve(async (req) => {
         .select("is_practice").eq("realm_id", realmId).maybeSingle();
       if (staff && conn?.is_practice && !staff.can_view_practice_financials) {
         return jr({ error: "Not authorised for practice financials" }, 403);
+      }
+      // This client's figures can be switched off for this person (sql/328).
+      if (staff) {
+        try { await requireClientFigures({ kind: "staff", userId: staff.id }, ["cw-dashboard", "cw-portfolio", "cw-reports", "working-papers"], { realmId }); }
+        catch (e) { return jr({ error: e instanceof AuthError ? e.message : "Access check failed" }, e instanceof AuthError ? e.status : 500); }
       }
 
       if (mode === "probe") {
