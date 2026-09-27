@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Upload, X, Check, ArrowLeft, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Upload, X, Check, ArrowLeft, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { supabase } from '../../../lib/supabase';
 import { SOURCES, SYSTEMS, getSource, getSystemLabel } from '../lib/sources';
@@ -16,6 +16,7 @@ import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmC
 import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
 import { classifyBmTasks, writeBmTasks } from '../lib/writers/bmTasks';
 import { BTN } from '../../../lib/buttonStyles';
+import { brand } from '../../../lib/tokens';
 
 const font = "'Outfit', sans-serif";
 
@@ -131,6 +132,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [runningLock, setRunningLock] = useState(null);
   const [staff, setStaff] = useState([]);
   const [rechecking, setRechecking] = useState(false);
@@ -255,8 +257,9 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   };
 
   const handleRunValidation = async () => {
-    if (!file || !preview) return;
+    if (!file || !preview || validating) return;
     setError(null);
+    setValidating(true);
     try {
       const hash = await computeFileHash(file);
       const created = await createImportRun({
@@ -360,6 +363,8 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
       console.error('[DataImport] validation error:', e);
       setError(e.message || 'Validation failed');
       if (run?.id) markFailed(run.id, [{ message: e.message || String(e) }]).catch(() => {});
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -530,22 +535,42 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     }
   };
 
+  const noun = NOUNS[source.key] || 'rows';
+  const stepIndex = { upload: 0, validated: 1, running: 2, done: 3 }[stage] ?? 0;
+
+  // What has to be settled before Import is allowed, each with where it lives.
+  const blockers = [];
+  if (contestedUnresolved > 0) {
+    blockers.push({ text: `${contestedUnresolved} prospect ${contestedUnresolved === 1 ? 'group needs' : 'groups need'} one winner`, target: 'import-conversions' });
+  }
+  if (tier3Pending.length > 0) {
+    blockers.push({ text: `${tier3Pending.length} prospect ${tier3Pending.length === 1 ? 'match needs' : 'matches need'} Confirm or Skip`, target: 'import-conversions' });
+  }
+
+  const decisionCount = source.key === 'bm_clients'
+    ? (validation?.conversions?.length || 0) + (validation?.refChanges?.length || 0) + archiveCandidates.length
+    : null;
+  const hasClientDecisions = source.key === 'bm_clients' && decisionCount > 0;
+  const excludedCount = source.key === 'bm_tasks' && parsedRows
+    ? parsedRows.filter((r) => r.bm_task_name && excludedPrefixes.some((p) => r.bm_task_name.startsWith(p))).length
+    : 0;
+
+  const detailBits = validation ? [
+    source.key !== 'bm_clients' && validation.warningCount ? `${validation.warningCount} per-row messages` : null,
+    source.key === 'bm_clients' && personRefCollisions.length ? `${personRefCollisions.length} shared person references` : null,
+    source.key === 'bm_clients' ? 'people and contacts' : null,
+  ].filter(Boolean) : [];
+
   return (
     <div>
-      {/* Header */}
-      <div style={{ marginBottom: 18 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 19, fontWeight: 600, color: '#0f172a' }}>
           {getSystemLabel(source.system)} — {source.name}
         </h2>
-        {source.tables.length > 0 && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>Populates:</span>
-            {source.tables.map((t) => (
-              <span key={t} style={pill}>{t}</span>
-            ))}
-          </div>
-        )}
+        {source.blurb && <p style={{ fontSize: 13.5, color: '#64748b', marginTop: 3 }}>{source.blurb}</p>}
       </div>
+
+      <Steps current={stepIndex} />
 
       {runningLock && runningLock.id !== run?.id && (
         <div style={banner('amber')}>
@@ -564,85 +589,109 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           onFilePicked={onFilePicked}
           onClear={clearFile}
           onValidate={handleRunValidation}
+          validating={validating}
           disabled={!!runningLock && runningLock.id !== run?.id}
         />
       )}
 
       {stage === 'validated' && validation && (
         <>
-          <button onClick={clearFile} style={{ ...btnGhost, marginBottom: 16 }}>
-            <ArrowLeft size={12} /> Change file
-          </button>
+          <FileBar file={file} preview={previewInfo} onChange={clearFile} />
+
           <ValidationReport
             validation={validation}
             staff={staff}
+            decisionCount={decisionCount}
             onRecheck={source.key === 'bm_tasks' ? handleRecheck : null}
             rechecking={rechecking}
           />
-          {validation.conversions?.length > 0 && (
-            <ConversionPanel
-              groups={conversionGroups}
-              decisions={decisions}
-              setDecisions={setDecisions}
-            />
+
+          {source.key === 'bm_clients' && (
+            <>
+              <SectionTitle note={hasClientDecisions ? 'Each of these changes what the import does. Work down the list.' : null}>
+                Check before importing
+              </SectionTitle>
+              {!hasClientDecisions && (
+                <div style={okBox}>✓ Nothing needs a decision. Every client in the file will import.</div>
+              )}
+              {validation.conversions?.length > 0 && (
+                <div id="import-conversions">
+                  <ConversionPanel
+                    groups={conversionGroups}
+                    decisions={decisions}
+                    setDecisions={setDecisions}
+                  />
+                </div>
+              )}
+              {validation.refChanges?.length > 0 && (
+                <RefChangesPanel
+                  changes={validation.refChanges}
+                  selection={rekeySelection}
+                  setSelection={setRekeySelection}
+                />
+              )}
+              {archiveCandidates.length > 0 && (
+                <ArchiveCandidatesPanel
+                  candidates={archiveCandidates}
+                  presentCount={validation.presentCount}
+                  selection={archiveSelection}
+                  setSelection={setArchiveSelection}
+                />
+              )}
+            </>
           )}
+
+          <SkippedPanel skipped={validation.skippedRows} />
+          {source.key === 'bm_clients' && <WarningsPanel warnings={validation.warnings} />}
+
           {source.key === 'bm_tasks' && parsedRows && (
-            <TaskTypeExclusionsPanel
-              parsedRows={parsedRows}
-              catalogue={prefixCatalogue}
-              excluded={excludedPrefixes}
-              onToggle={toggleExclusion}
-            />
+            <Collapsible
+              title="Task types to import"
+              summary={excludedCount ? `${excludedCount} rows left out by your saved choices` : 'All task types included'}
+            >
+              <TaskTypeExclusionsPanel
+                parsedRows={parsedRows}
+                catalogue={prefixCatalogue}
+                excluded={excludedPrefixes}
+                onToggle={toggleExclusion}
+              />
+            </Collapsible>
           )}
-          {source.key === 'bm_clients' && parsedRows && (
-            <AgentColumnsPanel columns={agentColumns} />
+
+          {detailBits.length > 0 && (
+            <Collapsible title="Details" summary={detailBits.join(' · ')}>
+              {source.key !== 'bm_clients' && <ValidationDetails validation={validation} />}
+              {source.key === 'bm_clients' && parsedRows && (
+                <>
+                  <PersonRefCollisionPanel collisions={personRefCollisions} />
+                  <PeoplePanel summary={personSummary} rowCount={parsedRows.length} />
+                  <AgentColumnsPanel columns={agentColumns} />
+                </>
+              )}
+            </Collapsible>
           )}
-          {source.key === 'bm_clients' && parsedRows && (
-            <PeoplePanel summary={personSummary} rowCount={parsedRows.length} />
-          )}
-          {source.key === 'bm_clients' && parsedRows && (
-            <PersonRefCollisionPanel collisions={personRefCollisions} />
-          )}
-          {source.key === 'bm_clients' && validation.refChanges?.length > 0 && (
-            <RefChangesPanel
-              changes={validation.refChanges}
-              selection={rekeySelection}
-              setSelection={setRekeySelection}
-            />
-          )}
-          {source.key === 'bm_clients' && archiveCandidates.length > 0 && (
-            <ArchiveCandidatesPanel
-              candidates={archiveCandidates}
-              presentCount={validation.presentCount}
-              selection={archiveSelection}
-              setSelection={setArchiveSelection}
-            />
-          )}
-          <ApprovePanel
-            validation={validation}
-            tier3Pending={tier3Pending.length}
-            contestedUnresolved={contestedUnresolved}
-            archiveCount={archiveToApply.length}
+
+          <ImportBar
+            noun={noun}
+            count={validation.valid ?? 0}
             rekeyCount={rekeyToApply.length}
-            onApprove={() => setConfirmVisible(true)}
+            archiveCount={archiveToApply.length}
+            skippedCount={validation.skippedCount || 0}
+            blockers={blockers}
+            confirming={confirmVisible}
+            onImport={() => setConfirmVisible(true)}
+            onBack={() => setConfirmVisible(false)}
+            onConfirm={handleApprove}
             onCancel={handleCancelRun}
           />
-          {confirmVisible && (
-            <ConfirmPrompt
-              archiveCount={archiveToApply.length}
-              onCancel={() => setConfirmVisible(false)}
-              onConfirm={handleApprove}
-            />
-          )}
         </>
       )}
 
       {stage === 'running' && (
-        <ProgressView validation={validation} />
+        <ProgressView noun={noun} count={validation?.valid ?? 0} />
       )}
 
       {stage === 'done' && (
-
         <ResultView
           source={source}
           validation={validation}
@@ -657,66 +706,253 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   );
 }
 
+const NOUNS = { bm_clients: 'clients', bm_tasks: 'tasks' };
+
+/* ─── Steps ─────────────────────────────────────────────────── */
+// Where you are in the import: upload → review → import. `current` is the
+// index of the step in progress; 3 means all done.
+function Steps({ current }) {
+  const labels = ['Upload the file', 'Review', 'Import'];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      {labels.map((label, i) => {
+        const done = i < current;
+        const active = i === current;
+        const on = done || active;
+        return (
+          <React.Fragment key={label}>
+            {i > 0 && <span style={{ flex: '0 0 28px', height: 1, background: on ? brand.solid : '#cbd5e1' }} />}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12.5, fontWeight: 700,
+                background: on ? brand.solid : '#fff',
+                color: on ? '#fff' : '#94a3b8',
+                border: `1.5px solid ${on ? brand.solid : '#cbd5e1'}`,
+              }}>
+                {done ? <Check size={13} /> : i + 1}
+              </span>
+              <span style={{ fontSize: 14, fontWeight: active ? 600 : 500, color: active ? '#0f172a' : done ? '#334155' : '#94a3b8' }}>
+                {label}
+              </span>
+            </span>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+function FileBar({ file, preview, onChange }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 14,
+      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5,
+    }}>
+      <Check size={14} style={{ color: '#15803d', flexShrink: 0 }} />
+      <span style={{ fontWeight: 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file?.name}</span>
+      {preview?.rowCount != null && <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>· {preview.rowCount.toLocaleString()} rows</span>}
+      <button onClick={onChange} style={{ ...BTN.secondary.sm, ...btnIcon, marginLeft: 'auto' }}>
+        <ArrowLeft size={12} /> Use a different file
+      </button>
+    </div>
+  );
+}
+
+function SectionTitle({ children, note }) {
+  return (
+    <div style={{ margin: '22px 0 10px' }}>
+      <h3 style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>{children}</h3>
+      {note && <p style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>{note}</p>}
+    </div>
+  );
+}
+
+// A closed-by-default box for what is worth knowing but asks nothing of you.
+function Collapsible({ title, summary, children }) {
+  return (
+    <details style={{ marginTop: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+      <summary style={{ cursor: 'pointer', padding: '12px 16px', fontSize: 14.5 }}>
+        <span style={{ fontWeight: 600, color: '#0f172a' }}>{title}</span>
+        {summary && <span style={{ fontSize: 13, color: '#64748b', marginLeft: 10 }}>{summary}</span>}
+      </summary>
+      <div style={{ padding: '0 16px 16px' }}>{children}</div>
+    </details>
+  );
+}
+
+/* ─── Import bar ────────────────────────────────────────────────
+   Pinned to the bottom of the screen while you review, so the one button
+   that does the work is always in sight. It used to sit below every panel.
+   ─────────────────────────────────────────────────────────── */
+function ImportBar({ noun, count, rekeyCount, archiveCount, skippedCount, blockers, confirming, onImport, onBack, onConfirm, onCancel }) {
+  const blocked = blockers.length > 0;
+  const n = Number(count).toLocaleString();
+  const extras = [
+    rekeyCount ? `${rekeyCount} moved to a new BM reference` : null,
+    archiveCount ? `${archiveCount} archived` : null,
+    skippedCount ? `${skippedCount} skipped` : null,
+  ].filter(Boolean);
+  const amber = confirming || blocked;
+
+  return (
+    <div style={{
+      position: 'sticky', bottom: 0, zIndex: 10, marginTop: 22,
+      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+      padding: '12px 16px',
+      background: amber ? '#fffbeb' : '#fff',
+      border: `1px solid ${amber ? '#fcd34d' : '#cbd5e1'}`,
+      borderRadius: 10, boxShadow: '0 -6px 20px rgba(15,23,42,0.08)',
+    }}>
+      <div style={{ flex: 1, minWidth: 220 }}>
+        {confirming ? (
+          <>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: '#78350f' }}>Import {n} {noun}? This can&apos;t be undone.</div>
+            {archiveCount > 0 && (
+              <div style={{ fontSize: 13, color: '#92400e' }}>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</div>
+            )}
+          </>
+        ) : blocked ? (
+          <>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: '#78350f', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle size={14} style={{ color: '#d97706' }} /> Before you can import
+            </div>
+            {blockers.map((b) => (
+              <div key={b.text} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#92400e', marginTop: 4 }}>
+                <span>{b.text}</span>
+                {b.target && (
+                  <button
+                    onClick={() => document.getElementById(b.target)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                    style={BTN.secondary.sm}
+                  >
+                    Show me
+                  </button>
+                )}
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>Ready to import {n} {noun}</div>
+            {extras.length > 0 && <div style={{ fontSize: 13, color: '#64748b' }}>{extras.join(' · ')}</div>}
+          </>
+        )}
+      </div>
+      {confirming ? (
+        <>
+          <button onClick={onBack} style={BTN.secondary.md}>Back</button>
+          <button onClick={onConfirm} style={{ ...BTN.primary.md, ...btnIcon }}>Yes, import {n} {noun}</button>
+        </>
+      ) : (
+        <>
+          <button onClick={onCancel} style={BTN.danger.md}>Cancel import</button>
+          <button
+            onClick={onImport}
+            disabled={blocked}
+            style={{ ...BTN.primary.md, ...btnIcon, opacity: blocked ? 0.45 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
+          >
+            Import {n} {noun}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+const okBox = {
+  padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8,
+  fontSize: 14, color: '#065f46', marginBottom: 12,
+};
+
 /* ─── Upload zone ───────────────────────────────────────────── */
-function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, disabled }) {
+function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, validating, disabled }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = React.useRef(null);
 
-  if (file && preview) {
-    return (
-      <div>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 14px', border: '1px solid #d1fae5', background: '#ecfdf5',
-          borderRadius: 8, marginBottom: 12,
-        }}>
-          <Check size={14} style={{ color: '#15803d' }} />
-          <span style={{ fontSize: 14, fontWeight: 500, color: '#065f46' }}>{file.name}</span>
-          <span style={{ fontSize: 13, color: '#64748b' }}>
-            · {preview.rowCount !== null ? `${preview.rowCount.toLocaleString()} rows detected` : 'XLSX preview not parsed'} {preview.columnCount !== null ? `· ${preview.columnCount} columns` : ''}
-          </span>
-          <button onClick={onClear} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer' }}>
-            <X size={14} style={{ color: '#94a3b8' }} />
-          </button>
-        </div>
-        <button disabled={disabled} onClick={onValidate} style={{ ...BTN.primary.md, ...btnIcon, opacity: disabled ? 0.45 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
-          Run validation →
+  const picked = file && preview ? (
+    <div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 14px', border: '1px solid #d1fae5', background: '#ecfdf5',
+        borderRadius: 8, marginBottom: 14,
+      }}>
+        <Check size={14} style={{ color: '#15803d', flexShrink: 0 }} />
+        <span style={{ fontSize: 14, fontWeight: 500, color: '#065f46', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+        <span style={{ fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>
+          {preview.rowCount !== null ? `· ${preview.rowCount.toLocaleString()} rows` : ''}
+        </span>
+        <button onClick={onClear} disabled={validating} style={{ ...BTN.secondary.sm, ...btnIcon, marginLeft: 'auto' }}>
+          <X size={12} /> Remove
         </button>
       </div>
-    );
-  }
+      <button
+        disabled={disabled || validating}
+        onClick={onValidate}
+        style={{ ...BTN.primary.md, ...btnIcon, opacity: disabled ? 0.45 : 1, cursor: disabled || validating ? 'not-allowed' : 'pointer' }}
+      >
+        {validating ? (
+          <><Loader2 size={14} className="animate-spin" /> Checking {preview.rowCount ? `${preview.rowCount.toLocaleString()} rows` : 'the file'}…</>
+        ) : (
+          <>Check the file →</>
+        )}
+      </button>
+      {validating && (
+        <p style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+          Matching every row against Athena. This takes up to 30 seconds and changes nothing yet.
+        </p>
+      )}
+      {!validating && (
+        <p style={{ fontSize: 13, color: '#64748b', marginTop: 8 }}>
+          Nothing is written until you press Import at the end.
+        </p>
+      )}
+    </div>
+  ) : (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault(); setDragging(false);
+        const f = e.dataTransfer.files?.[0]; if (f) onFilePicked(f);
+      }}
+      onClick={() => inputRef.current?.click()}
+      style={{
+        border: `2px dashed ${dragging ? '#38bdf8' : '#cbd5e1'}`,
+        borderRadius: 12, padding: '40px 20px',
+        background: dragging ? '#f0f9ff' : '#fff',
+        cursor: 'pointer', textAlign: 'center',
+        transition: 'all 0.15s',
+      }}
+    >
+      <Upload size={28} style={{ color: '#94a3b8', marginBottom: 10 }} />
+      <p style={{ fontSize: 14.5, fontWeight: 500, color: '#1e293b', marginBottom: 10 }}>
+        Drop the {source.accepts.toUpperCase()} file here
+      </p>
+      <span style={{ ...BTN.secondary.sm, display: 'inline-block' }}>Choose file</span>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={source.accepts}
+        style={{ display: 'none' }}
+        onChange={(e) => onFilePicked(e.target.files?.[0])}
+      />
+    </div>
+  );
 
   return (
-    <div>
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault(); setDragging(false);
-          const f = e.dataTransfer.files?.[0]; if (f) onFilePicked(f);
-        }}
-        onClick={() => inputRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragging ? '#38bdf8' : '#cbd5e1'}`,
-          borderRadius: 12, padding: '40px 20px',
-          background: dragging ? '#f0f9ff' : '#fafafa',
-          cursor: 'pointer', textAlign: 'center',
-          transition: 'all 0.15s',
-        }}
-      >
-        <Upload size={28} style={{ color: '#94a3b8', marginBottom: 10 }} />
-        <p style={{ fontSize: 14.5, fontWeight: 500, color: '#1e293b', marginBottom: 4 }}>
-          Drop {source.accepts.toUpperCase()} file here
-        </p>
-        <p style={{ fontSize: 13, color: '#94a3b8' }}>or click to browse</p>
-        <input
-          ref={inputRef}
-          type="file"
-          accept={source.accepts}
-          style={{ display: 'none' }}
-          onChange={(e) => onFilePicked(e.target.files?.[0])}
-        />
-      </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(220px, 1fr)', gap: 18, alignItems: 'start' }}>
+      {picked}
+      {source.pullSteps?.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '14px 16px' }}>
+          <p style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
+            Getting the file from {getSystemLabel(source.system)}
+          </p>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#475569', lineHeight: 1.7 }}>
+            {source.pullSteps.map((s) => <li key={s}>{s}</li>)}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }
@@ -804,35 +1040,40 @@ function buildTasksValidation(preview, parsed, matchMap) {
 }
 
 /* ─── Validation report ─────────────────────────────────────── */
-function ValidationReport({ validation, staff, onRecheck, rechecking }) {
-  const { sourceRows, valid, warningCount, skippedCount, rowCounts, warnings, skippedRows, notes, rollups } = validation;
+function ValidationReport({ validation, staff, decisionCount, onRecheck, rechecking }) {
+  const { sourceRows, valid, skippedCount, notes, rollups } = validation;
 
-  // Rolled-up "needs attention" count — rows that have at least one
-  // unresolved cause. Falls back to warnings when rollups aren't built.
-  const needsAttention = rollups
-    ? (rollups.totals.entityMissing + rollups.totals.ruleMissing + rollups.totals.assigneeUnmapped)
-    : warningCount;
+  // References someone chose to ignore stop asking for a decision, so they
+  // don't count towards "To check" (the panel lists them separately).
+  const [ignoredRefs, setIgnoredRefs] = useState(() => new Set());
+  useEffect(() => {
+    if (!rollups) return undefined;
+    let live = true;
+    supabase.from('import_ignored_bm_refs').select('bm_client_id').then(({ data }) => {
+      if (live) setIgnoredRefs(new Set((data || []).map((r) => r.bm_client_id)));
+    });
+    return () => { live = false; };
+  }, [rollups]);
+
+  // "To check" is what asks something of you: the task rollups, or the
+  // client decisions (prospect matches, reference changes, departures).
+  const toCheck = rollups
+    ? rollups.unmappedAssignees.length + rollups.missingRules.length
+      + rollups.unknownClients.filter((g) => !ignoredRefs.has(g.key)).length
+    : (decisionCount ?? 0);
 
   return (
-    <div style={{ marginBottom: 20 }}>
+    <div>
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
         background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
         overflow: 'hidden', marginBottom: 12,
       }}>
-        <StatCell label="Source rows" value={(sourceRows ?? '—').toLocaleString?.() ?? sourceRows ?? '—'} />
-        <StatCell label="Will import" value={(valid ?? '—').toLocaleString?.() ?? valid ?? '—'} />
-        <StatCell label="Need attention" value={needsAttention.toLocaleString()} />
-        <StatCell label="Skipped (errors)" value={skippedCount} />
+        <StatCell label="Rows in file" value={fmtCount(sourceRows)} />
+        <StatCell label="Will import" value={fmtCount(valid)} />
+        <StatCell label="To check" value={fmtCount(toCheck)} tone={toCheck > 0 ? 'amber' : null} />
+        <StatCell label="Won't import" value={fmtCount(skippedCount)} tone={skippedCount > 0 ? 'red' : null} />
       </div>
-
-      {Object.keys(rowCounts).length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          {Object.entries(rowCounts).map(([t, n]) => (
-            <span key={t} style={pillBig}>{Number(n).toLocaleString()} rows → {t}</span>
-          ))}
-        </div>
-      )}
 
       {notes?.length > 0 && (
         <div style={{ ...banner('slate'), marginBottom: 10 }}>
@@ -840,73 +1081,115 @@ function ValidationReport({ validation, staff, onRecheck, rechecking }) {
         </div>
       )}
 
-      {/* Grouped remediation panels — fix once, many warnings vanish. */}
+      {/* Grouped by cause: fix one alias or rule and every task it covers clears. */}
       {rollups && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-            <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
-              Needs attention · grouped by cause
-            </p>
-            {onRecheck && (
-              <button onClick={onRecheck} disabled={rechecking} style={{ ...btnGhost, fontSize: 13 }}>
-                <RefreshCw size={12} style={{ marginRight: 4 }} />
-                {rechecking ? 'Re-checking…' : 'Re-check after fixes'}
+        <>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }}>
+            <SectionTitle note={toCheck > 0 ? 'Each fix covers every task in its group. Re-check when you have made them.' : null}>
+              Check before importing
+            </SectionTitle>
+            {onRecheck && toCheck > 0 && (
+              <button onClick={onRecheck} disabled={rechecking} style={{ ...BTN.secondary.sm, ...btnIcon, marginBottom: 10 }}>
+                <RefreshCw size={12} className={rechecking ? 'animate-spin' : undefined} />
+                {rechecking ? 'Re-checking…' : 'Re-check'}
               </button>
             )}
           </div>
 
-          {rollups.unmappedAssignees.length > 0 && (
-            <AssigneeRollupPanel
-              groups={rollups.unmappedAssignees}
-              staff={staff}
-              onChanged={onRecheck}
-            />
-          )}
-          {rollups.missingRules.length > 0 && (
-            <RuleRollupPanel
-              groups={rollups.missingRules}
-              onChanged={onRecheck}
-            />
-          )}
           {rollups.unknownClients.length > 0 && (
             <UnknownClientsPanel groups={rollups.unknownClients} onChanged={onRecheck} />
           )}
-
-          {rollups.unmappedAssignees.length === 0
-            && rollups.missingRules.length === 0
-            && rollups.unknownClients.length === 0 && (
-              <div style={{ padding: 14, background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, fontSize: 14, color: '#065f46' }}>
-                ✓ Nothing to fix — every task will import cleanly.
-              </div>
-            )}
-        </div>
-      )}
-
-      {warnings.length > 0 && (
-        <details style={{ marginBottom: 8 }}>
-          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#64748b', padding: 6 }}>
-            Show all {warnings.length.toLocaleString()} per-row messages (audit log)
-          </summary>
-          <IssueTable issues={warnings} kind="warning" />
-        </details>
-      )}
-
-      {skippedRows.length > 0 && (
-        <details open={skippedRows.length <= 10}>
-          <summary style={{ cursor: 'pointer', fontSize: 14, fontWeight: 500, color: '#1e293b', padding: 6 }}>
-            Skipped — will not be imported ({skippedRows.length})
-          </summary>
-          {skippedRows.some((s) => s.field === 'bm_client_id' && s.name) && (
-            <p style={{ fontSize: 12.5, color: '#64748b', padding: '0 6px 6px', margin: 0 }}>
-              Rows with no Internal Reference are skipped and added to the admin task list. Add the
-              reference in BrightManager.
-            </p>
+          {rollups.unmappedAssignees.length > 0 && (
+            <AssigneeRollupPanel groups={rollups.unmappedAssignees} staff={staff} onChanged={onRecheck} />
           )}
-          <IssueTable issues={skippedRows} kind="skipped" />
-        </details>
+          {rollups.missingRules.length > 0 && (
+            <RuleRollupPanel groups={rollups.missingRules} onChanged={onRecheck} />
+          )}
+          {toCheck === 0 && (
+            <div style={okBox}>✓ Nothing to fix. Every task will import cleanly.</div>
+          )}
+        </>
       )}
     </div>
   );
+}
+
+// Rows that will not import at all. Always on screen, never folded away:
+// each one is a client or task Athena will not have until BrightManager is fixed.
+function SkippedPanel({ skipped }) {
+  if (!skipped?.length) return null;
+  const noRef = skipped.some((s) => /Internal Reference|Client Reference/i.test(`${s.field || ''} ${s.reason || ''}`));
+  return (
+    <RollupFrame
+      tone="red"
+      title={`Won't import · ${skipped.length} ${skipped.length === 1 ? 'row' : 'rows'}`}
+      summary={noRef
+        ? 'Missing a reference in BrightManager. Add it there and re-export. Each one also goes on the admin task list.'
+        : 'Fix these in BrightManager and re-export.'}
+    >
+      <IssueTable issues={skipped} kind="skipped" />
+    </RollupFrame>
+  );
+}
+
+// Rows that import but carry a data problem, grouped by what the problem is,
+// so one BrightManager fix is one line here rather than scattered rows.
+function WarningsPanel({ warnings }) {
+  const groups = useMemo(() => {
+    const byMsg = new Map();
+    for (const w of warnings || []) {
+      const key = w.message || w.reason || 'Other';
+      const g = byMsg.get(key) || { key, field: w.field, rows: [] };
+      g.rows.push(w);
+      byMsg.set(key, g);
+    }
+    return [...byMsg.values()].sort((a, b) => b.rows.length - a.rows.length);
+  }, [warnings]);
+  if (!groups.length) return null;
+  return (
+    <RollupFrame
+      tone="amber"
+      title={`Imports, but check in BrightManager · ${warnings.length} ${warnings.length === 1 ? 'row' : 'rows'}`}
+      summary="These rows import. Each problem below is fixed once in BrightManager."
+    >
+      {groups.map((g) => (
+        <div key={g.key} style={{ padding: '9px 14px', borderBottom: '1px solid rgba(252,211,77,0.4)' }}>
+          <div style={{ fontSize: 13.5, color: '#0f172a', fontWeight: 500 }}>
+            {g.key} <span style={{ color: '#64748b', fontWeight: 400 }}>· {g.rows.length}</span>
+          </div>
+          <div style={{ fontSize: 12.5, color: '#475569', marginTop: 3, lineHeight: 1.6 }}>
+            {g.rows.map((r) => (
+              <span key={`${r.row}-${r.bm_client_id}`} style={{ marginRight: 14, whiteSpace: 'nowrap' }}>
+                {r.name || '—'}
+                {r.bm_client_id && <span style={{ fontFamily: 'monospace', color: '#94a3b8' }}> {r.bm_client_id}</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </RollupFrame>
+  );
+}
+
+// Everything per-row that doesn't stop a row importing.
+function ValidationDetails({ validation }) {
+  const { warnings } = validation;
+  if (!warnings?.length) return null;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <p style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', margin: '6px 0' }}>
+        Warnings · {warnings.length.toLocaleString()} {warnings.length === 1 ? 'row' : 'rows'}
+      </p>
+      <p style={{ fontSize: 12.5, color: '#64748b', marginBottom: 6 }}>
+        These rows still import. Fix them in BrightManager when you can.
+      </p>
+      <IssueTable issues={warnings} kind="warning" />
+    </div>
+  );
+}
+
+function fmtCount(n) {
+  return n == null ? '—' : Number(n).toLocaleString();
 }
 
 /* ─── Rollup panels ─────────────────────────────────────────── */
@@ -991,7 +1274,6 @@ function AssigneeRollupPanel({ groups, staff, onChanged }) {
 }
 
 function AssigneeRow({ group, staff, isResolved, onResolved }) {
-  const [open, setOpen] = useState(false);
   const [pick, setPick] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -1015,7 +1297,6 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
         last_seen_at: new Date().toISOString(),
       }, { onConflict: 'bm_assignee_name' });
       onResolved();
-      setOpen(false);
     } catch (e) {
       alert('Save failed: ' + e.message);
     }
@@ -1038,29 +1319,23 @@ function AssigneeRow({ group, staff, isResolved, onResolved }) {
             </div>
           )}
         </div>
-        <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
+        <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
-          <button onClick={() => setOpen(!open)} style={{ ...BTN.secondary.sm }}>
-            {open ? 'Cancel' : 'Map to staff member →'}
-          </button>
-        )}
-      </div>
-      {open && !isResolved && (
-        <div style={{ padding: '6px 14px 10px 14px', display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px dashed #e5e7eb', flexWrap: 'wrap' }}>
-          <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, minWidth: 200 }}>
-            <option value="">— choose staff member —</option>
+          <>
+          <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...selectStyle, minWidth: 190 }}>
+            <option value="">Choose staff member…</option>
             {staff.filter((s) => s.is_active !== false).map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
             <option disabled>──────────</option>
             <option value="alias-only">Record alias only (not yet in Athena)</option>
           </select>
-          <button onClick={save} disabled={!pick || saving} style={{ ...BTN.primary.sm, ...btnIcon }}>
-            {saving ? 'Saving…' : 'Save mapping'}
+          <button onClick={save} disabled={!pick || saving} style={{ ...BTN.primary.sm, ...btnIcon, opacity: !pick ? 0.45 : 1 }}>
+            {saving ? 'Saving…' : 'Save'}
           </button>
-          <span style={{ fontSize: 12, color: '#64748b' }}>Then hit <b>Re-check after fixes</b>.</span>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -1216,7 +1491,7 @@ function RuleRow({ group, isResolved, onResolved }) {
         <span style={{ fontSize: 12, color: '#64748b' }}>{group.count.toLocaleString()} tasks</span>
         {!isResolved && (
           <button onClick={() => setOpen(!open)} style={{ ...BTN.secondary.sm }}>
-            {open ? 'Cancel' : 'Add scheduling rule →'}
+            {open ? 'Cancel' : 'Add rule'}
           </button>
         )}
       </div>
@@ -1278,10 +1553,26 @@ function UnknownClientsPanel({ groups, onChanged }) {
     () => groups.filter((g) => !ignoredSet.has(g.key)),
     [groups, ignoredSet]
   );
+  const ignoredGroups = useMemo(
+    () => groups.filter((g) => ignoredSet.has(g.key)),
+    [groups, ignoredSet]
+  );
   const totalTasks = visibleGroups.reduce((n, g) => n + g.count, 0);
   const filtered = useFilteredGroups(visibleGroups, search);
-  if (visibleGroups.length === 0) return null;
+
+  // An ignored reference no longer asks for a decision, but BrightManager
+  // still has live tasks on it. Say so rather than hide them.
+  const ignoredNote = ignoredGroups.length > 0 && (
+    <div style={{ ...banner('slate'), fontSize: 13, display: 'block' }}>
+      Also {ignoredGroups.reduce((n, g) => n + g.count, 0)} tasks on references you chose to ignore
+      ({ignoredGroups.map((g) => `${g.key} · ${g.count}`).join(', ')}). They import without a client.
+      If a client is still live in BrightManager, un-ignore it under Settings → Data import.
+    </div>
+  );
+
+  if (visibleGroups.length === 0) return ignoredNote || null;
   return (
+    <>
     <RollupFrame
       tone="red"
       title={`Unknown client references · ${visibleGroups.length} references, ${totalTasks.toLocaleString()} tasks`}
@@ -1308,6 +1599,8 @@ function UnknownClientsPanel({ groups, onChanged }) {
         <div style={{ padding: 16, textAlign: 'center', fontSize: 13, color: '#94a3b8' }}>No matches.</div>
       )}
     </RollupFrame>
+    {ignoredNote}
+    </>
   );
 }
 
@@ -1387,7 +1680,7 @@ function UnknownClientRow({ group, resolvedState, onResolved, onChanged }) {
             <button onClick={() => setMode(mode === 'map' ? null : 'map')} style={{ ...BTN.secondary.sm }}>
               {mode === 'map' ? 'Cancel' : 'Map to client'}
             </button>
-            <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
+            <button onClick={() => setMode(mode === 'ignore' ? null : 'ignore')} style={BTN.secondary.sm}>
               {mode === 'ignore' ? 'Cancel' : 'Ignore'}
             </button>
           </div>
@@ -1676,7 +1969,7 @@ function DuplicateCompanyRow({ row }) {
             <button onClick={clearCompany} disabled={saving || !existing} style={{ ...BTN.secondary.sm }}>
               {saving ? 'Working…' : `Clear ${row.company_number} from existing`}
             </button>
-            <button onClick={ignoreRef} disabled={saving} style={{ ...btnGhost, fontSize: 12, padding: '4px 10px' }}>
+            <button onClick={ignoreRef} disabled={saving} style={BTN.secondary.sm}>
               Ignore {row.incoming_bm_client_id}
             </button>
             <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -1775,7 +2068,7 @@ function IssueTable({ issues, kind }) {
         <thead>
           <tr style={{ background: '#f8fafc' }}>
             <th style={ithRow}>Row</th>
-            <th style={ithRow}>BM ID</th>
+            <th style={ithRow}>Reference</th>
             <th style={{ ...ithRow, minWidth: 160 }}>Client</th>
             <th style={ithRow}>Field</th>
             <th style={{ ...ithRow, width: '100%' }}>{kind === 'skipped' ? 'Reason' : 'Message'}</th>
@@ -1794,7 +2087,7 @@ function IssueTable({ issues, kind }) {
         </tbody>
       </table>
       {issues.length > limit && (
-        <button onClick={() => setLimit(limit + 100)} style={{ ...btnGhost, fontSize: 12, marginTop: 6 }}>
+        <button onClick={() => setLimit(limit + 100)} style={{ ...BTN.secondary.sm, marginTop: 8 }}>
           Show {Math.min(100, issues.length - limit)} more of {issues.length - limit}
         </button>
       )}
@@ -2049,8 +2342,8 @@ function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelect
           Clients no longer in BrightManager — {candidates.length}
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setAll(true)} style={{ ...btnGhost, fontSize: 12 }}>Select all</button>
-          <button onClick={() => setAll(false)} style={{ ...btnGhost, fontSize: 12 }}>Deselect all</button>
+          <button onClick={() => setAll(true)} style={BTN.secondary.sm}>Select all</button>
+          <button onClick={() => setAll(false)} style={BTN.secondary.sm}>Deselect all</button>
         </div>
       </div>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>
@@ -2140,14 +2433,15 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
 
   return (
     <div style={{
-      background: '#fef3c7', border: '1px solid #fcd34d',
+      background: '#fff', border: '1px solid #fcd34d',
       borderRadius: 10, padding: 16, marginBottom: 16,
     }}>
-      <p style={{ fontSize: 14, fontWeight: 600, color: '#78350f', marginBottom: 4 }}>
-        ⚡ Prospect conversions — {totalMembers} BM row(s) matched to {groups.length} prospect(s)
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+        Possible prospect matches — {totalMembers}
       </p>
-      <p style={{ fontSize: 13, color: '#92400e', marginBottom: 12 }}>
-        These prospects match incoming BrightManager clients. Once converted, BrightManager holds their details.
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+        These BrightManager clients look like prospects already in Athena. Convert one and the prospect
+        becomes that client; keep them separate and the BM client imports as a new record.
       </p>
 
       {contestedGroups.length > 0 && (
@@ -2168,10 +2462,10 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                   </span>
                   <span style={{ flex: 1 }} />
                   {chosen ? (
-                    <button onClick={() => clearGroup(g)} style={{ ...btnGhost, fontSize: 12 }}>Clear</button>
+                    <button onClick={() => clearGroup(g)} style={BTN.secondary.sm}>Clear</button>
                   ) : (
-                    <button onClick={() => rejectAllInGroup(g)} style={{ ...btnGhost, fontSize: 12 }}>
-                      Skip all — keep as prospect
+                    <button onClick={() => rejectAllInGroup(g)} style={BTN.secondary.sm}>
+                      None of these — keep the prospect
                     </button>
                   )}
                 </div>
@@ -2194,7 +2488,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
                       <span style={{ flex: 1, fontSize: 13, color: '#1e293b' }}>
                         {m.bm_name || '—'}
                         <span style={{ color: '#94a3b8', marginLeft: 6 }}>
-                          ({m.tier === 3 ? `${Math.round((m.score || 0) * 100)}% name` : `tier ${m.tier}`})
+                          · {matchLabel(m)}
                         </span>
                       </span>
                     </label>
@@ -2226,29 +2520,26 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
               <div key={m.bm_client_id} style={convRow}>
                 <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#78350f', width: 90 }}>{m.bm_client_id}</span>
                 <div style={{ flex: 1, fontSize: 13, color: '#1e293b', lineHeight: 1.4 }}>
-                  <div><b>BM:</b> {m.bm_name || '—'}</div>
-                  <div><b>Athena:</b> {m.prospect_name}
-                    <span style={{ color: '#94a3b8', marginLeft: 6 }}>
-                      ({tier === 3 ? `${Math.round((m.score || 0) * 100)}% name` : `tier ${tier}`})
-                    </span>
-                  </div>
+                  <div><span style={{ color: '#64748b' }}>BrightManager:</span> {m.bm_name || '—'}</div>
+                  <div><span style={{ color: '#64748b' }}>Athena prospect:</span> {m.prospect_name}</div>
+                  <div style={{ fontSize: 12, color: tier === 3 ? '#b45309' : '#64748b' }}>{matchLabel(m)}</div>
                 </div>
-                {confirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert</span>}
-                {rejected && <span style={{ fontSize: 12, color: '#991b1b', marginRight: 6 }}>✗ Skip — new client</span>}
-                {!decided && preConfirmed && <span style={{ fontSize: 12, color: '#15803d', marginRight: 6 }}>✓ Convert (pre-confirmed)</span>}
+                {(confirmed || (!decided && preConfirmed)) && (
+                  <span style={{ fontSize: 12.5, color: '#15803d', fontWeight: 600 }}>✓ Will convert</span>
+                )}
+                {rejected && <span style={{ fontSize: 12.5, color: '#475569', fontWeight: 600 }}>Kept separate</span>}
                 {!decided && !preConfirmed && (
                   <>
-                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={{ ...BTN.secondary.sm }}>Confirm</button>
-                    <button onClick={() => setOne(m.bm_client_id, 'reject')} style={{ ...btnGhost, fontSize: 12 }}>Skip</button>
+                    <button onClick={() => setOne(m.bm_client_id, m.prospect_id)} style={BTN.secondary.sm}>Convert prospect</button>
+                    <button onClick={() => setOne(m.bm_client_id, 'reject')} style={BTN.secondary.sm}>Keep separate</button>
                   </>
                 )}
                 {(decided || preConfirmed) && (
                   <button onClick={() => {
-                    if (confirmed) setOne(m.bm_client_id, 'reject');
-                    else if (rejected) setOne(m.bm_client_id, m.prospect_id);
-                    else if (preConfirmed && !decided) setOne(m.bm_client_id, 'reject');
-                  }} style={{ ...btnGhost, fontSize: 12 }}>
-                    {confirmed ? 'Reject' : rejected ? 'Undo' : 'Reject'}
+                    if (rejected) setOne(m.bm_client_id, m.prospect_id);
+                    else setOne(m.bm_client_id, 'reject');
+                  }} style={BTN.secondary.sm}>
+                    {rejected ? 'Convert instead' : 'Keep separate instead'}
                   </button>
                 )}
               </div>
@@ -2258,6 +2549,12 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
       )}
     </div>
   );
+}
+
+function matchLabel(m) {
+  if (m.tier === 1) return 'Same company number';
+  if (m.tier === 2) return 'Same BrightManager reference';
+  return `Name only, ${Math.round((m.score || 0) * 100)}% similar. Check it is the same business`;
 }
 
 /* ─── Task-type exclusions ────────────────────────────────────
@@ -2349,91 +2646,21 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
   );
 }
 
-function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCount = 0, rekeyCount = 0, onApprove, onCancel }) {
-  const blocked = tier3Pending > 0 || contestedUnresolved > 0;
-  const blockReason = contestedUnresolved > 0
-    ? 'Resolve contested prospect groups before importing'
-    : tier3Pending > 0
-      ? 'Review all Tier 3 prospect matches before importing'
-      : undefined;
-  return (
-    <div style={{
-      marginTop: 18, padding: 18, borderTop: '2px solid #e5e7eb',
-    }}>
-      <p style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', marginBottom: 10 }}>
-        Ready to import
-      </p>
-      <div style={{
-        background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10,
-        padding: 16, marginBottom: 14, fontSize: 14,
-      }}>
-        <p style={{ fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>Import summary</p>
-        {Object.entries(validation.rowCounts).map(([t, n]) => (
-          <div key={t} style={{ display: 'flex', gap: 16 }}>
-            <span style={{ width: 140, color: '#475569' }}>{t}</span>
-            <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{Number(n).toLocaleString()} rows</span>
-          </div>
-        ))}
-        <div style={{ height: 8 }} />
-        <div style={{ display: 'flex', gap: 16, color: '#475569', flexWrap: 'wrap' }}>
-          <span>Skipped: <b>{validation.skippedCount}</b></span>
-          <span>Warnings: <b>{validation.warningCount}</b></span>
-          {tier3Pending > 0 && <span>Tier 3 to action: <b>{tier3Pending}</b></span>}
-          {contestedUnresolved > 0 && <span style={{ color: '#991b1b' }}>Contested groups: <b>{contestedUnresolved}</b></span>}
-          {rekeyCount > 0 && <span>New BM reference: <b>{rekeyCount}</b></span>}
-          {archiveCount > 0 && <span style={{ color: '#b45309' }}>Will archive: <b>{archiveCount}</b></span>}
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button
-          onClick={onApprove}
-          disabled={blocked}
-          title={blockReason}
-          style={{ ...BTN.primary.md, ...btnIcon, flex: 1, justifyContent: 'center', opacity: blocked ? 0.45 : 1, cursor: blocked ? 'not-allowed' : 'pointer' }}
-        >
-          Approve and import to Supabase
-        </button>
-        <button
-          onClick={onCancel}
-          style={BTN.danger.md}
-        >
-          Cancel import
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmPrompt({ archiveCount = 0, onCancel, onConfirm }) {
-  return (
-    <div style={{
-      marginTop: 12, padding: 14,
-      background: '#fef3c7', border: '1px solid #fcd34d',
-      borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12,
-    }}>
-      <AlertTriangle size={16} style={{ color: '#d97706' }} />
-      <span style={{ flex: 1, fontSize: 14, color: '#78350f' }}>
-        This can't be undone.
-        {archiveCount > 0 && <> <strong>{archiveCount} client{archiveCount === 1 ? '' : 's'} will be archived.</strong></>}
-      </span>
-      <button onClick={onCancel} style={BTN.secondary.md}>Cancel</button>
-      <button onClick={onConfirm} style={{ ...BTN.primary.md, ...btnIcon }}>Confirm import</button>
-    </div>
-  );
-}
-
-function ProgressView({ validation }) {
+function ProgressView({ noun, count }) {
   return (
     <div style={{
       padding: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+      display: 'flex', alignItems: 'center', gap: 12,
     }}>
-      <p style={{ fontSize: 14.5, fontWeight: 500, color: '#0f172a', marginBottom: 12 }}>Importing…</p>
-      {Object.entries(validation.rowCounts).map(([t, n]) => (
-        <div key={t} style={{ display: 'flex', gap: 12, fontSize: 14, padding: '4px 0' }}>
-          <span style={{ width: 140, color: '#475569' }}>{t}</span>
-          <span style={{ color: '#94a3b8' }}>{Number(n).toLocaleString()} rows · pending</span>
-        </div>
-      ))}
+      <Loader2 size={18} className="animate-spin" style={{ color: brand.solid, flexShrink: 0 }} />
+      <div>
+        <p style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>
+          Importing {Number(count).toLocaleString()} {noun}…
+        </p>
+        <p style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+          This takes up to a minute. Keep this tab open until it finishes.
+        </p>
+      </div>
     </div>
   );
 }
@@ -2600,11 +2827,12 @@ function buildStubValidation(source, preview) {
 }
 
 /* ─── Styles ───────────────────────────────────────────────── */
-function StatCell({ label, value }) {
+function StatCell({ label, value, tone }) {
+  const color = tone === 'amber' ? '#b45309' : tone === 'red' ? '#b91c1c' : '#0f172a';
   return (
     <div style={{ padding: '14px 18px', borderRight: '1px solid #e5e7eb' }}>
-      <p style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{label}</p>
-      <p style={{ fontSize: 18, fontWeight: 600, color: '#0f172a' }}>{value}</p>
+      <p style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>{label}</p>
+      <p style={{ fontSize: 20, fontWeight: 600, color }}>{value}</p>
     </div>
   );
 }
@@ -2624,26 +2852,11 @@ function banner(tone) {
   };
 }
 
-const pill = {
-  fontSize: 12, padding: '2px 8px', borderRadius: 999,
-  background: '#f1f5f9', color: '#475569',
-};
-const pillBig = {
-  fontSize: 13, padding: '4px 10px', borderRadius: 999,
-  background: '#f0f9ff', color: '#0e7fe0', fontWeight: 500,
-};
 // Layout only; the look comes from BTN.
 const btnIcon = { display: 'inline-flex', alignItems: 'center', gap: 4 };
-const btnGhost = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: 13, padding: '6px 10px',
-  background: 'none', border: 'none',
-  color: '#64748b', cursor: 'pointer', fontFamily: font,
-};
 const convRow = {
-  display: 'flex', alignItems: 'center', gap: 8,
-  padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.5)',
-  marginBottom: 4,
+  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+  padding: '10px 4px', borderTop: '1px solid #f1f5f9',
 };
 const resultRow = { display: 'flex', alignItems: 'center', gap: 12, fontSize: 14, padding: '3px 0' };
 const resultNum = { color: '#065f46', fontFamily: 'monospace' };

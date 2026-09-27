@@ -108,7 +108,7 @@ export function parseBmTasksCsv(text) {
       continue;
     }
     if (!clientRef) {
-      skipped.push({ row: i + 1, bm_task_id: taskId, name: taskName, field: 'Client Reference', reason: 'missing Client Reference' });
+      skipped.push({ row: i + 1, bm_task_id: taskId, name: clientName || null, field: 'Client Reference', reason: `no Client Reference on "${taskName}"` });
       continue;
     }
 
