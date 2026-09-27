@@ -131,7 +131,6 @@ export default function WorkPlannerModule() {
   const [taskModal, setTaskModal] = useState(null); // { type, id, occurrence_date? }
   const [emailModal, setEmailModal] = useState(null); // EmailModal ctx
   const [holidayOpen, setHolidayOpen] = useState(false);
-  const [newOpen, setNewOpen] = useState(false); // the + New menu
   const autoTeamRef = useRef(false); // Overview defaults the team filter to me once, not every visit
   const [holidays, setHolidays] = useState([]); // staff_holidays (sql/317)
   // `${staffId}|${iso}` for every day off, so views can ask in O(1).
@@ -845,8 +844,8 @@ export default function WorkPlannerModule() {
     return formatISO(d);
   };
 
-  // One + New menu on every task tab (Bobby, 2026-09-27), instead of a
-  // different set of buttons per tab.
+  // The four "new" actions, as plain buttons on the filter row of every task
+  // tab (Bobby, 2026-09-27: a menu was an unnecessary click for four items).
   const newItems = [
     { label: 'Quick task', hint: 'A one-off task for someone', run: () => setQuickModal({ _new: true, assignee_id: profile?.id || '', due_date: nextWorkingDayFor(profile?.id) }) },
     { label: 'Block', hint: 'Standing work on a cadence', run: () => setModal('new') },
@@ -889,29 +888,6 @@ export default function WorkPlannerModule() {
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          {activeSubModule === 'task' && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
-              {activeTab === 'calendar' && (
-                <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Planner works">Guide</button>
-              )}
-              <button onClick={() => setNewOpen((o) => !o)} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>+ New ▾</button>
-              {newOpen && (
-                <>
-                  <div onClick={() => setNewOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
-                  <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 61, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: 240, padding: 4 }}>
-                    {newItems.map((it) => (
-                      <button key={it.label} onClick={() => { setNewOpen(false); it.run(); }}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{it.label}</div>
-                        <div style={{ fontSize: 11.5, color: '#64748b' }}>{it.hint}</div>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Filter bar — only where a view reads it. Waiting, Bookkeeping
@@ -935,6 +911,14 @@ export default function WorkPlannerModule() {
           sort={sort} setSort={setSort}
           colourMode={colourMode} setColourMode={setColourMode}
           staffColours={staffColours}
+          rightSlot={activeSubModule === 'task' ? (
+            <>
+              {activeTab === 'calendar' && <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Planner works">Guide</button>}
+              {newItems.map((it) => (
+                <button key={it.label} onClick={it.run} title={it.hint} style={{ ...BTN.secondary.sm, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ {it.label}</button>
+              ))}
+            </>
+          ) : null}
         />
         )}
 

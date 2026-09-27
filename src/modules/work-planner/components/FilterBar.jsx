@@ -41,6 +41,8 @@ export default function FilterBar({
   // Colour mode
   colourMode, setColourMode,
   staffColours,
+  // Buttons pinned to the right of the row (the new-task actions).
+  rightSlot = null,
 }) {
   // Build staffMap locally for Avatar
   const staffMap = {};
@@ -151,6 +153,9 @@ export default function FilterBar({
           those with no entries in entityList. Null = All; a chosen
           letter filters lists by entity first-letter. Only Quick Tasks
           applies clientLetter, so it only shows there. */}
+      {rightSlot && (
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>{rightSlot}</div>
+      )}
       {view === 'quick' && (
         <div style={{ flexBasis: '100%', marginTop: 4 }}>
           <AlphabetFilter
