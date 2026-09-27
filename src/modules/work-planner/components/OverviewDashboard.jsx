@@ -8,11 +8,20 @@ import { BTN } from '../../../lib/buttonStyles';
 // The Overview dashboard (Bobby, 2026-09-26/27): BrightManager jobs in the
 // next six months, months across, type of work down. Whole team unless a
 // person is picked in the team filter. Hover a number for the split by
-// person; click it for the jobs. Holidays in a month are flagged.
+// person; click it for the jobs. Holidays in a month are flagged. Under the
+// grid, five tiles: overdue, this week, next week, the week after, and the
+// rest — the same jobs cut by date instead of by month.
+//
+// A count is a filing, not a stage: for accounts, VAT, self assessment and
+// corporation tax only the "… Submission …" task counts, so the numbers
+// reconcile with the Monday deadline digest (v_deadline_buckets) and one
+// job is one. Hours still add up every task of that type in the month,
+// because the preparation task is where the time is.
 
 const font = "'Outfit', sans-serif";
 export const TILE_TYPES = [
-  { id: 'accounts',    label: 'Accounts',        services: ['Annual Accounts', 'Accounts', 'Corporation Tax'] },
+  { id: 'accounts',    label: 'Accounts',        services: ['Annual Accounts', 'Accounts'] },
+  { id: 'ct',          label: 'Corporation tax', services: ['Corporation Tax'] },
   { id: 'vat',         label: 'VAT returns',     services: ['VAT'] },
   { id: 'sa',          label: 'Self assessment', services: ['Self Assessment', 'Personal Tax'] },
   { id: 'cs',          label: 'Confirmation statements', services: ['Confirmation Statement'] },
@@ -20,8 +29,19 @@ export const TILE_TYPES = [
   { id: 'other',       label: 'Other' },
 ];
 const typeOf = (service) => TILE_TYPES.find((t) => t.services?.includes(service))?.id || 'other';
+const STAGED = new Set(['accounts', 'ct', 'vat', 'sa']); // types whose BM job is several tasks
+const isFiling = (type, name) => !STAGED.has(type) || /Submission/i.test(name || '');
 const monthKey = (iso) => String(iso).slice(0, 7);
 const monthLabel = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const addDays = (iso, n) => { const d = new Date(`${iso}T12:00:00`); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const BUCKETS = [
+  { id: 'overdue', label: 'Overdue' },
+  { id: 'week',    label: 'This week' },
+  { id: 'next',    label: 'Next week' },
+  { id: 'after',   label: 'Week after next' },
+  { id: 'other',   label: 'Other tasks' },
+];
 const monthShort = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 const fmt = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 const h1 = (n) => Math.round(n * 10) / 10;
@@ -42,7 +62,6 @@ export default function OverviewDashboard({ onOpenTask }) {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const m0 = `${months[0]}-01`;
       const m3 = new Date(`${months[months.length - 1]}-01T12:00:00`); m3.setMonth(m3.getMonth() + 1);
       const end = `${m3.getFullYear()}-${String(m3.getMonth() + 1).padStart(2, '0')}-01`;
       // PostgREST caps one read at ~1000 rows and returns 200 regardless, so page.
@@ -50,7 +69,7 @@ export default function OverviewDashboard({ onOpenTask }) {
       for (let from = 0; ; from += 1000) {
         const { data, error: e1 } = await supabase.from('bm_task_schedule')
           .select('id, service, bm_task_name, bm_deadline, scheduled_for_date, scheduled_hours, entity_id, assignee_id, entities(name, entity_status)')
-          .eq('state', 'planned').is('excluded_at', null).gte(col, m0).lt(col, end).order(col).order('id').range(from, from + 999);
+          .eq('state', 'planned').is('excluded_at', null).not(col, 'is', null).lt(col, end).order(col).order('id').range(from, from + 999);
         if (e1) throw e1;
         bm.push(...(data || []));
         if (!data || data.length < 1000) break;
@@ -59,14 +78,29 @@ export default function OverviewDashboard({ onOpenTask }) {
       const done = new Set((openC || []).map((c) => c.bm_task_schedule_id));
       setJobs((bm || [])
         .filter((r) => !done.has(r.id) && !['nlac', 'archived'].includes(r.entities?.entity_status))
-        .map((r) => ({ ...r, type: typeOf(r.service), month: monthKey(r[col]) })));
+        .map((r) => { const type = typeOf(r.service); return { ...r, type, filing: isFiling(type, r.bm_task_name), month: monthKey(r[col]) }; }));
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
   }, [months, col]);
   useEffect(() => { load(); }, [load]);
 
   const visible = useMemo(() => (who ? jobs.filter((j) => j.assignee_id === who) : jobs), [jobs, who]);
-  const cell = (month, type) => visible.filter((j) => (month === 'all' || j.month === month) && (type === 'all' || j.type === type));
+  const today = todayISO();
+  const weekEnd = useMemo(() => { const d = new Date(`${today}T12:00:00`); const dow = (d.getDay() + 6) % 7; return addDays(today, 6 - dow); }, [today]); // Sunday
+  const bucketOf = (j) => {
+    const v = j[col];
+    if (v < today) return 'overdue';
+    if (v <= weekEnd) return 'week';
+    if (v <= addDays(weekEnd, 7)) return 'next';
+    if (v <= addDays(weekEnd, 14)) return 'after';
+    return 'other';
+  };
+  const inWindow = (j) => months.includes(j.month);
+  // Counts are filings; hours (all=true) take every task.
+  const cell = (month, type, all = false) => visible.filter((j) => (all || j.filing) && (month === 'all' ? inWindow(j) : j.month === month) && (type === 'all' || j.type === type));
+  const bucket = (id, all = false) => visible.filter((j) => (all || j.filing) && bucketOf(j) === id);
+  const listFor = (sel, all = false) => (sel.bucket ? bucket(sel.bucket, all) : cell(sel.month, sel.type, all));
+  const titleFor = (sel) => (sel.bucket ? BUCKETS.find((b) => b.id === sel.bucket)?.label : `${TILE_TYPES.find((t) => t.id === sel.type)?.label} · ${basis === 'planned' ? 'planned' : 'due'} ${monthLabel(sel.month)}`);
   const hours = (list) => list.reduce((s, j) => s + (Number(j.scheduled_hours) || 0), 0);
   const byPerson = (list) => {
     const m = new Map();
@@ -91,7 +125,6 @@ export default function OverviewDashboard({ onOpenTask }) {
 
   const head = { padding: '10px 12px', fontSize: 12.5, fontWeight: 700, color: '#475569', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' };
   const rowHead = { padding: '10px 14px', fontSize: 13.5, fontWeight: 500, color: '#0f172a', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' };
-  const totalRow = TILE_TYPES.map((t) => cell('all', t.id)); void totalRow;
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', fontFamily: font }}>
@@ -106,7 +139,7 @@ export default function OverviewDashboard({ onOpenTask }) {
         </span>
       </div>
       {error && <div style={{ padding: '8px 14px', color: '#991b1b', fontSize: 13 }}>{error}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: '170px repeat(6, 1fr) 96px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)' }}>
         <div style={head} />
         {months.map((mo) => {
           const off = offByMonth[mo];
@@ -117,7 +150,7 @@ export default function OverviewDashboard({ onOpenTask }) {
             </div>
           );
         })}
-        <div style={{ ...head, borderLeft: '1px solid #e5e7eb', textAlign: 'right' }}>6 months</div>
+        <div style={{ ...head, borderLeft: '2px solid #cbd5e1', background: '#f1f5f9', color: '#0f172a', textAlign: 'right' }}>6 months</div>
 
         {TILE_TYPES.map((t) => (
           <React.Fragment key={t.id}>
@@ -125,6 +158,7 @@ export default function OverviewDashboard({ onOpenTask }) {
             {months.map((mo) => {
               const list = cell(mo, t.id);
               const n = list.length;
+              const hrs = hours(cell(mo, t.id, true));
               const off = !!offByMonth[mo];
               return (
                 <button key={mo}
@@ -136,30 +170,55 @@ export default function OverviewDashboard({ onOpenTask }) {
                   style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '10px 14px', textAlign: 'left', border: 'none', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #f1f5f9', background: n ? (off ? '#fff7ed' : '#fff') : '#fff', cursor: n ? 'pointer' : 'default', fontFamily: font }}
                   onFocus={() => {}}>
                   <span style={{ fontSize: 18, fontWeight: 700, color: n ? (off ? '#9a3412' : '#0e7fe0') : '#e2e8f0', minWidth: 28 }}>{n}</span>
-                  {n > 0 && <span style={{ fontSize: 12, color: '#94a3b8' }}>{h1(hours(list))}h</span>}
+                  {n > 0 && <span style={{ fontSize: 12, color: '#94a3b8' }}>{h1(hrs)}h</span>}
                 </button>
               );
             })}
-            <div style={{ padding: '10px 14px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #e5e7eb', fontSize: 14, fontWeight: 600, color: '#475569', background: '#fafafa' }}>{cell('all', t.id).length ? <>{cell('all', t.id).length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(cell('all', t.id)))}h</span></> : <span style={{ color: '#e2e8f0' }}>0</span>}</div>
+            <div style={{ padding: '10px 14px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', borderLeft: '2px solid #cbd5e1', fontSize: 18, fontWeight: 700, color: '#0f172a', background: '#f1f5f9' }}>{cell('all', t.id).length ? <>{cell('all', t.id).length} <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b' }}>· {h1(hours(cell('all', t.id, true)))}h</span></> : <span style={{ color: '#cbd5e1' }}>0</span>}</div>
           </React.Fragment>
         ))}
 
         <div style={{ ...rowHead, fontWeight: 700, background: '#fafafa', borderBottom: 'none' }}>All work</div>
         {months.map((mo) => (
-          <div key={mo} style={{ padding: '10px 14px', borderLeft: '1px solid #f1f5f9', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{cell(mo, 'all').length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(cell(mo, 'all')))}h</span></div>
+          <div key={mo} style={{ padding: '10px 14px', borderLeft: '1px solid #f1f5f9', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{cell(mo, 'all').length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(cell(mo, 'all', true)))}h</span></div>
         ))}
-        <div style={{ padding: '10px 14px', textAlign: 'right', borderLeft: '1px solid #e5e7eb', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{visible.length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(visible))}h</span></div>
+        <div style={{ padding: '10px 14px', textAlign: 'right', borderLeft: '2px solid #cbd5e1', background: '#e2e8f0', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{cell('all', 'all').length} <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>· {h1(hours(cell('all', 'all', true)))}h</span></div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, padding: '12px 14px 14px', borderTop: '1px solid #e5e7eb', background: '#f8fafc' }}>
+        {BUCKETS.map((b) => {
+          const list = bucket(b.id);
+          const n = list.length;
+          const hrs = hours(bucket(b.id, true));
+          const red = b.id === 'overdue' && n > 0;
+          return (
+            <button key={b.id}
+              onClick={() => n && setTile({ bucket: b.id })}
+              onMouseEnter={(e) => n && setHover({ bucket: b.id, x: e.clientX, y: e.clientY })}
+              onMouseMove={(e) => hover && setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h))}
+              onMouseLeave={() => setHover(null)}
+              disabled={!n}
+              style={{ textAlign: 'left', padding: '10px 14px', border: `1px solid ${red ? '#fca5a5' : '#e5e7eb'}`, borderRadius: 10, background: red ? '#fef2f2' : '#fff', cursor: n ? 'pointer' : 'default', fontFamily: font }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: red ? '#991b1b' : '#64748b' }}>{b.label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 24, fontWeight: 700, color: n ? (red ? '#b91c1c' : '#0e7fe0') : '#cbd5e1' }}>{n}</span>
+                {n > 0 && <span style={{ fontSize: 12, color: '#94a3b8' }}>{h1(hrs)}h</span>}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {hover && (() => {
-        const list = cell(hover.month, hover.type);
+        const list = listFor(hover);
+        const work = listFor(hover, true);
         const split = byPerson(list);
         return (
           <div style={{ position: 'fixed', left: Math.min(hover.x + 14, window.innerWidth - 240), top: Math.min(hover.y + 14, window.innerHeight - 40 - split.length * 22), zIndex: 140, background: '#0f172a', color: '#fff', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, minWidth: 180, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', pointerEvents: 'none' }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{TILE_TYPES.find((t) => t.id === hover.type)?.label} · {monthShort(hover.month)} · {list.length}</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{hover.bucket ? titleFor(hover) : `${TILE_TYPES.find((t) => t.id === hover.type)?.label} · ${monthShort(hover.month)}`} · {list.length}</div>
             {split.map(([id, n]) => (
               <div key={id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '1px 0' }}>
-                <span>{name(id)}</span><span style={{ fontWeight: 600 }}>{n}<span style={{ color: '#94a3b8', fontWeight: 400 }}> · {h1(hours(list.filter((j) => (j.assignee_id || 'none') === id)))}h</span></span>
+                <span>{name(id)}</span><span style={{ fontWeight: 600 }}>{n}<span style={{ color: '#94a3b8', fontWeight: 400 }}> · {h1(hours(work.filter((j) => (j.assignee_id || 'none') === id)))}h</span></span>
               </div>
             ))}
             <div style={{ color: '#94a3b8', marginTop: 4 }}>Click for the jobs</div>
@@ -168,12 +227,12 @@ export default function OverviewDashboard({ onOpenTask }) {
       })()}
 
       {tile && (() => {
-        const list = cell(tile.month, tile.type).sort((a, b) => (name(a.assignee_id || 'none')).localeCompare(name(b.assignee_id || 'none')) || String(a[col]).localeCompare(String(b[col])));
+        const list = listFor(tile).sort((a, b) => (name(a.assignee_id || 'none')).localeCompare(name(b.assignee_id || 'none')) || String(a[col]).localeCompare(String(b[col])));
         return (
           <div onClick={() => setTile(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 760, maxWidth: '96vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 8px' }}>
-                <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{TILE_TYPES.find((t) => t.id === tile.type)?.label} · {basis === 'planned' ? 'planned' : 'due'} {monthLabel(tile.month)} · {list.length} job{list.length === 1 ? '' : 's'} · {h1(hours(list))}h</div>
+                <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{titleFor(tile)} · {list.length} job{list.length === 1 ? '' : 's'} · {h1(hours(listFor(tile, true)))}h</div>
                 <button onClick={() => setTile(null)} style={BTN.secondary.sm}>Close</button>
               </div>
               <div style={{ overflowY: 'auto', padding: '0 16px 12px' }}>
