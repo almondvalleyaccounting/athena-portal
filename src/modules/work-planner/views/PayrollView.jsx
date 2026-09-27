@@ -414,6 +414,12 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   const [err, setErr] = useState(null);
   const [entityQ, setEntityQ] = useState('');
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  // Unsaved work: the client form differs from what was opened, or a period
+  // note is typed but not added. Closing then asks; the backdrop never closes.
+  const [saved, setSaved] = useState(() => JSON.stringify(form));
+  const dirty = JSON.stringify(form) !== saved || note.trim().length > 0;
+  const [confirmClose, setConfirmClose] = useState(false);
+  const requestClose = () => { if (dirty) setConfirmClose(true); else onClose(); };
 
   useEffect(() => {
     if (!client || !period) return;
@@ -432,7 +438,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
     setBusy(true); setErr(null);
     try {
       await callPayroll({ action: 'save_client', id: client?.id, ...form, entity_id: form.entity_id || null, runner_id: form.runner_id || null, cover_id: form.cover_id || null, pay_type: form.pay_type || null, ceased_on: form.ceased_on || null });
-      await onSaved(); if (isNew) onClose();
+      setSaved(JSON.stringify(form)); await onSaved(); if (isNew) onClose();
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const addNote = async () => {
@@ -447,7 +453,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   const linked = form.entity_id ? entityList.find((e) => e.id === form.entity_id) : null;
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 720, maxWidth: '96vw', maxHeight: '90vh', background: '#fff', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 8px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -455,8 +461,18 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
             <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(form.entity_id && entityMap[form.entity_id]?.name) || form.name || 'Pick a client'}</div>
           </div>
           {linked && <button onClick={() => navigate(`/clients/${linked.id}`)} style={BTN.secondary.sm}>Open the client</button>}
-          <button onClick={onClose} style={BTN.secondary.sm}>Close</button>
+          {dirty && !confirmClose && <span style={{ fontSize: 12, fontWeight: 600, color: '#9a3412', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 8, padding: '2px 8px' }}>Unsaved changes</span>}
+          <button onClick={requestClose} style={BTN.secondary.sm}>Close</button>
         </div>
+        {confirmClose && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#fff7ed', borderBottom: '1px solid #fdba74', fontSize: 13, color: '#9a3412', flexWrap: 'wrap' }}>
+            <b style={{ flex: 1, minWidth: 200 }}>You have unsaved changes{note.trim() ? ' and a note that has not been added' : ''}.</b>
+            {form.entity_id && !note.trim() && <button onClick={async () => { await save(); setConfirmClose(false); onClose(); }} disabled={busy} style={BTN.primary.sm}>Save and close</button>}
+            {note.trim() && client && <button onClick={async () => { await addNote(); setConfirmClose(false); }} disabled={busy} style={BTN.primary.sm}>Add the note</button>}
+            <button onClick={() => { setConfirmClose(false); onClose(); }} style={{ ...BTN.secondary.sm, color: '#991b1b' }}>Discard and close</button>
+            <button onClick={() => setConfirmClose(false)} style={BTN.secondary.sm}>Keep editing</button>
+          </div>
+        )}
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {err && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{err}</div>}
           <div style={{ border: '3px solid #0891b2', background: '#ecfeff', borderRadius: 10, padding: '10px 14px' }}>
