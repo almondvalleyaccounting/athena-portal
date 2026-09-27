@@ -234,7 +234,7 @@ export default function JobSelectorModal({ staffList, entityMap, profile, defaul
           </div>
           <label style={{ fontSize: 12.5, color: '#64748b' }}>Plan for</label>
           <input type="date" value={date} onChange={(e) => { setDate(e.target.value); }} style={{ padding: '5px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8 }} />
-          <button onClick={schedule} disabled={busy || selected.size === 0} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{busy ? 'Planning…' : `Plan ${selected.size || ''} onto that day`}</button>
+          <button onClick={schedule} disabled={busy || selected.size === 0} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{busy ? 'Planning…' : `Plan ${selected.size || ''} to ${date ? `${date.slice(8, 10)}/${date.slice(5, 7)}` : 'that day'}`}</button>
         </div>
       </div>
     </div>
