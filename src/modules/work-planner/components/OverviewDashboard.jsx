@@ -66,7 +66,7 @@ export default function OverviewDashboard({ onOpenTask }) {
   useEffect(() => { load(); }, [load]);
 
   const visible = useMemo(() => (who ? jobs.filter((j) => j.assignee_id === who) : jobs), [jobs, who]);
-  const cell = (month, type) => visible.filter((j) => j.month === month && (type === 'all' || j.type === type));
+  const cell = (month, type) => visible.filter((j) => (month === 'all' || j.month === month) && (type === 'all' || j.type === type));
   const hours = (list) => list.reduce((s, j) => s + (Number(j.scheduled_hours) || 0), 0);
   const byPerson = (list) => {
     const m = new Map();
@@ -113,7 +113,7 @@ export default function OverviewDashboard({ onOpenTask }) {
           return (
             <div key={mo} style={{ ...head, borderLeft: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span>{monthLabel(mo)}</span>
-              <span style={{ fontSize: 11.5, fontWeight: 500, color: '#94a3b8', whiteSpace: 'nowrap' }}>{cell(mo, 'all').length} · {h1(hours(cell(mo, 'all')))}h{off ? <span title={`${off.days} day${off.days === 1 ? '' : 's'} off${!who && off.people.size > 1 ? ` across ${off.people.size} people` : ''}`} style={{ color: '#9a3412', fontWeight: 600 }}> · 🏖 {off.days}d{!who && off.people.size > 1 ? ` · ${off.people.size}👤` : ''}</span> : null}</span>
+              {off ? <span title={`${off.days} day${off.days === 1 ? '' : 's'} off${!who && off.people.size > 1 ? ` across ${off.people.size} people` : ''}`} style={{ fontSize: 11.5, fontWeight: 600, color: '#9a3412', whiteSpace: 'nowrap' }}>🏖 {off.days} day{off.days === 1 ? '' : 's'} off{!who && off.people.size > 1 ? ` · ${off.people.size} people` : ''}</span> : <span style={{ fontSize: 11.5, fontWeight: 500, color: '#cbd5e1' }}>&nbsp;</span>}
             </div>
           );
         })}
@@ -135,17 +135,12 @@ export default function OverviewDashboard({ onOpenTask }) {
                   disabled={!n}
                   style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '10px 14px', textAlign: 'left', border: 'none', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #f1f5f9', background: n ? (off ? '#fff7ed' : '#fff') : '#fff', cursor: n ? 'pointer' : 'default', fontFamily: font }}
                   onFocus={() => {}}>
-                  <span style={{ fontSize: 20, fontWeight: 700, color: n ? (off ? '#9a3412' : '#0e7fe0') : '#e2e8f0', minWidth: 28 }}>{n}</span>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: n ? (off ? '#9a3412' : '#0e7fe0') : '#e2e8f0', minWidth: 28 }}>{n}</span>
                   {n > 0 && <span style={{ fontSize: 12, color: '#94a3b8' }}>{h1(hours(list))}h</span>}
-                  {n > 0 && !who && (
-                    <span style={{ display: 'inline-flex', marginLeft: 'auto' }}>
-                      {byPerson(list).slice(0, 5).map(([id]) => (id !== 'none' ? <span key={id} style={{ marginLeft: -4 }}><Avatar id={id} staffMap={staffMap} size={18} customColour={staffColours?.[id]} /></span> : null))}
-                    </span>
-                  )}
                 </button>
               );
             })}
-            <div style={{ padding: '10px 14px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #e5e7eb', fontSize: 14, fontWeight: 600, color: '#475569', background: '#fafafa' }}>{cell('all', t.id).length || <span style={{ color: '#e2e8f0' }}>0</span>}</div>
+            <div style={{ padding: '10px 14px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #e5e7eb', fontSize: 14, fontWeight: 600, color: '#475569', background: '#fafafa' }}>{cell('all', t.id).length ? <>{cell('all', t.id).length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(cell('all', t.id)))}h</span></> : <span style={{ color: '#e2e8f0' }}>0</span>}</div>
           </React.Fragment>
         ))}
 
@@ -153,7 +148,7 @@ export default function OverviewDashboard({ onOpenTask }) {
         {months.map((mo) => (
           <div key={mo} style={{ padding: '10px 14px', borderLeft: '1px solid #f1f5f9', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{cell(mo, 'all').length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(cell(mo, 'all')))}h</span></div>
         ))}
-        <div style={{ padding: '10px 14px', textAlign: 'right', borderLeft: '1px solid #e5e7eb', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{visible.length}</div>
+        <div style={{ padding: '10px 14px', textAlign: 'right', borderLeft: '1px solid #e5e7eb', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{visible.length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(visible))}h</span></div>
       </div>
 
       {hover && (() => {
