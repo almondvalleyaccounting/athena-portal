@@ -36,7 +36,9 @@ export default function BillingReviewAndChangePage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [scope, setScope] = useState('monthly'); // monthly | annual | all
+  const [scope, setScope] = useState('monthly'); // monthly | annual | all — which bills
+  const [unit, setUnit] = useState('month'); // month | year — how every figure is shown
+  const [changesFilter, setChangesFilter] = useState('all'); // all | changed | unchanged
   const [editing, setEditing] = useState(null); // { entityId, serviceId }
   const [upliftOpen, setUpliftOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(null); // null | { entityId?, serviceId? } — opens AddServiceModal
@@ -107,6 +109,18 @@ export default function BillingReviewAndChangePage() {
     const cells = new Map(); // key → { current, pending, services: [{rowId, idx, current, pending}] }
     const entities = new Map(); // entityId → { id, name }
 
+    // entity::service pairs billed monthly. An annual line for the same
+    // service has been superseded by the monthly bill (191 Architecture:
+    // a quote moved accounts onto a template, the old annual bill stayed).
+    const monthlyKeys = new Set();
+    for (const r of rows) {
+      for (const s of (Array.isArray(r.services) ? r.services : [])) {
+        if (s.approval_status === 'approved' && s.recurring_status !== 'ending' && s.cadence === 'monthly') {
+          monthlyKeys.add(`${r.entity_id}::${s.service_id || s.description || '—'}`);
+        }
+      }
+    }
+
     for (const r of rows) {
       const services = Array.isArray(r.services) ? r.services : [];
       for (let i = 0; i < services.length; i++) {
@@ -117,21 +131,36 @@ export default function BillingReviewAndChangePage() {
         const key = `${r.entity_id}::${serviceId}`;
         let cell = cells.get(key);
         if (!cell) {
-          cell = { entityId: r.entity_id, entityName: r.entity?.name || 'Unknown', serviceId, current: 0, pending: 0, hasPending: false, services: [] };
+          cell = {
+            entityId: r.entity_id, entityName: r.entity?.name || 'Unknown', serviceId,
+            current: 0, pending: 0, hasPending: false, superseded: false, services: [],
+            // Both units, so the tiles don't depend on the Show-as toggle.
+            currentM: 0, pendingM: 0, currentY: 0, pendingY: 0,
+          };
           cells.set(key, cell);
         }
         // Track strategy of the pending uplift on each underlying
         // service so manuals win over floor wins over inflation when
         // the user runs successive uplift passes.
         if (s.pending_monthly_amount != null) cell.pendingStrategy = s.pending_uplift_strategy || 'manual';
-        const current = Number(s.monthly_amount) || 0;
+        const currentM = Number(s.monthly_amount) || 0;
         const pendingRaw = s.pending_monthly_amount;
         const hasPending = pendingRaw != null;
-        const effective = hasPending ? Number(pendingRaw) : current;
+        const pendingM = hasPending ? Number(pendingRaw) : currentM;
+        // An annual fee's yearly figure is the amount billed, not the
+        // rounded monthly × 12 (£110 stored as 9.17/mo would show £110.04).
+        const annualAmt = Number(s.annual_amount);
+        const currentY = s.cadence === 'annual' && Number.isFinite(annualAmt) && annualAmt > 0 ? annualAmt : currentM * 12;
+        const pendingY = hasPending ? Number(pendingRaw) * 12 : currentY;
+        const current = unit === 'year' ? currentY : currentM;
+        const effective = unit === 'year' ? pendingY : pendingM;
         cell.current += current;
         cell.pending += effective;
+        cell.currentM += currentM; cell.pendingM += pendingM;
+        cell.currentY += currentY; cell.pendingY += pendingY;
         if (hasPending) cell.hasPending = true;
-        cell.services.push({ rowId: r.id, idx: i, current, pending: hasPending ? Number(pendingRaw) : null, strategy: s.pending_uplift_strategy || null });
+        if (s.cadence === 'annual' && monthlyKeys.has(key)) cell.superseded = true;
+        cell.services.push({ rowId: r.id, idx: i, current, pending: hasPending ? effective : null, strategy: s.pending_uplift_strategy || null });
         entities.set(r.entity_id, {
           id: r.entity_id,
           name: r.entity?.name || 'Unknown',
@@ -142,23 +171,27 @@ export default function BillingReviewAndChangePage() {
 
     const services = Array.from(serviceSet).sort();
     const entityList = Array.from(entities.values()).sort((a, b) => a.name.localeCompare(b.name));
-    return { services, entityList, cells };
+    const supersededCount = [...cells.values()].filter((c) => c.superseded).length;
+    return { services, entityList, cells, supersededCount };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, scope]);
+  }, [rows, scope, unit]);
 
   const columnTotals = useMemo(() => {
     const map = {};
     for (const sid of matrix.services) map[sid] = { current: 0, pending: 0 };
+    let currentM = 0, pendingM = 0, currentY = 0, pendingY = 0;
     for (const cell of matrix.cells.values()) {
       map[cell.serviceId].current += cell.current;
       map[cell.serviceId].pending += cell.pending;
+      currentM += cell.currentM; pendingM += cell.pendingM;
+      currentY += cell.currentY; pendingY += cell.pendingY;
     }
     let totalCurrent = 0, totalPending = 0;
     for (const sid of matrix.services) {
       totalCurrent += map[sid].current;
       totalPending += map[sid].pending;
     }
-    return { perService: map, totalCurrent, totalPending };
+    return { perService: map, totalCurrent, totalPending, currentM, pendingM, currentY, pendingY };
   }, [matrix]);
 
   // Write pending_monthly_amount to a single service line. Patches the
@@ -197,12 +230,14 @@ export default function BillingReviewAndChangePage() {
     const next = Number(newAmount);
     if (!Number.isFinite(next) || next < 0) return;
     const svc = cell.services[0];
-    if (next === svc.current) {
+    if (Math.abs(next - svc.current) < 0.005) {
       // Clear any existing pending instead of staging the same amount.
       await clearPending(svc.rowId, svc.idx);
       return;
     }
-    await stagePending(svc.rowId, svc.idx, next);
+    // Typed in the unit on screen; stored as a monthly amount.
+    const monthly = unit === 'year' ? Math.round((next / 12) * 100) / 100 : next;
+    await stagePending(svc.rowId, svc.idx, monthly);
   };
 
   // Add a brand-new service line for an entity. Attaches to the
@@ -417,9 +452,11 @@ export default function BillingReviewAndChangePage() {
 
   // Apply a floor £ to a specific service column. Skips excluded
   // clients and any cell where the pending was already manually set.
-  const applyFloor = async ({ serviceId, floor, reason }) => {
+  const applyFloor = async ({ serviceId, floor: floorShown, reason }) => {
     if (!serviceId) return;
-    if (!Number.isFinite(floor) || floor <= 0) return;
+    if (!Number.isFinite(floorShown) || floorShown <= 0) return;
+    // The floor is typed in the unit on screen; compare and store monthly.
+    const floor = unit === 'year' ? Math.round((floorShown / 12) * 100) / 100 : floorShown;
     const writes = [];
     let skippedExcluded = 0, skippedManual = 0;
     for (const r of rows) {
@@ -446,7 +483,7 @@ export default function BillingReviewAndChangePage() {
       if (touched) writes.push({ id: r.id, services });
     }
     if (writes.length === 0) { alert('No cells below floor — nothing to apply.'); return; }
-    if (!window.confirm(`Apply £${floor.toFixed(2)} floor on ${serviceId} for ${writes.length} client${writes.length === 1 ? '' : 's'}?`)) return;
+    if (!window.confirm(`Apply £${floorShown.toFixed(2)}/${unit} floor on ${serviceId} for ${writes.length} client${writes.length === 1 ? '' : 's'}?`)) return;
     setSaving(true);
     for (const w of writes) {
       await supabase.from('live_billing').update({
@@ -475,6 +512,15 @@ export default function BillingReviewAndChangePage() {
   }, [matrix]);
 
   const grandDelta = columnTotals.totalPending - columnTotals.totalCurrent;
+  const deltaM = columnTotals.pendingM - columnTotals.currentM;
+  const deltaY = columnTotals.pendingY - columnTotals.currentY;
+
+  // A client "has changes" when any in-scope line carries a staged amount.
+  const changedEntityIds = useMemo(() => {
+    const set = new Set();
+    for (const cell of matrix.cells.values()) if (cell.hasPending) set.add(cell.entityId);
+    return set;
+  }, [matrix]);
 
   // User-driven sort over the matrix rows. By default we keep the
   // canonical alpha-by-name order; click a column header to switch.
@@ -519,14 +565,38 @@ export default function BillingReviewAndChangePage() {
         Review and change
       </h1>
       <p style={{ fontSize: 14, color: '#64748b', maxWidth: 720, marginBottom: 14 }}>
-        Monthly fees ex VAT. Changes wait on Push until sent to QBO.
+        Fees ex VAT, shown {unit === 'year' ? 'per year' : 'per month'}. Changes wait on Push until sent to QBO.
       </p>
 
       <BillingTabs active="change" />
 
       {/* Action bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <ScopeToggle value={scope} onChange={setScope} />
+        <Segmented
+          label="Billed"
+          value={scope}
+          onChange={setScope}
+          title="Which bills to show: monthly (QBO recurring template), annual (invoiced by hand), or both"
+          options={[{ v: 'monthly', l: 'Monthly' }, { v: 'annual', l: 'Annual' }, { v: 'all', l: 'All' }]}
+        />
+        <Segmented
+          label="Show as"
+          value={unit}
+          onChange={setUnit}
+          title="Per month: annual fees ÷ 12. Per year: monthly fees × 12."
+          options={[{ v: 'month', l: 'Per month' }, { v: 'year', l: 'Per year' }]}
+        />
+        <Segmented
+          label="Changes"
+          value={changesFilter}
+          onChange={setChangesFilter}
+          title="Clients with a staged fee change, without one, or all"
+          options={[
+            { v: 'all', l: 'All' },
+            { v: 'changed', l: `With${changedEntityIds.size ? ` · ${changedEntityIds.size}` : ''}` },
+            { v: 'unchanged', l: 'Without' },
+          ]}
+        />
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -588,14 +658,14 @@ export default function BillingReviewAndChangePage() {
           {/* Summary tiles */}
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
-              <Tile group="Monthly" label="Current" value={fmtGbp(columnTotals.totalCurrent)} />
-              <Tile group="Monthly" label="New"     value={fmtGbp(columnTotals.totalPending)} tone={grandDelta > 0 ? 'green' : 'slate'} />
-              <Tile group="Monthly" label="Δ"       value={`${grandDelta >= 0 ? '+' : ''}${fmtGbp(grandDelta)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
+              <Tile group="Per month" label="Current" value={fmtGbp(columnTotals.currentM)} />
+              <Tile group="Per month" label="New"     value={fmtGbp(columnTotals.pendingM)} tone={deltaM > 0 ? 'green' : 'slate'} />
+              <Tile group="Per month" label="Δ"       value={`${deltaM >= 0 ? '+' : ''}${fmtGbp(deltaM)}`} tone={deltaM > 0 ? 'green' : deltaM < 0 ? 'red' : 'slate'} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              <Tile group="Annual" label="Current" value={fmtGbp(columnTotals.totalCurrent * 12)} />
-              <Tile group="Annual" label="New"     value={fmtGbp(columnTotals.totalPending * 12)} tone={grandDelta > 0 ? 'green' : 'slate'} />
-              <Tile group="Annual" label="Δ"       value={`${grandDelta >= 0 ? '+' : ''}${fmtGbp(grandDelta * 12)}`} tone={grandDelta > 0 ? 'green' : grandDelta < 0 ? 'red' : 'slate'} />
+              <Tile group="Per year" label="Current" value={fmtGbp(columnTotals.currentY)} />
+              <Tile group="Per year" label="New"     value={fmtGbp(columnTotals.pendingY)} tone={deltaY > 0 ? 'green' : 'slate'} />
+              <Tile group="Per year" label="Δ"       value={`${deltaY >= 0 ? '+' : ''}${fmtGbp(deltaY)}`} tone={deltaY > 0 ? 'green' : deltaY < 0 ? 'red' : 'slate'} />
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
               {matrix.entityList.length} client{matrix.entityList.length === 1 ? '' : 's'}
@@ -603,7 +673,12 @@ export default function BillingReviewAndChangePage() {
                 <> · <span style={{ color: '#b91c1c' }}>{matrix.entityList.filter((e) => e.excluded).length} excluded from raises</span></>
               )}
               {' · '}{matrix.services.length} service{matrix.services.length === 1 ? '' : 's'}
-              {' · '}Priority: manual → floor → inflation · annual column = monthly × 12 (yearly fees not included)
+              {' · '}{scope === 'monthly' ? 'Monthly bills only' : scope === 'annual' ? 'Annual bills only' : 'Monthly and annual bills'}
+              {' · '}Per month = monthly fee, or annual fee ÷ 12 · Per year = monthly fee × 12, or annual fee
+              {' · '}Priority: manual → floor → inflation
+              {matrix.supersededCount > 0 && (
+                <> · <span style={{ color: '#b45309' }}>{matrix.supersededCount} annual fee{matrix.supersededCount === 1 ? '' : 's'} also on a monthly bill (amber) — probably superseded</span></>
+              )}
             </div>
           </div>
 
@@ -688,6 +763,11 @@ export default function BillingReviewAndChangePage() {
                     excludedFilter === 'excluded' ? entity.excluded :
                     !entity.excluded
                   )
+                  .filter((entity) =>
+                    changesFilter === 'all' ? true :
+                    changesFilter === 'changed' ? changedEntityIds.has(entity.id) :
+                    !changedEntityIds.has(entity.id)
+                  )
                   .map((entity) => (
                   <tr key={entity.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                     <td style={{ ...stickyTd, left: 0, background: entity.excluded ? '#fef2f2' : '#fff', fontWeight: 500, color: entity.excluded ? '#94a3b8' : '#0f172a', textAlign: 'left', paddingLeft: 12 }}>
@@ -763,6 +843,7 @@ export default function BillingReviewAndChangePage() {
         <ApplyUpliftModal
           services={matrix.services}
           defaultServiceId={focusedServiceId}
+          unit={unit}
           onClose={() => setUpliftOpen(false)}
           onApplyInflation={applyInflation}
           onApplyFloor={applyFloor}
@@ -829,7 +910,9 @@ function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPendi
   const delta = cell.pending - cell.current;
   // Background priority: pending edit (purple tint) > focused column
   // (sky tint) > default white.
-  const bg = cell.hasPending ? '#f5f3ff' : (focused ? '#f0f9ff' : '#fff');
+  // Superseded annual fee (same service also on the monthly bill) wins the
+  // background: it's the one thing on the row that needs a decision.
+  const bg = cell.superseded ? '#fef3c7' : cell.hasPending ? '#f5f3ff' : (focused ? '#f0f9ff' : '#fff');
   return (
     <td
       onClick={duplicate ? undefined : onEdit}
@@ -838,9 +921,11 @@ function Cell({ cell, isEditing, focused, onEdit, onSave, onCancel, onClearPendi
         background: bg,
         cursor: duplicate ? 'not-allowed' : 'pointer',
       }}
-      title={duplicate
-        ? `${cell.services.length} service lines with id "${cell.serviceId}" — edit on the approval queue.`
-        : 'Click to edit (stages as pending — push from Uplift Review)'}
+      title={cell.superseded
+        ? 'This annual fee is also on the client\'s monthly bill — the annual bill is probably superseded and should be ended.'
+        : duplicate
+          ? `${cell.services.length} service lines with id "${cell.serviceId}" — edit on the approval queue.`
+          : 'Click to edit (stages as pending — push from Uplift Review)'}
     >
       <div style={{ fontFamily: 'monospace', color: cell.hasPending ? '#94a3b8' : '#0f172a', textDecoration: cell.hasPending ? 'line-through' : 'none' }}>
         {fmtGbp(cell.current)}
@@ -899,15 +984,13 @@ function ExcludedToggle({ value, onChange, excludedCount }) {
   );
 }
 
-function ScopeToggle({ value, onChange }) {
-  const opts = [
-    { v: 'monthly', l: 'Monthly' },
-    { v: 'annual', l: 'Annual' },
-    { v: 'all', l: 'All' },
-  ];
+// Labelled segmented control — "Billed", "Show as", "Changes".
+function Segmented({ label, value, onChange, options, title }) {
   return (
-    <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-      {opts.map((o, i) => {
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title={title}>
+      <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{label}</span>
+      <div style={{ display: 'inline-flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+        {options.map((o, i) => {
         const active = value === o.v;
         return (
           <button
@@ -920,15 +1003,16 @@ function ScopeToggle({ value, onChange }) {
               cursor: 'pointer', fontFamily: font,
             }}
           >{o.l}</button>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 // Unified Apply Uplift modal — pick a strategy at the top, only the
 // inputs for that strategy show.
-function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflation, onApplyFloor, saving }) {
+function ApplyUpliftModal({ services, defaultServiceId, unit = 'month', onClose, onApplyInflation, onApplyFloor, saving }) {
   const [strategy, setStrategy] = useState('inflation'); // inflation | floor
   const [pct, setPct] = useState(5);
   const [roundUp, setRoundUp] = useState(true);
@@ -949,7 +1033,7 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
     <ModalShell title="Apply uplift" onClose={onClose}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: '#f8fafc', padding: 4, borderRadius: 8 }}>
         <StratTab label="Inflation %" active={strategy === 'inflation'} onClick={() => setStrategy('inflation')} />
-        <StratTab label="Floor £/month" active={strategy === 'floor'} onClick={() => setStrategy('floor')} />
+        <StratTab label={`Floor £/${unit}`} active={strategy === 'floor'} onClick={() => setStrategy('floor')} />
       </div>
 
       {strategy === 'inflation' ? (
@@ -972,7 +1056,7 @@ function ApplyUpliftModal({ services, defaultServiceId, onClose, onApplyInflatio
           <select value={floorServiceId} onChange={(e) => setFloorServiceId(e.target.value)} style={inputStyle}>
             {services.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <Label style={{ marginTop: 10 }}>Floor £/month</Label>
+          <Label style={{ marginTop: 10 }}>Floor £/{unit}</Label>
           <input type="number" step="0.5" value={floor} onChange={(e) => setFloor(Number(e.target.value))} style={inputStyle} />
           <p style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>Fees below the minimum are raised to it.</p>
         </>
