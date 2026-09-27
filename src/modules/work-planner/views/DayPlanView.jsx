@@ -10,6 +10,7 @@ import { kindOf } from '../lib/blocksApi';
 import { formatISO, addDays, startOfWeek, today, sameDay } from '../lib/helpers';
 import { ContextMenu, MinutesModal, dayCapacity, loadColour, shortTask } from '../components/PlannerBits';
 import JobSelectorModal from '../components/JobSelectorModal';
+import { Check, Mail, ArrowRight, MoreHorizontal } from 'lucide-react';
 import EmailModal from '../components/EmailModal';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -239,15 +240,17 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
 
   // ── Tile ──
   // One compact tile everywhere (Bobby, 2026-09-26): a click opens the task
-  // modal, the buttons appear on hover, right-click has the same options.
+  // modal, right-click has the full menu. On hover an icon strip slides in
+  // over the hours (option A, 2026-09-27) so the tile never changes height.
   const Tile = ({ x, showDate, compact }) => {
     const risk = x.type === 'ms' ? RISK_PILL[x.item.job_plans?.risk] : null;
     const border = x.type === 'ms' ? `3px solid ${KIND_COLOUR[x.item.kind] || '#64748b'}` : x.type === 'bm' ? `3px ${x.item.status === 'draft' ? 'dashed' : 'solid'} #7c3aed` : x.type === 'block' ? '3px solid #0f766e' : '3px dashed #38bdf8';
     const n = x.type === 'block' ? (blockItemsMap[x.item._masterId] || []).length : 0;
     const showButtons = !compact && hover === x.key;
+    const ico = { width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', color: '#475569', cursor: 'pointer', padding: 0 };
     return (
       <div onContextMenu={(e) => openMenu(e, x)} onClick={() => openFor(x)} onMouseEnter={() => setHover(x.key)} onMouseLeave={() => setHover((h) => (h === x.key ? null : h))}
-        style={{ background: x.type === 'block' ? '#f0fdfa' : '#fff', border: x.coverFor ? '1px dashed #f59e0b' : '1px solid #e5e7eb', borderLeft: border, borderRadius: 7, padding: '5px 8px', marginBottom: 5, fontFamily: font, cursor: 'pointer' }}>
+        style={{ position: 'relative', background: showButtons ? '#eff6ff' : x.type === 'block' ? '#f0fdfa' : '#fff', border: x.coverFor ? '1px dashed #f59e0b' : `1px solid ${showButtons ? '#bfdbfe' : '#e5e7eb'}`, borderLeft: border, borderRadius: 7, padding: '5px 8px', marginBottom: 5, fontFamily: font, cursor: 'pointer' }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</div>
           {x.hours > 0 && <div style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>{Math.round(x.hours * 10) / 10}h</div>}
@@ -260,11 +263,11 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
           {risk && <span style={{ marginLeft: 5, padding: '0 5px', borderRadius: 8, fontSize: 10, fontWeight: 600, background: risk.bg, color: risk.fg }}>{risk.label}</span>}
         </div>
         {showButtons && (
-          <div style={{ display: 'flex', gap: 4, marginTop: 5, flexWrap: 'nowrap' }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => openFor(x)} style={BTN.secondary.sm}>Open</button>
-            <button onClick={() => doneFor(x)} style={BTN.primary.sm}>{x.type === 'bm' ? 'Complete' : x.type === 'block' ? 'Log time' : 'Done'}</button>
-            {x.entity_id && <button onClick={() => setEmail(x)} style={BTN.secondary.sm}>Email</button>}
-            {x.date !== day && x.type !== 'block' && <button onClick={() => moveTo(x, day).then(load).catch((er) => setError(er.message))} style={BTN.secondary.sm}>→ {sameDay(dayDate, today()) ? 'Today' : 'This day'}</button>}
+          <div style={{ position: 'absolute', right: 5, top: 5, display: 'flex', gap: 3, background: '#eff6ff', paddingLeft: 8 }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => doneFor(x)} title={x.type === 'bm' ? 'Mark complete' : x.type === 'block' ? 'Log time' : 'Done'} style={{ ...ico, background: '#0e7fe0', borderColor: '#0e7fe0', color: '#fff' }}><Check size={14} /></button>
+            {x.entity_id && <button onClick={() => setEmail(x)} title="Email" style={ico}><Mail size={14} /></button>}
+            {x.date !== day && x.type !== 'block' && <button onClick={() => moveTo(x, day).then(load).catch((er) => setError(er.message))} title={sameDay(dayDate, today()) ? 'Move to today' : 'Move to this day'} style={ico}><ArrowRight size={14} /></button>}
+            <button onClick={(e) => openMenu(e, x)} title="More" style={ico}><MoreHorizontal size={14} /></button>
           </div>
         )}
       </div>
@@ -293,7 +296,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
         {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}<button onClick={() => setError(null)} style={{ ...BTN.secondary.sm, marginLeft: 8 }}>OK</button></div>}
         {holiday && <div style={{ padding: '6px 12px', borderRadius: 8, background: '#fff7ed', color: '#9a3412', fontSize: 13, fontWeight: 600 }}>{person?.name?.split(' ')[0]} is off this day ({holiday.kind}{holiday.half_day ? ', half day' : ''}){holiday.cover_staff_id ? ` · cover ${staffMap[holiday.cover_staff_id]?.name?.split(' ')[0] || ''}` : ''}. Anything planned here needs to move or be handed over.</div>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '300px minmax(340px, 1fr) 300px', gap: 10, flex: 1, minHeight: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '380px minmax(320px, 1fr) 380px', gap: 10, flex: 1, minHeight: 0 }}>
           <DropZone id="incomplete" style={col} activeStyle={{ background: '#eff6ff' }}>
             <div style={colHead}>Incomplete <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {incomplete.length}</span></div>
             <div style={{ overflowY: 'auto', padding: 6, flex: 1 }}>
@@ -314,8 +317,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
             <div style={{ padding: '6px 10px', fontSize: 11, color: '#94a3b8', borderTop: '1px solid #e5e7eb' }}>Planned for an earlier day, still open. Drag into the day or use →. Drop a tile here to send it back.</div>
           </DropZone>
 
-          <div style={col}>
-            <div style={colHead}>{sameDay(dayDate, today()) ? 'Today' : fmtDay(day)} <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {todayList.length} · drag to prioritise</span></div>
+          <div style={{ ...col, border: '2px solid #0e7fe0' }}>
+            <div style={{ ...colHead, background: '#e0f2fe', color: '#0c447c', borderBottom: '1px solid #bae6fd' }}>{sameDay(dayDate, today()) ? 'Today' : fmtDay(day)} <span style={{ fontWeight: 500, color: '#185fa5' }}>· {todayList.length} · drag to prioritise</span></div>
             <div style={{ overflowY: 'auto', padding: 6, flex: 1, display: 'flex', flexDirection: 'column' }}>
               {todayList.map((x) => (
                 <DropZone key={x.key} id={`slot:${x.key}`} style={{ borderTop: '2px solid transparent', paddingTop: 2 }} activeStyle={{ borderTop: '2px solid #0e7fe0' }}>
@@ -342,7 +345,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
                     <span style={{ fontWeight: 500, color: '#94a3b8' }}>{Math.round(list.reduce((s, x) => s + x.hours, 0) * 10) / 10}h</span>
                   </div>
                   {list.length === 0 && <div style={{ fontSize: 11.5, color: '#e2e8f0', padding: '0 4px 4px' }}>—</div>}
-                  {list.map((x) => <Draggable key={x.key} id={x.key} disabled={x.type === 'block'}><Tile x={x} compact /></Draggable>)}
+                  {list.map((x) => <Draggable key={x.key} id={x.key} disabled={x.type === 'block'}><Tile x={x} /></Draggable>)}
                 </DropZone>
               ))}
             </div>
