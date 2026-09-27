@@ -1213,6 +1213,44 @@ Deno.serve(async (req) => {
         return json({ success: true, timesheet_id: ts.id });
       }
 
+      // Edit a BM job's due date (sql/331): override that survives the import,
+      // an admin task to change it in BrightManager, a note on the thread.
+      case "set_bm_deadline": {
+        const sid = uuid(p.schedule_id, "schedule_id");
+        const due = isoDate(p.due_date, "due_date");
+        const note = p.note ? String(p.note).slice(0, 500) : null;
+        const { data: row, error } = await db.from("bm_task_schedule").select("id, bm_task_id, entity_id, bm_task_name, bm_deadline, deadline_override_admin_task_id, entities(name)").eq("id", sid).maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!row) throw new BadRequest("Job not found", 404);
+        if (row.bm_deadline === due) throw new BadRequest("That is already the due date");
+        const fmtUk = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "none");
+        const client = (row.entities as Record<string, any> | null)?.name || "unknown client";
+        // One open admin task per job: reuse it if the date is changed again.
+        let taskId: string | null = row.deadline_override_admin_task_id ?? null;
+        const title = `Change the due date of "${row.bm_task_name}" for ${client} in BrightManager to ${fmtUk(due)} (was ${fmtUk(row.bm_deadline)})`;
+        const detail = `${note ? note + "\n\n" : ""}Athena already shows ${fmtUk(due)}. This task confirms itself when the next import shows BrightManager agreeing.`;
+        if (taskId) {
+          const { data: open } = await db.from("admin_tasks").select("id").eq("id", taskId).is("done_at", null).is("dismissed_at", null).maybeSingle();
+          if (open) await db.from("admin_tasks").update({ title, detail, value: row.bm_task_id, deadline: due }).eq("id", taskId);
+          else taskId = null;
+        }
+        if (!taskId) {
+          const { data: t, error: aErr } = await db.from("admin_tasks").insert({
+            kind: "manual", source: "bm_deadline_change", entity_id: row.entity_id, field: "bm_deadline", value: row.bm_task_id,
+            title, detail, created_by: me, deadline: due,
+          }).select("id").single();
+          if (aErr) throw new Error(aErr.message);
+          taskId = t.id;
+        }
+        const { error: uErr } = await db.from("bm_task_schedule").update({ deadline_override: due, deadline_override_at: now, deadline_override_by: me, deadline_override_admin_task_id: taskId, updated_at: now }).eq("id", sid);
+        if (uErr) throw new Error(uErr.message);
+        await db.from("task_comments").insert({
+          task_type: "bm", task_id: sid, entity_id: row.entity_id, task_label: row.bm_task_name, author_id: me, kind: "comment",
+          body: `Due date changed to ${fmtUk(due)} (was ${fmtUk(row.bm_deadline)}); on the admin list to change in BrightManager${note ? ` — ${note}` : ""}`,
+        });
+        return json({ success: true, admin_task_id: taskId });
+      }
+
       default:
         throw new BadRequest("Unknown action");
     }

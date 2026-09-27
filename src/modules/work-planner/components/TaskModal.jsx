@@ -20,6 +20,20 @@ const fmtTs = (ts) => new Date(ts).toLocaleString('en-GB', { day: 'numeric', mon
 const TYPE_LABEL = { ms: 'Plan stage', bm: 'BrightManager job', quick: 'Quick task', block: 'Block' };
 const RISK = { urgent: 'Urgent', at_risk: 'At risk', waiting_on_client: 'Waiting on client', slipped: 'Slipped' };
 
+function DueEdit({ value, onSave, onCancel }) {
+  const [v, setV] = useState(value || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+      <input type="date" value={v} onChange={(e) => setV(e.target.value)} style={{ padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }} />
+      <button disabled={!v || busy} onClick={async () => { setBusy(true); setErr(null); try { await onSave(v); } catch (e) { setErr(e.message || String(e)); setBusy(false); } }} style={BTN.primary.sm}>{busy ? 'Saving…' : 'Save'}</button>
+      <button onClick={onCancel} style={BTN.secondary.sm}>Cancel</button>
+      {err && <span style={{ color: '#991b1b', fontSize: 12 }}>{err}</span>}
+    </span>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div style={{ minWidth: 0 }}>
@@ -42,6 +56,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
   const [ask, setAsk] = useState(null);
   const [email, setEmail] = useState(false);
   const [workflow, setWorkflow] = useState(null); // { entity_id, period_end } when a BM job belongs to a committed workflow
+  const [editDue, setEditDue] = useState(null); // ISO string while the due date is being edited
   const [reassign, setReassign] = useState(task.reassign ? { to: '', mode: 'one_off', note: '' } : null); // { to, mode, note } while the reassign panel is open
   const { type, id, occurrence_date: occ } = task;
 
@@ -52,7 +67,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         const { data, error: e } = await supabase.from('job_milestones').select('*, job_plans(id, entity_id, period_end, status, risk, risk_reason, ch_deadline, entities(name))').eq('id', id).maybeSingle();
         if (e) throw e; setDetail(data);
       } else if (type === 'bm') {
-        const { data, error: e } = await supabase.from('bm_task_schedule_with_progress').select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, status, bm_deadline, bm_target_date, bm_status, bm_latest_action_date, manually_overridden_at').eq('id', id).maybeSingle();
+        const { data, error: e } = await supabase.from('bm_task_schedule_with_progress').select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, status, bm_deadline, bm_target_date, bm_status, bm_latest_action_date, manually_overridden_at, deadline_override').eq('id', id).maybeSingle();
         if (e) throw e; setDetail(data);
         const { data: wf } = await supabase.from('job_plans').select('entity_id, period_end').eq('status', 'committed').or(`prep_job_id.eq.${id},ch_job_id.eq.${id},ct_job_id.eq.${id}`).limit(1).maybeSingle();
         setWorkflow(wf || null);
@@ -128,7 +143,9 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         <Field label="Client">{entityName}</Field>
         <Field label="Year end">{fmt(p?.period_end)}</Field>
-        <Field label="Due">{fmt(detail.due_date)}</Field>
+        <Field label="Due">{editDue !== null && pending
+          ? <DueEdit value={detail.due_date} onSave={async (v) => { await act({ action: 'move_milestone', milestone_id: id, due_date: v }); setEditDue(null); }} onCancel={() => setEditDue(null)} />
+          : <>{fmt(detail.due_date)}{pending && <button onClick={() => setEditDue(detail.due_date || '')} style={{ ...BTN.secondary.sm, marginLeft: 6, padding: '0 6px', fontSize: 11 }}>Edit</button>}</>}</Field>
         <Field label="Owner">{staffMap?.[detail.owner_id]?.name || detail.owner_role}</Field>
         <Field label="Status">{detail.status}{detail.pinned_by ? ' · pinned' : ''}</Field>
         <Field label="Hours">{detail.hours ? `${Number(detail.hours)}h` : '—'}</Field>
@@ -155,7 +172,9 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         <Field label="Task">{detail.bm_task_name}</Field>
         <Field label="Service">{detail.service}</Field>
         <Field label="BM status">{detail.bm_status || '—'}{detail.bm_latest_action_date ? ` · ${fmt(detail.bm_latest_action_date)}` : ''}</Field>
-        <Field label="Statutory deadline">{fmt(detail.bm_deadline)}</Field>
+        <Field label="Due (BM deadline)">{editDue !== null
+          ? <DueEdit value={detail.bm_deadline} onSave={async (v) => { await act({ action: 'set_bm_deadline', schedule_id: id, due_date: v }); setEditDue(null); }} onCancel={() => setEditDue(null)} />
+          : <>{fmt(detail.bm_deadline)}{detail.deadline_override ? <span title="Changed in Athena; on the admin list to change in BrightManager" style={{ color: '#9a3412', fontSize: 11 }}> · to update in BM</span> : null}<button onClick={() => setEditDue(detail.bm_deadline || '')} style={{ ...BTN.secondary.sm, marginLeft: 6, padding: '0 6px', fontSize: 11 }}>Edit</button></>}</Field>
         <Field label="BM target">{fmt(detail.bm_target_date)}</Field>
         <Field label="Planned for">{fmt(detail.scheduled_for_date)}{detail.manually_overridden_at ? ' · pinned' : ''}</Field>
         <Field label="Assignee">{staffMap?.[detail.assignee_id]?.name || detail.bm_assignee_name}</Field>
@@ -279,7 +298,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
               ))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'flex-start', position: 'relative' }}>
-              <textarea value={text} onChange={(e) => onTextChange(e.target.value)} rows={2} placeholder="Add a comment — @ someone to bring them in; everyone on the thread gets it by email"
+              <textarea autoFocus={!!task.comment} value={text} onChange={(e) => onTextChange(e.target.value)} rows={2} placeholder="Add a comment — @ someone to bring them in; everyone on the thread gets it by email"
                 onKeyDown={(e) => {
                   if (mentionOptions.length && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); pickMention(mentionOptions[0]); return; }
                   if (e.key === 'Escape' && mentionQ !== null) { setMentionQ(null); return; }

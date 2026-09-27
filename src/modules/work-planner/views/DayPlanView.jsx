@@ -10,7 +10,7 @@ import { kindOf } from '../lib/blocksApi';
 import { formatISO, addDays, startOfWeek, today, sameDay } from '../lib/helpers';
 import { ContextMenu, MinutesModal, dayCapacity, loadColour, shortTask } from '../components/PlannerBits';
 import JobSelectorModal from '../components/JobSelectorModal';
-import { Check, Mail, ArrowRight, MoreHorizontal } from 'lucide-react';
+import { Check, Mail, ArrowRight, ArrowUpRight, MessageSquare, MoreHorizontal } from 'lucide-react';
 import EmailModal from '../components/EmailModal';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -56,6 +56,7 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
   const [menu, setMenu] = useState(null);
   const [ask, setAsk] = useState(null);
   const [email, setEmail] = useState(null);
+  const [reschedule, setReschedule] = useState(null); // tile being moved to a chosen day
   const [active, setActive] = useState(null);
   const [weekOffset, setWeekOffset] = useState(0); // right column: 0 = rest of this week, n = n weeks on
   const [undo, setUndo] = useState(null); // { x, from } for the last move
@@ -230,9 +231,15 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
       { label: x.type === 'bm' ? 'Mark complete…' : x.type === 'block' ? 'Complete / log time…' : 'Done…', run: () => doneFor(x) },
     ];
     if (x.type === 'ms') items.push({ label: 'Not required (skip)', run: () => { if (window.confirm(`Skip "${x.title}" on this job?`)) act({ action: 'skip', milestone_id: x.item.id }).catch((er) => setError(er.message)); } });
-    if (x.date !== day && x.type !== 'block') items.push({ label: 'Move to this day', run: () => moveTo(x, day).then(load).catch((er) => setError(er.message)) });
+    if (x.type !== 'block') {
+      const todayIso = formatISO(today());
+      if (x.date !== todayIso) items.push({ label: 'Move to today', run: () => moveTo(x, todayIso).then(load).catch((er) => setError(er.message)) });
+      if (x.date !== day && day !== todayIso) items.push({ label: `Move to ${fmtDay(day)}`, run: () => moveTo(x, day).then(load).catch((er) => setError(er.message)) });
+      items.push({ label: 'Reschedule…', run: () => setReschedule(x) });
+    }
     items.push({ label: 'Log time…', run: () => setAsk({ title: 'Log time', subtitle: `${x.title}${x.client ? ` · ${x.client}` : ''}`, cta: 'Log', note: 'Goes straight to your timesheet. The task stays open.', run: (m) => { if (!(m > 0)) throw new Error('Enter the minutes'); return callJobPlan({ action: 'log_time', task: x.type === 'block' ? { type: 'block', id: x.item._masterId, occurrence_date: x.date } : { type: x.type, id: x.item.id }, minutes: m }); } }) });
     if (x.type === 'bm' || x.type === 'ms') items.push({ label: 'Reassign…', run: () => onOpenTask({ type: x.type, id: x.item.id, reassign: true }) });
+    items.push({ label: 'Add a comment…', run: () => onOpenTask(x.type === 'block' ? { type: 'block', id: x.item._masterId, occurrence_date: x.date, comment: true } : { type: x.type, id: x.item.id, comment: true }) });
     if (x.entity_id) items.push({ label: 'Email…', run: () => setEmail(x) });
     if (x.type === 'quick') items.push({ label: 'Edit', run: () => onOpenQuick && onOpenQuick(x.item) });
     if (x.date === day && x.type !== 'block') items.push({ label: 'Back to Incomplete', run: () => moveTo(x, prevWorkingISO).then(load).catch((er) => setError(er.message)) });
@@ -269,6 +276,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
             <button onClick={() => doneFor(x)} title={x.type === 'bm' ? 'Mark complete' : x.type === 'block' ? 'Log time' : 'Done'} style={{ ...ico, background: '#0e7fe0', borderColor: '#0e7fe0', color: '#fff' }}><Check size={14} /></button>
             {x.entity_id && <button onClick={() => setEmail(x)} title="Email" style={ico}><Mail size={14} /></button>}
             {x.date !== day && x.type !== 'block' && <button onClick={() => moveTo(x, day).then(load).catch((er) => setError(er.message))} title={sameDay(dayDate, today()) ? 'Move to today' : 'Move to this day'} style={ico}><ArrowRight size={14} /></button>}
+            {x.type !== 'block' && <button onClick={() => setReschedule(x)} title="Reschedule…" style={ico}><ArrowUpRight size={14} /></button>}
+            <button onClick={() => onOpenTask(x.type === 'block' ? { type: 'block', id: x.item._masterId, occurrence_date: x.date, comment: true } : { type: x.type, id: x.item.id, comment: true })} title="Add a comment" style={ico}><MessageSquare size={14} /></button>
             <button onClick={(e) => openMenu(e, x)} title="More" style={ico}><MoreHorizontal size={14} /></button>
           </div>
         )}
@@ -377,6 +386,19 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
       <DragOverlay dropAnimation={null}>{active ? <div style={{ width: 240, pointerEvents: 'none' }}><Tile x={active} compact /></div> : null}</DragOverlay>
       <ContextMenu menu={menu} onClose={closeMenu} />
       {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
+      {reschedule && (
+        <div onClick={() => setReschedule(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.2)', zIndex: 125, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, padding: 18, width: 340, maxWidth: '92vw', fontFamily: font, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Reschedule</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>{reschedule.title}{reschedule.client ? ` · ${reschedule.client}` : ''} · now {fmtDay(reschedule.date)}</div>
+            <input type="date" defaultValue={reschedule.date} id="reschedule-date" autoFocus style={{ padding: '7px 10px', fontSize: 13, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8 }} />
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button onClick={() => setReschedule(null)} style={BTN.secondary.sm}>Cancel</button>
+              <button onClick={() => { const v = document.getElementById('reschedule-date')?.value; if (!v) return; const x = reschedule; setReschedule(null); moveTo(x, v).then(load).catch((er) => setError(er.message)); }} style={BTN.primary.sm}>Move</button>
+            </div>
+          </div>
+        </div>
+      )}
       {email && <EmailModal ctx={{ entity_id: email.entity_id, entity_name: email.client, task_label: email.title }} staffList={staffList} profile={profile} onClose={() => setEmail(null)} onSent={load} />}
       {selectorOpen && <JobSelectorModal staffList={staffList} entityMap={entityMap} profile={profile} teamFilter={personId} defaultDate={day} onScheduled={load} onClose={onSelectorClose} />}
     </DndContext>
