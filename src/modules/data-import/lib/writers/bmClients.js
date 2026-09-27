@@ -30,6 +30,39 @@ export async function fetchArchiveCandidates(presentBmIds) {
   return data || [];
 }
 
+// Read-only: which would-be archive candidates are really in this upload under
+// a new Internal Reference (same company number, or — with no company number
+// on either side — the same name and type). See sql/334.
+export async function fetchRefChanges(parsedRows) {
+  const rows = (parsedRows || []).map((r) => ({
+    bm_client_id: r.bm_client_id,
+    company_number: r.company_number,
+    name: r.name,
+    type: r.type,
+  }));
+  const { data, error } = await supabase.rpc('preview_bm_ref_changes', { p_rows: rows });
+  if (error) throw error;
+  return data || [];
+}
+
+// Move each entity from its old BM reference to its new one, so the upsert
+// that follows lands on the existing client instead of failing on its
+// company number. Pairs whose new reference is already taken are refused.
+export async function rekeyBmClients(runId, pairs) {
+  const clean = (pairs || []).filter((p) => p.entity_id && p.old_bm_client_id && p.new_bm_client_id);
+  if (!clean.length) return { rekeyed: 0, rekeyed_pairs: [], refused: [] };
+  const { data, error } = await supabase.rpc('rekey_bm_clients', {
+    run_id: runId,
+    p_pairs: clean.map((p) => ({
+      entity_id: p.entity_id,
+      old_bm_client_id: p.old_bm_client_id,
+      new_bm_client_id: p.new_bm_client_id,
+    })),
+  });
+  if (error) throw error;
+  return data;
+}
+
 // Flip the given bm_client_ids to entity_status='archived'. The RPC only
 // touches currently-active BrightManager entities, so passing a deselected
 // or already-archived id is a harmless no-op.

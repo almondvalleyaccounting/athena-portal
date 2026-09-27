@@ -12,7 +12,7 @@ import {
 } from '../lib/importQueries';
 import { isNstTask } from '../lib/writers/bmTasks';
 import { parseBmClientsCsv } from '../lib/parsers/bmClients';
-import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmClients, raiseBmImportTasks } from '../lib/writers/bmClients';
+import { classifyBmProspects, writeBmClients, fetchArchiveCandidates, archiveBmClients, raiseBmImportTasks, fetchRefChanges, rekeyBmClients } from '../lib/writers/bmClients';
 import { parseBmTasksCsv } from '../lib/parsers/bmTasks';
 import { classifyBmTasks, writeBmTasks } from '../lib/writers/bmTasks';
 import { BTN } from '../../../lib/buttonStyles';
@@ -126,6 +126,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
   const [matches, setMatches] = useState({});          // bm_client_id/bm_task_id -> match info
   const [decisions, setDecisions] = useState({});      // bm_client_id -> confirmed prospect_id (or 'reject')
   const [archiveSelection, setArchiveSelection] = useState({}); // bm_clients: bm_client_id -> bool (archive on approve?)
+  const [rekeySelection, setRekeySelection] = useState({});     // bm_clients: old bm_client_id -> bool (move to new reference on approve?)
   const [seenTaskIds, setSeenTaskIds] = useState([]);  // bm_tasks: every task_id in the CSV (drives disappearance sweep)
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
@@ -213,6 +214,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     setValidation(null); setParsedRows(null); setMatches({}); setDecisions({});
     setPersonSummary(null); setPersonRefCollisions([]);
     setArchiveSelection({});
+    setRekeySelection({});
     setSeenTaskIds([]);
     setRun(null); setError(null);
     (async () => {
@@ -308,6 +310,16 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           Object.fromEntries(archiveCandidates.map((c) => [c.bm_client_id, true]))
         );
 
+        // Some "missing" clients are in the upload under a new Internal
+        // Reference. Archiving them would lose a live client: the incoming row
+        // fails on its company number, and the old one is archived. A company
+        // number match is moved across by default; a name-only match is
+        // offered unticked.
+        const refChanges = await fetchRefChanges(parsed.rows);
+        setRekeySelection(
+          Object.fromEntries(refChanges.map((c) => [c.old_bm_client_id, c.match === 'company_number']))
+        );
+
         v = {
           sourceRows: preview.rowCount,
           valid: parsed.rows.length,
@@ -318,6 +330,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           skippedRows: parsed.skipped,
           conversions: conversionList,
           archiveCandidates,
+          refChanges,
           presentCount: presentBmIds.length,
           notes: [],
         };
@@ -387,11 +400,31 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     }).length;
   }, [conversionGroups, decisions]);
 
+  // Reference changes the user has left ticked: moved to the new reference
+  // before the upsert.
+  const rekeyToApply = useMemo(() => {
+    return (validation?.refChanges || []).filter((c) => rekeySelection[c.old_bm_client_id]);
+  }, [validation, rekeySelection]);
+
+  // Archive candidates, less any client that is really in the upload under a
+  // new reference. A company-number match never falls back to archiving:
+  // unticking it leaves the client alone (its incoming row then fails on the
+  // company number and goes on the admin list). An unticked name match is
+  // judged a different client, so the old one is a genuine departure.
+  const archiveCandidates = useMemo(() => {
+    const changes = validation?.refChanges || [];
+    const kept = new Set(
+      changes
+        .filter((c) => c.match === 'company_number' || rekeySelection[c.old_bm_client_id])
+        .map((c) => c.old_bm_client_id)
+    );
+    return (validation?.archiveCandidates || []).filter((c) => !kept.has(c.bm_client_id));
+  }, [validation, rekeySelection]);
+
   // bm_client_ids the user has left ticked for archiving.
   const archiveToApply = useMemo(() => {
-    const cands = validation?.archiveCandidates || [];
-    return cands.filter((c) => archiveSelection[c.bm_client_id]).map((c) => c.bm_client_id);
-  }, [validation, archiveSelection]);
+    return archiveCandidates.filter((c) => archiveSelection[c.bm_client_id]).map((c) => c.bm_client_id);
+  }, [archiveCandidates, archiveSelection]);
 
   const handleCancelRun = async () => {
     if (!run) return;
@@ -419,6 +452,13 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         for (const [bmId, val] of Object.entries(decisions)) {
           if (val && val !== 'reject') approvedDecisions[bmId] = val;
         }
+        // Re-key first, so the upsert below finds each client on its new
+        // reference rather than inserting a second record for it.
+        let rekeyResult = { rekeyed: 0, refused: [] };
+        if (rekeyToApply.length) {
+          rekeyResult = await rekeyBmClients(run.id, rekeyToApply);
+        }
+
         const result = await writeBmClients(run.id, parsedRows, approvedDecisions);
 
         // Disappearance sweep: archive the BM clients the user left ticked.
@@ -432,6 +472,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
         const done = await markComplete(run.id, {
           rowCounts: {
             entities: result.entities_written,
+            ...(rekeyResult.rekeyed ? { rekeyed: rekeyResult.rekeyed } : {}),
             ...(archiveResult.archived ? { archived: archiveResult.archived } : {}),
           },
           errors: result.errors || [],
@@ -447,7 +488,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
 
         setValidation((v) => ({
           ...v,
-          writeResult: { ...result, archived: archiveResult.archived, tidy_ups: tidyUps },
+          writeResult: { ...result, rekeyed: rekeyResult.rekeyed, rekey_refused: rekeyResult.refused || [], archived: archiveResult.archived, tidy_ups: tidyUps },
         }));
       } else if (source.key === 'bm_tasks') {
         // Apply persisted task-type exclusions before writing. Any row
@@ -562,9 +603,16 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
           {source.key === 'bm_clients' && parsedRows && (
             <PersonRefCollisionPanel collisions={personRefCollisions} />
           )}
-          {source.key === 'bm_clients' && validation.archiveCandidates?.length > 0 && (
+          {source.key === 'bm_clients' && validation.refChanges?.length > 0 && (
+            <RefChangesPanel
+              changes={validation.refChanges}
+              selection={rekeySelection}
+              setSelection={setRekeySelection}
+            />
+          )}
+          {source.key === 'bm_clients' && archiveCandidates.length > 0 && (
             <ArchiveCandidatesPanel
-              candidates={validation.archiveCandidates}
+              candidates={archiveCandidates}
               presentCount={validation.presentCount}
               selection={archiveSelection}
               setSelection={setArchiveSelection}
@@ -575,6 +623,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
             tier3Pending={tier3Pending.length}
             contestedUnresolved={contestedUnresolved}
             archiveCount={archiveToApply.length}
+            rekeyCount={rekeyToApply.length}
             onApprove={() => setConfirmVisible(true)}
             onCancel={handleCancelRun}
           />
@@ -1917,6 +1966,59 @@ function PersonRefCollisionPanel({ collisions }) {
   );
 }
 
+// Clients that look missing but are in the upload under a new Internal
+// Reference. Ticked ones are moved to the new reference on approve, so the
+// import updates the existing client (history, fees, tasks and all) instead of
+// archiving it and failing to import its replacement.
+function RefChangesPanel({ changes, selection, setSelection }) {
+  const setOne = (ref, val) => setSelection((s) => ({ ...s, [ref]: val }));
+  const ticked = changes.filter((c) => selection[c.old_bm_client_id]).length;
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #93c5fd', borderRadius: 10,
+      padding: 16, marginBottom: 16, marginTop: 14,
+    }}>
+      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+        Reference changed in BrightManager — {changes.length}
+      </p>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 10 }}>
+        These clients are in this export under a new Internal Reference. Ticked ones move to the new
+        reference when you approve, so the existing client is updated instead of archived.
+      </p>
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
+        {changes.map((c) => {
+          const checked = !!selection[c.old_bm_client_id];
+          const byNumber = c.match === 'company_number';
+          return (
+            <label key={c.old_bm_client_id} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+              borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+            }}>
+              <input type="checkbox" checked={checked} onChange={(e) => setOne(c.old_bm_client_id, e.target.checked)} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 14, color: '#0f172a' }}>{c.name}</span>
+                {c.new_name && c.new_name !== c.name && (
+                  <span style={{ fontSize: 12.5, color: '#64748b' }}> · BM now calls it {c.new_name}</span>
+                )}
+                <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>
+                  {byNumber ? `Same company number ${c.company_number}` : 'Same name, no company number — check it is the same client'}
+                </span>
+              </span>
+              <span style={{ fontSize: 12.5, color: '#475569', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                {c.old_bm_client_id} → {c.new_bm_client_id}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
+        {ticked} of {changes.length} will move. An unticked company-number match is left as it is and goes on
+        the admin task list; an unticked name match is treated as a different client.
+      </p>
+    </div>
+  );
+}
+
 function ArchiveCandidatesPanel({ candidates, presentCount, selection, setSelection }) {
   const selectedCount = candidates.filter((c) => selection[c.bm_client_id]).length;
 
@@ -2247,7 +2349,7 @@ function TaskTypeExclusionsPanel({ parsedRows, catalogue, excluded, onToggle }) 
   );
 }
 
-function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCount = 0, onApprove, onCancel }) {
+function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCount = 0, rekeyCount = 0, onApprove, onCancel }) {
   const blocked = tier3Pending > 0 || contestedUnresolved > 0;
   const blockReason = contestedUnresolved > 0
     ? 'Resolve contested prospect groups before importing'
@@ -2278,6 +2380,7 @@ function ApprovePanel({ validation, tier3Pending, contestedUnresolved, archiveCo
           <span>Warnings: <b>{validation.warningCount}</b></span>
           {tier3Pending > 0 && <span>Tier 3 to action: <b>{tier3Pending}</b></span>}
           {contestedUnresolved > 0 && <span style={{ color: '#991b1b' }}>Contested groups: <b>{contestedUnresolved}</b></span>}
+          {rekeyCount > 0 && <span>New BM reference: <b>{rekeyCount}</b></span>}
           {archiveCount > 0 && <span style={{ color: '#b45309' }}>Will archive: <b>{archiveCount}</b></span>}
         </div>
       </div>
@@ -2354,6 +2457,14 @@ function ResultView({ source, validation, run, onPickAnother, onGoStatus, onGoHi
         <>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Clients written</span><span style={resultNum}>{wr.entities_written.toLocaleString()}</span></div>
           <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Prospects converted</span><span style={resultNum}>{wr.prospects_converted.toLocaleString()}</span></div>
+          {wr.rekeyed > 0 && (
+            <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Moved to new BM reference</span><span style={resultNum}>{wr.rekeyed.toLocaleString()}</span></div>
+          )}
+          {wr.rekey_refused?.length > 0 && (
+            <div style={{ fontSize: 12.5, color: '#991b1b', padding: '3px 0 3px 24px' }}>
+              Not moved, because the new reference was already taken: {wr.rekey_refused.map((p) => `${p.old} → ${p.new}`).join(', ')}
+            </div>
+          )}
           {wr.archived > 0 && (
             <div style={resultRow}><Check size={12} style={{ color: '#15803d' }} /><span style={{ width: 180, color: '#065f46' }}>Clients archived (no longer in BM)</span><span style={resultNum}>{wr.archived.toLocaleString()}</span></div>
           )}
