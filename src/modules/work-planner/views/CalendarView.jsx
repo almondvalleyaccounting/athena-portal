@@ -363,15 +363,23 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       d.stages += c.ms.length; d.jobs += c.bm.length + c.quick.length + c.block.length; d.hours += c.hours;
     }
     const capOf = (d) => rows.reduce((sum, r) => sum + (r.id ? (holidayMap[`${r.id}|${formatISO(d)}`] ? 0 : dayCapacity(r, d)) : 0), 0);
-    // Five stops of the blue ramp by load / capacity; over capacity turns amber, then red.
-    const heat = (ratio, hasWork) => {
+    // A continuous blue by load / capacity (square-rooted, so 5% and 50% read
+    // apart); amber over capacity, red well over. A weekend with work has no
+    // capacity to measure against, so it gets its own dark teal.
+    const mix = (a, b, t) => {
+      const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+      const [x, y] = [p(a), p(b)];
+      return `#${x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+    };
+    const heat = (ratio, hasWork, weekend) => {
       if (!hasWork) return { bg: '#fff', fg: '#94a3b8', num: '#64748b' };
+      if (weekend) return { bg: '#0f5a5a', fg: '#c8ecec', num: '#fff' };
       if (ratio > 1.2) return { bg: '#f09595', fg: '#501313', num: '#501313' };
       if (ratio > 1.0) return { bg: '#fac775', fg: '#412402', num: '#412402' };
-      if (ratio > 0.8) return { bg: '#378add', fg: '#e6f1fb', num: '#fff' };
-      if (ratio > 0.55) return { bg: '#85b7eb', fg: '#042c53', num: '#042c53' };
-      if (ratio > 0.3) return { bg: '#b5d4f4', fg: '#0c447c', num: '#0c447c' };
-      return { bg: '#e6f1fb', fg: '#185fa5', num: '#0c447c' };
+      const t = Math.min(1, Math.sqrt(Math.max(0, ratio)));
+      const bg = mix('#eaf3fc', '#185fa5', t);
+      const dark = t > 0.55;
+      return { bg, fg: dark ? '#dbeafe' : '#185fa5', num: dark ? '#fff' : '#0c447c' };
     };
     return (
       <div style={{ padding: 10, fontFamily: font }}>
@@ -388,8 +396,8 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
             const weekend = d.getDay() === 0 || d.getDay() === 6;
             const cap = capOf(d);
             const hours = c ? c.hours : 0;
-            const ratio = cap > 0 ? hours / cap : (hours > 0 ? 1.5 : 0);
-            const h = heat(ratio, !!c && (c.stages + c.jobs) > 0);
+            const ratio = cap > 0 ? hours / cap : 0;
+            const h = heat(ratio, !!c && (c.stages + c.jobs) > 0, weekend || cap === 0);
             const isToday = sameDay(d, now);
             const r1 = (n) => Math.round(n * 10) / 10;
             return (
@@ -416,7 +424,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#94a3b8', marginTop: 8, flexWrap: 'wrap' }}>
           <span>Load against {filters.teamFilter ? 'their' : 'the team'} capacity:</span>
-          {[['#e6f1fb', 'light'], ['#b5d4f4', ''], ['#85b7eb', ''], ['#378add', 'busy'], ['#fac775', 'over'], ['#f09595', 'well over']].map(([bg, lab], i) => (
+          {[['#eaf3fc', 'light'], [mix('#eaf3fc', '#185fa5', 0.35), ''], [mix('#eaf3fc', '#185fa5', 0.7), ''], ['#185fa5', 'full'], ['#fac775', 'over'], ['#f09595', 'well over'], ['#0f5a5a', 'weekend work']].map(([bg, lab], i) => (
             <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 14, height: 10, borderRadius: 3, background: bg, display: 'inline-block' }} />{lab}</span>
           ))}
           <span style={{ marginLeft: 'auto' }}>Click a day to see what is on it.</span>
