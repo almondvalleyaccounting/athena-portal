@@ -41,6 +41,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
   const [error, setError] = useState(null);
   const [ask, setAsk] = useState(null);
   const [email, setEmail] = useState(false);
+  const [reassign, setReassign] = useState(null); // { to, mode, note } while the reassign panel is open
   const { type, id, occurrence_date: occ } = task;
 
   const load = useCallback(async () => {
@@ -162,6 +163,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         {entityId && <button onClick={() => navigate(`/clients/${entityId}`)} style={BTN.secondary.sm}>Open the client</button>}
         <button onClick={() => setAsk({ title: shortTask(detail.bm_task_name), subtitle: entityName, cta: 'Mark complete', defaultMins: detail.remaining_hours != null ? Math.round(Number(detail.remaining_hours) * 60) : null, note: 'The minutes go to your timesheet. The job then sits on your "Update in BrightManager" list on Overview until the next import confirms it.', run: (m) => act({ action: 'complete_bm_job', schedule_id: id, minutes: m }) })} style={BTN.primary.sm}>Mark complete…</button>
         {detail.scheduled_for_date !== todayISO && <button onClick={async () => { try { await rescheduleTask(id, todayISO); await changed(); } catch (e) { setError(e.message); } }} style={BTN.secondary.sm}>Move to today</button>}
+        <button onClick={() => setReassign((r) => (r ? null : { to: '', mode: 'one_off', note: '' }))} style={reassign ? { ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' } : BTN.secondary.sm}>Reassign…</button>
       </>
     );
   } else if (detail && type === 'quick') {
@@ -224,6 +226,34 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
               {actions}
               <button onClick={() => setEmail(true)} style={BTN.secondary.sm}>Email…</button>
             </div>
+            {reassign && type === 'bm' && (
+              <div style={{ marginTop: 10, padding: 12, border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e3a8a' }}>Reassign this job</div>
+                <select value={reassign.to} onChange={(e) => setReassign((r) => ({ ...r, to: e.target.value }))} style={{ padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', maxWidth: 320 }}>
+                  <option value="">Who takes it…</option>
+                  {(staffList || []).filter((s) => s.work_planner !== false && s.id !== detail.assignee_id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                {[
+                  ['one_off', 'One-off', 'This task only. Athena keeps it with them until BrightManager agrees or the job is done.'],
+                  ['permanent', 'Permanent', `The client's ${detail.service || 'this'} work moves with it, and it goes on the admin task list to be moved in BrightManager — the same as changing it on the Allocations screen.`],
+                ].map(([id, lab, hint]) => (
+                  <label key={id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, cursor: 'pointer' }}>
+                    <input type="radio" name="reassign-mode" checked={reassign.mode === id} onChange={() => setReassign((r) => ({ ...r, mode: id }))} style={{ marginTop: 3 }} />
+                    <span><b>{lab}</b> <span style={{ color: '#475569' }}>· {hint}</span></span>
+                  </label>
+                ))}
+                <input value={reassign.note} onChange={(e) => setReassign((r) => ({ ...r, note: e.target.value }))} placeholder="Why (optional)" style={{ padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, maxWidth: 480 }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button disabled={!reassign.to || busy} onClick={async () => {
+                    setBusy(true); setError(null);
+                    try { await act({ action: 'reassign_bm_job', schedule_id: id, to_staff_id: reassign.to, mode: reassign.mode, note: reassign.note || null }); setReassign(null); }
+                    catch (e) { setError(e.message || String(e)); }
+                    finally { setBusy(false); }
+                  }} style={BTN.primary.sm}>{busy ? 'Reassigning…' : 'Reassign'}</button>
+                  <button onClick={() => setReassign(null)} style={BTN.secondary.sm}>Cancel</button>
+                </div>
+              </div>
+            )}
 
             <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>Comments <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {thread.length}</span></div>
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 4, maxHeight: 260, overflowY: 'auto' }}>

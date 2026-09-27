@@ -80,7 +80,7 @@ export default function FilterBar({
         </div>
       ))}
 
-      {view !== 'ready' && (
+      {view !== 'ready' && view !== 'mytasks' && (
         <>
           <div style={sepStyle} />
           <span style={labelStyle}>Client</span>
@@ -124,8 +124,8 @@ export default function FilterBar({
         </>
       )}
 
-      {/* Compact toggle — quick tasks + my tasks */}
-      {(view === 'quick' || view === 'mytasks') && (
+      {/* Compact toggle — quick tasks */}
+      {view === 'quick' && (
         <>
           <div style={sepStyle} />
           <span
@@ -149,41 +149,6 @@ export default function FilterBar({
             <option value="owner">Owner</option>
             <option value="next">Next Due</option>
           </select>
-        </>
-      )}
-
-      {/* My Tasks filters */}
-      {view === 'mytasks' && (
-        <>
-          <div style={sepStyle} />
-          <span style={labelStyle}>Due</span>
-          <select style={selectStyle} value={dueFilter} onChange={(e) => setDueFilter(e.target.value)}>
-            <option value="today">Today</option>
-            <option value="week">This week</option>
-            <option value="month">This month</option>
-            <option value="3">3 months</option>
-            <option value="all">All</option>
-          </select>
-          <div style={sepStyle} />
-          <span style={labelStyle}>Source</span>
-          <select style={selectStyle} value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}>
-            <option value="">All</option>
-            <option value="quick">Quick tasks</option>
-            <option value="scheduled">Scheduled</option>
-          </select>
-          <div style={sepStyle} />
-          <input
-            value={searchTerm || ''}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search tasks..."
-            style={{
-              padding: '4px 10px', fontSize: 13, fontFamily: "'Outfit', sans-serif",
-              border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none',
-              width: 160, transition: 'border-color 0.15s',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = '#0e7fe0')}
-            onBlur={(e) => (e.target.style.borderColor = '#e5e7eb')}
-          />
         </>
       )}
 

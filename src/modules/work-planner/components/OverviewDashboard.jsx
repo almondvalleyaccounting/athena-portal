@@ -14,6 +14,11 @@ import { BTN } from '../../../lib/buttonStyles';
 // day at a time and resets to seven on Saturday morning), then the open
 // quick tasks.
 //
+// Two ways to read the grid (Bobby, 2026-09-27): by task type (rows are the
+// kinds of work) or by team member (rows are people; hover splits a number
+// by task type; click opens that person's jobs grouped by type, client by
+// client, with a count per type and a total).
+//
 // A count is a filing, not a stage: for accounts, VAT, self assessment and
 // corporation tax only the "… Submission …" task counts, so the numbers
 // reconcile with the Monday deadline digest (v_deadline_buckets) and one
@@ -70,6 +75,8 @@ export default function OverviewDashboard({ onOpenTask }) {
   const setBasis = (b) => { setBasisState(b); try { localStorage.setItem('overview.tileBasis', b); } catch { /* private window */ } };
   const col = basis === 'planned' ? 'scheduled_for_date' : 'bm_deadline';
   const who = filters.teamFilter || null;
+  const [mode, setModeState] = useState(() => { try { return localStorage.getItem('overview.mode') || 'tasks'; } catch { return 'tasks'; } });
+  const setMode = (m) => { setModeState(m); setTile(null); setHover(null); try { localStorage.setItem('overview.mode', m); } catch { /* private window */ } };
   const months = useMemo(() => { const d = new Date(); return [0, 1, 2, 3, 4, 5].map((i) => { const m = new Date(d.getFullYear(), d.getMonth() + i, 1); return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`; }); }, []);
 
   const load = useCallback(async () => {
@@ -118,23 +125,34 @@ export default function OverviewDashboard({ onOpenTask }) {
     scheduled_hours: t.duration ? t.duration / 60 : 0,
   })), [quickTasks, who]);
   const inWindow = (j) => months.includes(j.month);
+  // A row key is the task type, or the person in team view.
+  const keyOf = (j) => (mode === 'team' ? (j.assignee_id || 'none') : j.type);
   const maxCell = useMemo(() => {
     const m = new Map();
-    visible.forEach((j) => { if (j.filing && inWindow(j)) { const k = `${j.month}|${j.type}`; m.set(k, (m.get(k) || 0) + 1); } });
+    visible.forEach((j) => { if (j.filing && inWindow(j)) { const k = `${j.month}|${keyOf(j)}`; m.set(k, (m.get(k) || 0) + 1); } });
     return Math.max(0, ...m.values());
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [visible, mode]); // eslint-disable-line react-hooks/exhaustive-deps
   // Counts are filings; hours (all=true) take every task.
-  const cell = (month, type, all = false) => visible.filter((j) => (all || j.filing) && (month === 'all' ? inWindow(j) : j.month === month) && (type === 'all' || j.type === type));
+  const cell = (month, key, all = false) => visible.filter((j) => (all || j.filing) && (month === 'all' ? inWindow(j) : j.month === month) && (key === 'all' || keyOf(j) === key));
   const bucket = (id, all = false) => (id === 'quick' ? quick : visible.filter((j) => (all || j.filing) && bucketOf(j) === id));
-  const listFor = (sel, all = false) => (sel.bucket ? bucket(sel.bucket, all) : cell(sel.month, sel.type, all));
-  const titleFor = (sel) => (sel.bucket ? `${BUCKETS.find((b) => b.id === sel.bucket)?.label}${weekEndOf[sel.bucket] ? ` · w/e ${fmt(weekEndOf[sel.bucket])}` : ''}` : `${TILE_TYPES.find((t) => t.id === sel.type)?.label} · ${basis === 'planned' ? 'planned' : 'due'} ${monthLabel(sel.month)}`);
-  const hours = (list) => list.reduce((s, j) => s + (Number(j.scheduled_hours) || 0), 0);
-  const byPerson = (list) => {
-    const m = new Map();
-    list.forEach((j) => { const k = j.assignee_id || 'none'; m.set(k, (m.get(k) || 0) + 1); });
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  };
+  const listFor = (sel, all = false) => (sel.bucket ? bucket(sel.bucket, all) : cell(sel.month, sel.key, all));
   const name = (id) => (id === 'none' ? 'Unassigned' : (staffMap[id]?.name || '').split(' ')[0] || 'Someone');
+  const typeLabel = (id) => TILE_TYPES.find((t) => t.id === id)?.label || 'Other';
+  const rowLabel = (key) => (mode === 'team' ? name(key) : typeLabel(key));
+  const when = (sel) => (sel.month === 'all' ? 'next six months' : `${basis === 'planned' ? 'planned' : 'due'} ${monthLabel(sel.month)}`);
+  const titleFor = (sel) => (sel.bucket ? `${BUCKETS.find((b) => b.id === sel.bucket)?.label}${weekEndOf[sel.bucket] ? ` · w/e ${fmt(weekEndOf[sel.bucket])}` : ''}` : `${rowLabel(sel.key)} · ${when(sel)}`);
+  const hours = (list) => list.reduce((s, j) => s + (Number(j.scheduled_hours) || 0), 0);
+  const countBy = (list, f) => { const m = new Map(); list.forEach((j) => { const k = f(j); m.set(k, (m.get(k) || 0) + 1); }); return m; };
+  const byPerson = (list) => [...countBy(list, (j) => j.assignee_id || 'none').entries()].sort((a, b) => b[1] - a[1]);
+  const byType = (list) => { const m = countBy(list, (j) => j.type); return TILE_TYPES.filter((t) => m.has(t.id)).map((t) => [t.id, m.get(t.id)]); };
+  // The rows: the kinds of work, or the people (whoever holds a job in the window, plus the filtered person).
+  const rows = useMemo(() => {
+    if (mode !== 'team') return TILE_TYPES.map((t) => ({ id: t.id, label: t.label }));
+    const holders = new Set(visible.filter((j) => inWindow(j)).map((j) => j.assignee_id || 'none'));
+    const people = (staffList || []).filter((st) => st.work_planner !== false && (holders.has(st.id) || st.id === who)).map((st) => ({ id: st.id, label: (st.name || '').split(' ')[0] || 'Someone' }));
+    if (who) return people.filter((r) => r.id === who);
+    return holders.has('none') ? [...people, { id: 'none', label: 'Unassigned' }] : people;
+  }, [mode, visible, staffList, who]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Days off in each month, for the person picked or the whole team.
   const offByMonth = useMemo(() => {
@@ -160,6 +178,11 @@ export default function OverviewDashboard({ onOpenTask }) {
         <div style={{ fontSize: 12.5, color: '#64748b' }}>· {who ? `${name(who)} only` : 'whole team'}{loading ? ' · loading…' : ''}</div>
         <div style={{ flex: 1 }} />
         <span style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden' }}>
+          {[['tasks', 'Task view'], ['team', 'Team view']].map(([id, label]) => (
+            <button key={id} onClick={() => setMode(id)} style={{ ...BTN.secondary.sm, border: 'none', borderRadius: 0, padding: '3px 10px', fontSize: 12, background: mode === id ? '#dbeafe' : '#fff', color: mode === id ? '#0e7fe0' : '#334155', fontWeight: mode === id ? 600 : 500 }}>{label}</button>
+          ))}
+        </span>
+        <span style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden' }}>
           {[['deadline', 'By deadline'], ['planned', 'By planned date']].map(([id, label]) => (
             <button key={id} onClick={() => setBasis(id)} style={{ ...BTN.secondary.sm, border: 'none', borderRadius: 0, padding: '3px 10px', fontSize: 12, background: basis === id ? '#dbeafe' : '#fff', color: basis === id ? '#0e7fe0' : '#334155', fontWeight: basis === id ? 600 : 500 }}>{label}</button>
           ))}
@@ -179,9 +202,9 @@ export default function OverviewDashboard({ onOpenTask }) {
         })}
         <div style={{ ...head, borderLeft: '2px solid #cbd5e1', background: '#f1f5f9', color: '#0f172a', textAlign: 'right' }}>6 months</div>
 
-        {TILE_TYPES.map((t) => (
+        {rows.map((t) => (
           <React.Fragment key={t.id}>
-            <div style={rowHead}>{t.label}</div>
+            <div style={rowHead}>{mode === 'team' && t.id !== 'none' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Avatar id={t.id} staffMap={staffMap} size={20} customColour={staffColours?.[t.id]} />{t.label}</span> : t.label}</div>
             {months.map((mo) => {
               const list = cell(mo, t.id);
               const n = list.length;
@@ -189,8 +212,8 @@ export default function OverviewDashboard({ onOpenTask }) {
               const c = heat(n, maxCell);
               return (
                 <button key={mo}
-                  onClick={() => n && setTile({ month: mo, type: t.id })}
-                  onMouseEnter={(e) => n && setHover({ month: mo, type: t.id, x: e.clientX, y: e.clientY })}
+                  onClick={() => n && setTile({ month: mo, key: t.id })}
+                  onMouseEnter={(e) => n && setHover({ month: mo, key: t.id, x: e.clientX, y: e.clientY })}
                   onMouseMove={(e) => hover && setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h))}
                   onMouseLeave={() => setHover(null)}
                   disabled={!n}
@@ -203,12 +226,16 @@ export default function OverviewDashboard({ onOpenTask }) {
                 </button>
               );
             })}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, padding: '8px 14px', borderBottom: '1px solid #f1f5f9', borderLeft: '2px solid #cbd5e1', background: '#f1f5f9', ...NUM }}>
+            <button onClick={() => cell('all', t.id).length && setTile({ month: 'all', key: t.id })}
+              onMouseEnter={(e) => cell('all', t.id).length && setHover({ month: 'all', key: t.id, x: e.clientX, y: e.clientY })}
+              onMouseMove={(e) => hover && setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h))}
+              onMouseLeave={() => setHover(null)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, padding: '8px 14px', border: 'none', borderBottom: '1px solid #f1f5f9', borderLeft: '2px solid #cbd5e1', background: '#f1f5f9', cursor: cell('all', t.id).length ? 'pointer' : 'default', fontFamily: font, ...NUM }}>
               {cell('all', t.id).length ? <>
                 <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.15, color: '#0f172a' }}>{cell('all', t.id).length}</span>
                 <span style={{ fontSize: 11.5, lineHeight: 1.2, color: '#64748b' }}>{h1(hours(cell('all', t.id, true)))}h</span>
               </> : <span style={{ fontSize: 17, lineHeight: 1.15, color: '#cbd5e1' }}>·</span>}
-            </div>
+            </button>
           </React.Fragment>
         ))}
 
@@ -252,13 +279,16 @@ export default function OverviewDashboard({ onOpenTask }) {
       {hover && (() => {
         const list = listFor(hover);
         const work = listFor(hover, true);
-        const split = byPerson(list);
+        const teamSplit = !hover.bucket && mode === 'team';
+        const split = teamSplit ? byType(list) : byPerson(list);
+        const splitName = (id) => (teamSplit ? typeLabel(id) : name(id));
+        const splitWork = (id) => work.filter((j) => (teamSplit ? j.type : (j.assignee_id || 'none')) === id);
         return (
           <div style={{ position: 'fixed', left: Math.min(hover.x + 14, window.innerWidth - 240), top: Math.min(hover.y + 14, window.innerHeight - 40 - split.length * 22), zIndex: 140, background: '#0f172a', color: '#fff', borderRadius: 8, padding: '8px 10px', fontSize: 12.5, minWidth: 180, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', pointerEvents: 'none' }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{hover.bucket ? titleFor(hover) : `${TILE_TYPES.find((t) => t.id === hover.type)?.label} · ${monthShort(hover.month)}`} · {list.length}</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{hover.bucket ? titleFor(hover) : `${rowLabel(hover.key)} · ${hover.month === 'all' ? '6 months' : monthShort(hover.month)}`} · {list.length}</div>
             {split.map(([id, n]) => (
               <div key={id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '1px 0' }}>
-                <span>{name(id)}</span><span style={{ fontWeight: 600 }}>{n}<span style={{ color: '#94a3b8', fontWeight: 400 }}> · {h1(hours(work.filter((j) => (j.assignee_id || 'none') === id)))}h</span></span>
+                <span>{splitName(id)}</span><span style={{ fontWeight: 600 }}>{n}<span style={{ color: '#94a3b8', fontWeight: 400 }}> · {h1(hours(splitWork(id)))}h</span></span>
               </div>
             ))}
             <div style={{ color: '#94a3b8', marginTop: 4 }}>Click for the {hover.bucket === 'quick' ? 'tasks' : 'jobs'}</div>
@@ -267,7 +297,10 @@ export default function OverviewDashboard({ onOpenTask }) {
       })()}
 
       {tile && (() => {
-        const list = listFor(tile).sort((a, b) => (name(a.assignee_id || 'none')).localeCompare(name(b.assignee_id || 'none')) || String(a[col]).localeCompare(String(b[col])));
+        const grouped = !tile.bucket && mode === 'team';
+        const list = listFor(tile).sort((a, b) => (grouped ? 0 : (name(a.assignee_id || 'none')).localeCompare(name(b.assignee_id || 'none'))) || String(a[col]).localeCompare(String(b[col])));
+        const groups = grouped ? TILE_TYPES.map((t) => ({ ...t, items: list.filter((j) => j.type === t.id) })).filter((g) => g.items.length) : [{ id: 'all', label: null, items: list }];
+        const workOf = (items) => hours(listFor(tile, true).filter((j) => items.some((i) => i.id === j.id) || (grouped && j.type === items[0]?.type)));
         return (
           <div onClick={() => setTile(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 760, maxWidth: '96vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column', fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
@@ -279,7 +312,13 @@ export default function OverviewDashboard({ onOpenTask }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 70px', gap: 8, fontSize: 11.5, fontWeight: 600, color: '#94a3b8', padding: '4px 4px', borderBottom: '1px solid #e5e7eb' }}>
                   <span /><span>Client</span><span>Task</span><span>Due</span><span>Planned</span><span>Hours</span><span />
                 </div>
-                {list.map((j) => (
+                {groups.map((g) => (<React.Fragment key={g.id}>
+                {g.label && (
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '10px 4px 4px', fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                    {g.label}<span style={{ fontWeight: 500, color: '#64748b' }}>· {g.items.length} job{g.items.length === 1 ? '' : 's'} · {h1(workOf(g.items))}h</span>
+                  </div>
+                )}
+                {g.items.map((j) => (
                   <div key={j.id} style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 70px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
                     <span title={staffMap[j.assignee_id]?.name || 'Unassigned'}>{j.assignee_id ? <Avatar id={j.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[j.assignee_id]} /> : null}</span>
                     <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? (entityMap[j.entity_id]?.name || '') : j.entities?.name}</span>
@@ -290,6 +329,12 @@ export default function OverviewDashboard({ onOpenTask }) {
                     {onOpenTask ? <button onClick={() => { setTile(null); onOpenTask({ type: j.quick ? 'quick' : 'bm', id: j.id }); }} style={BTN.secondary.sm}>Open</button> : <span />}
                   </div>
                 ))}
+                </React.Fragment>))}
+                {grouped && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 4px 2px', fontSize: 13.5, fontWeight: 700, color: '#0f172a', borderTop: '2px solid #cbd5e1', marginTop: 6 }}>
+                    Total · {list.length} job{list.length === 1 ? '' : 's'} · {h1(hours(listFor(tile, true)))}h
+                  </div>
+                )}
               </div>
             </div>
           </div>

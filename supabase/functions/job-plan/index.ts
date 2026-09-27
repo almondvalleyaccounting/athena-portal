@@ -113,6 +113,24 @@ const PORTAL_URL = Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondva
 function taskUrl(t: { type: string; id: string; occurrence_date: string | null }): string {
   return `${PORTAL_URL}/planner/day?task=${t.type}:${t.id}${t.occurrence_date ? `:${t.occurrence_date}` : ""}`;
 }
+// Which Allocations column a BM task belongs to (mirrors v_inferred_allocations,
+// sql/052) and which sibling tasks move with it when the allocation moves.
+function allocationFamily(service: string | null, name: string | null): { canonical: string | null; siblings: (svc: string | null, nm: string | null) => boolean } {
+  const n = (name || "").toLowerCase();
+  const isPrep = (nm: string | null) => (nm || "").toLowerCase().startsWith("accounts preparation");
+  const isSub = (svc: string | null, nm: string | null) => {
+    const x = (nm || "").toLowerCase();
+    return (svc === "Annual Accounts" && x.includes("companies house submission")) || (svc === "Corporation Tax" && x.startsWith("ct600 submission"));
+  };
+  if (service === "Bookkeeping") return { canonical: "bookkeeping", siblings: (svc) => svc === "Bookkeeping" };
+  if (service === "VAT") return { canonical: "vat_review", siblings: (svc) => svc === "VAT" };
+  if (service === "Self Assessment" || service === "Personal Tax") return { canonical: "self_assessment", siblings: (svc) => svc === "Self Assessment" || svc === "Personal Tax" };
+  if (service === "Annual Accounts" && isPrep(name)) return { canonical: "accounts_preparation", siblings: (svc, nm) => svc === "Annual Accounts" && isPrep(nm) };
+  if (isSub(service, name)) return { canonical: "accounts_submission", siblings: isSub };
+  void n;
+  return { canonical: null, siblings: (svc) => svc === service };
+}
+
 function optUuid(v: unknown, field: string): string | null {
   if (v === null || v === undefined || v === "") return null;
   return uuid(v, field);
@@ -1054,6 +1072,54 @@ Deno.serve(async (req) => {
           timesheetId = ts.id;
         }
         return json({ success: true, timesheet_id: timesheetId, plan: await loadPlan(plan.id as string), milestones: await milestonesOf(plan.id as string) });
+      }
+
+      // Reassign a BM job (sql/328). One-off moves this task; permanent moves
+      // every planned task of the client in the same allocation family and
+      // writes the allocation_changes draft the Allocations screen would, so
+      // it reaches the admin task list to be moved in BrightManager. The
+      // override stands until an import shows BM agreeing.
+      case "reassign_bm_job": {
+        const sid = uuid(p.schedule_id, "schedule_id");
+        const to = uuid(p.to_staff_id, "to_staff_id");
+        const mode = p.mode === "permanent" ? "permanent" : "one_off";
+        const note = p.note ? String(p.note).slice(0, 500) : null;
+        const { data: row, error } = await db.from("bm_task_schedule").select("id, entity_id, bm_task_name, service, assignee_id, state").eq("id", sid).maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!row) throw new BadRequest("Job not found", 404);
+        const [{ data: meRow }, { data: target }] = await Promise.all([
+          db.from("staff_profiles").select("can_manage_portal").eq("id", me).maybeSingle(),
+          db.from("staff_profiles").select("id, name, is_active").eq("id", to).maybeSingle(),
+        ]);
+        if (!target?.is_active) throw new BadRequest("That person is not an active member of staff");
+        if (row.assignee_id !== me && !meRow?.can_manage_portal) throw new BadRequest("Only the assignee or a manager can reassign a job", 403);
+        if (row.assignee_id === to) throw new BadRequest(`${target.name} already has this job`);
+        const override = { assignee_override_id: to, assignee_override_kind: mode, assignee_override_at: now, assignee_override_by: me, assignee_override_note: note, updated_at: now };
+        let ids = [sid];
+        let canonical: string | null = null;
+        let draftId: string | null = null;
+        if (mode === "permanent") {
+          const fam = allocationFamily(row.service, row.bm_task_name);
+          canonical = fam.canonical;
+          const { data: sib, error: sErr } = await db.from("bm_task_schedule").select("id, service, bm_task_name").eq("entity_id", row.entity_id).eq("state", "planned").is("excluded_at", null);
+          if (sErr) throw new Error(sErr.message);
+          ids = Array.from(new Set([sid, ...(sib || []).filter((x) => fam.siblings(x.service, x.bm_task_name)).map((x) => x.id as string)]));
+          if (canonical) {
+            const payload = { entity_id: row.entity_id, canonical_service_id: canonical, proposed_fee_earner_id: to, proposed_manager_id: null, note: note || `Reassigned from the task in Athena (was ${row.assignee_id ? "assigned" : "unassigned"})`, status: "draft", created_by: me };
+            const { data: existing } = await db.from("allocation_changes").select("id").eq("entity_id", row.entity_id).eq("canonical_service_id", canonical).eq("status", "draft").maybeSingle();
+            const w = existing ? db.from("allocation_changes").update(payload).eq("id", existing.id).select("id").single() : db.from("allocation_changes").insert(payload).select("id").single();
+            const { data: d, error: dErr } = await w;
+            if (dErr) throw new Error(dErr.message);
+            draftId = d.id;
+          }
+        }
+        const { error: uErr } = await db.from("bm_task_schedule").update(override).in("id", ids);
+        if (uErr) throw new Error(uErr.message);
+        await db.from("task_comments").insert({
+          task_type: "bm", task_id: sid, entity_id: row.entity_id, task_label: row.bm_task_name, author_id: me, kind: "comment",
+          body: `${mode === "permanent" ? "Reassigned permanently" : "Reassigned (one-off)"} to ${target.name}${ids.length > 1 ? ` with ${ids.length - 1} related task${ids.length > 2 ? "s" : ""}` : ""}${draftId ? "; on the admin list to move in BrightManager" : ""}${note ? ` — ${note}` : ""}`,
+        });
+        return json({ success: true, moved: ids.length, canonical_service_id: canonical, draft_id: draftId });
       }
 
       default:

@@ -126,6 +126,8 @@ export default function WorkPlannerModule() {
   const [taskModal, setTaskModal] = useState(null); // { type, id, occurrence_date? }
   const [emailModal, setEmailModal] = useState(null); // EmailModal ctx
   const [holidayOpen, setHolidayOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false); // the + New menu
+  const autoTeamRef = useRef(false); // Overview defaults the team filter to me once, not every visit
   const [holidays, setHolidays] = useState([]); // staff_holidays (sql/317)
   // `${staffId}|${iso}` for every day off, so views can ask in O(1).
   const holidayMap = useMemo(() => {
@@ -712,12 +714,14 @@ export default function WorkPlannerModule() {
     return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} \u2014 ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
   }
 
-  // Auto-set team filter to current user on My Tasks tab
+  // The Overview opens on me the first time; clearing the filter then sticks
+  // across tabs (it used to snap back to me on every return).
   useEffect(() => {
-    if (activeTab === 'mytasks' && !teamFilter && profile?.id) {
+    if (activeTab === 'mytasks' && !teamFilter && profile?.id && !autoTeamRef.current) {
+      autoTeamRef.current = true;
       setTeamFilter(profile.id);
     }
-  }, [activeTab, profile]);
+  }, [activeTab, profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear highlight when popover closes
   useEffect(() => {
@@ -818,7 +822,14 @@ export default function WorkPlannerModule() {
   }
 
   // ── Render ──
-  const showNewBtn = activeTab === 'sched' || activeTab === 'calendar' || activeTab === 'mytasks' || activeTab === 'day';
+  // One + New menu on every task tab (Bobby, 2026-09-27), instead of a
+  // different set of buttons per tab.
+  const newItems = [
+    { label: 'Quick task', hint: 'A one-off task for someone', run: () => setQuickModal({ _new: true }) },
+    { label: 'Block', hint: 'Standing work on a cadence', run: () => setModal('new') },
+    { label: 'Holiday', hint: 'Time off, cover and handover', run: () => setHolidayOpen(true) },
+    ...((activeTab === 'day' || activeTab === 'calendar') ? [{ label: 'Jobs onto a day', hint: 'Pull BrightManager jobs in from the Job Selector', run: () => setSelectorOpen(true) }] : []),
+  ];
 
   return (
     <WorkPlannerContext.Provider value={contextValue}>
@@ -855,43 +866,26 @@ export default function WorkPlannerModule() {
             </button>
           ))}
           <div style={{ flex: 1 }} />
-          {showNewBtn && (
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(activeTab === 'day' || activeTab === 'calendar' || activeTab === 'mytasks') && (
-                <button onClick={() => setHolidayOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Holidays, cover and handover">
-                  Holidays
-                </button>
-              )}
-              {activeTab === 'day' && (
-                <button onClick={() => setSelectorOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Pull BrightManager jobs onto this day">
-                  Job Selector
-                </button>
-              )}
+          {activeSubModule === 'task' && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
               {activeTab === 'calendar' && (
+                <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Planner works">Guide</button>
+              )}
+              <button onClick={() => setNewOpen((o) => !o)} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>+ New ▾</button>
+              {newOpen && (
                 <>
-                  <button onClick={() => setGuideOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="How the Planner works">
-                    Guide
-                  </button>
-                  <button onClick={() => setSelectorOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }} title="Pull BrightManager jobs onto a day">
-                    Job Selector
-                  </button>
+                  <div onClick={() => setNewOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+                  <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 61, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: 240, padding: 4 }}>
+                    {newItems.map((it) => (
+                      <button key={it.label} onClick={() => { setNewOpen(false); it.run(); }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'Outfit', sans-serif" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{it.label}</div>
+                        <div style={{ fontSize: 11.5, color: '#64748b' }}>{it.hint}</div>
+                      </button>
+                    ))}
+                  </div>
                 </>
-              )}
-              {activeTab === 'mytasks' && (
-                <button
-                  onClick={() => setQuickModal({ _new: true })}
-                  style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
-                >
-                  + Quick Task
-                </button>
-              )}
-              {activeTab !== 'mytasks' && activeTab !== 'day' && (
-                <button
-                  onClick={() => setModal('new')}
-                  style={{ ...BTN.primary.sm, cursor: 'pointer' }}
-                >
-                  + Block
-                </button>
               )}
             </div>
           )}
