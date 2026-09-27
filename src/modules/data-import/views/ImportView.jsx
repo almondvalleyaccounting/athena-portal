@@ -90,7 +90,7 @@ export default function ImportView() {
       </div>
 
       {/* Right: run panel */}
-      <div style={{ flex: 1, padding: '24px 32px' }}>
+      <div style={{ flex: 1, minWidth: 0, padding: '24px 32px' }}>
         {!source ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
             <p style={{ fontSize: 14.5, color: '#94a3b8' }}>Select a source from the left to begin</p>
@@ -544,7 +544,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
     blockers.push({ text: `${contestedUnresolved} prospect ${contestedUnresolved === 1 ? 'group needs' : 'groups need'} one winner`, target: 'import-conversions' });
   }
   if (tier3Pending.length > 0) {
-    blockers.push({ text: `${tier3Pending.length} prospect ${tier3Pending.length === 1 ? 'match needs' : 'matches need'} Confirm or Skip`, target: 'import-conversions' });
+    blockers.push({ text: `${tier3Pending.length} prospect ${tier3Pending.length === 1 ? 'match needs' : 'matches need'} Convert or Keep separate`, target: 'import-conversions' });
   }
 
   const decisionCount = source.key === 'bm_clients'
@@ -557,7 +557,6 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
 
   const detailBits = validation ? [
     source.key !== 'bm_clients' && validation.warningCount ? `${validation.warningCount} per-row messages` : null,
-    source.key === 'bm_clients' && personRefCollisions.length ? `${personRefCollisions.length} shared person references` : null,
     source.key === 'bm_clients' ? 'people and contacts' : null,
   ].filter(Boolean) : [];
 
@@ -643,6 +642,7 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
 
           <SkippedPanel skipped={validation.skippedRows} />
           {source.key === 'bm_clients' && <WarningsPanel warnings={validation.warnings} />}
+          {source.key === 'bm_clients' && <PersonRefCollisionPanel collisions={personRefCollisions} />}
 
           {source.key === 'bm_tasks' && parsedRows && (
             <Collapsible
@@ -663,7 +663,6 @@ function RunPanel({ source, profile, onCompleted, onPickAnother, onGoStatus, onG
               {source.key !== 'bm_clients' && <ValidationDetails validation={validation} />}
               {source.key === 'bm_clients' && parsedRows && (
                 <>
-                  <PersonRefCollisionPanel collisions={personRefCollisions} />
                   <PeoplePanel summary={personSummary} rowCount={parsedRows.length} />
                   <AgentColumnsPanel columns={agentColumns} />
                 </>
@@ -948,7 +947,7 @@ function UploadZone({ source, file, preview, onFilePicked, onClear, onValidate, 
           <p style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', marginBottom: 8 }}>
             Getting the file from {getSystemLabel(source.system)}
           </p>
-          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#475569', lineHeight: 1.7 }}>
+          <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: '#475569', lineHeight: 1.7, listStyle: 'decimal' }}>
             {source.pullSteps.map((s) => <li key={s}>{s}</li>)}
           </ol>
         </div>
@@ -1138,7 +1137,10 @@ function WarningsPanel({ warnings }) {
   const groups = useMemo(() => {
     const byMsg = new Map();
     for (const w of warnings || []) {
-      const key = w.message || w.reason || 'Other';
+      // One reference, two people: shown once, in its own panel.
+      if (/is shared by \d+ different people/i.test(w.message || '')) continue;
+      const raw = w.message || w.reason || 'Other';
+      const key = raw.charAt(0).toUpperCase() + raw.slice(1);
       const g = byMsg.get(key) || { key, field: w.field, rows: [] };
       g.rows.push(w);
       byMsg.set(key, g);
@@ -1146,10 +1148,11 @@ function WarningsPanel({ warnings }) {
     return [...byMsg.values()].sort((a, b) => b.rows.length - a.rows.length);
   }, [warnings]);
   if (!groups.length) return null;
+  const rowCount = groups.reduce((n, g) => n + g.rows.length, 0);
   return (
     <RollupFrame
       tone="amber"
-      title={`Imports, but check in BrightManager · ${warnings.length} ${warnings.length === 1 ? 'row' : 'rows'}`}
+      title={`Imports, but check in BrightManager · ${rowCount} ${rowCount === 1 ? 'row' : 'rows'}`}
       summary="These rows import. Each problem below is fixed once in BrightManager."
     >
       {groups.map((g) => (
@@ -1157,9 +1160,9 @@ function WarningsPanel({ warnings }) {
           <div style={{ fontSize: 13.5, color: '#0f172a', fontWeight: 500 }}>
             {g.key} <span style={{ color: '#64748b', fontWeight: 400 }}>· {g.rows.length}</span>
           </div>
-          <div style={{ fontSize: 12.5, color: '#475569', marginTop: 3, lineHeight: 1.6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 14, rowGap: 2, fontSize: 12.5, color: '#475569', marginTop: 3 }}>
             {g.rows.map((r) => (
-              <span key={`${r.row}-${r.bm_client_id}`} style={{ marginRight: 14, whiteSpace: 'nowrap' }}>
+              <span key={`${r.row}-${r.bm_client_id}`} style={{ whiteSpace: 'nowrap' }}>
                 {r.name || '—'}
                 {r.bm_client_id && <span style={{ fontFamily: 'monospace', color: '#94a3b8' }}> {r.bm_client_id}</span>}
               </span>
@@ -1220,7 +1223,7 @@ function RollupFrame({ title, tone, summary, search, onSearchChange, searchPlace
       </div>
       {/* Cap body height so tall rollups don't dominate — the list
           scrolls inside the panel, but the panel stays compact. */}
-      <div style={{ maxHeight: 520, overflowY: 'auto' }}>{children}</div>
+      <div style={{ maxHeight: 520, overflowY: 'auto', overflowX: 'auto' }}>{children}</div>
     </div>
   );
 }
@@ -2227,10 +2230,7 @@ function PeoplePanel({ summary, rowCount }) {
 function PersonRefCollisionPanel({ collisions }) {
   if (!collisions || collisions.length === 0) return null;
   return (
-    <div style={{ marginTop: 12 }}>
-      <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
-        Needs attention in BrightManager · one person reference, two people
-      </p>
+    <div>
       <RollupFrame
         tone="amber"
         title={`Shared Person Internal Reference · ${collisions.length} ${collisions.length === 1 ? 'reference' : 'references'}`}
@@ -2247,7 +2247,6 @@ function PersonRefCollisionPanel({ collisions }) {
                   <span key={`${p.name}-${p.dob || ''}`} style={{ marginRight: 14 }}>
                     <strong style={{ color: '#0f172a' }}>{p.name}</strong>
                     {p.dob ? ` · b. ${p.dob}` : ' · no date of birth'}
-                    {p.ni ? ` · ${p.ni}` : ''}
                   </span>
                 ))}
               </span>
@@ -2506,7 +2505,7 @@ function ConversionPanel({ groups, decisions, setDecisions }) {
       {simpleGroups.length > 0 && (
         <div>
           <p style={{ fontSize: 12, fontWeight: 600, color: '#78350f', marginBottom: 6 }}>
-            Matches — confirm or skip
+            Check each match
           </p>
           {simpleGroups.map((g) => {
             const m = g.members[0];
