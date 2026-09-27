@@ -1,0 +1,448 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../../shell/AppShell';
+import { useWorkPlanner } from '../WorkPlannerModule';
+import Avatar from '../components/Avatar';
+import { BTN } from '../../../lib/buttonStyles';
+
+// Payroll (Bobby, 2026-09-27): the team's weekly and monthly BrightPay
+// checklists as an interactive tick list, replacing two spreadsheets from
+// October 2026 (sql/333). One row per payroll client, one column per step,
+// one sheet per tax week or tax month. Pay date, cut-off, runner, pay type
+// and the standing note are held once per client. Every tick records who
+// and when. "Journal posted" is the one live column, from the journal
+// control check. Controls is a third sheet, in development: the team's
+// ticks against BrightPay and HMRC.
+
+const font = "'Outfit', sans-serif";
+const STEPS = [
+  { id: 'approval',  label: 'Approval / entry requested' },
+  { id: 'hours',     label: 'Hours / salary checked for each employee' },
+  { id: 'processed', label: 'Payroll reviewed and processed' },
+  { id: 'fps',       label: 'FPS sent to HMRC' },
+  { id: 'payslips',  label: 'Payslips released to employees / directors' },
+  { id: 'modulr',    label: 'Approval sent to Modulr' },
+  { id: 'pension',   label: 'Pension submission sent' },
+  { id: 'eps',       label: 'EPS checked and sent to HMRC' },
+];
+const PAY_TYPES = [['', '—'], ['fixed', 'Fixed'], ['variable', 'Variable'], ['entry', 'Payroll entry']];
+const fmt = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
+const fmtTs = (ts) => (ts ? new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+async function callPayroll(payload) {
+  const { data, error } = await supabase.functions.invoke('payroll-tracker', { body: payload });
+  if (error || !data?.success) {
+    let msg = data?.error || 'Could not save';
+    try { const j = await error?.context?.json?.(); if (j?.error) msg = j.error; } catch { /* body already read */ }
+    throw new Error(msg);
+  }
+  return data;
+}
+
+// The calendar month a tax month is paid in: tax month n of 2026/27 starts 6
+// April 2026 + (n-1) months, so its journal period is that month.
+const journalPeriodOf = (p) => (p?.frequency === 'monthly' ? String(p.start_date).slice(0, 7) : null);
+// A cut-off like "20th" inside the pay month; null when it is not a day.
+const cutoffDate = (p, cutoff) => {
+  const d = parseInt(String(cutoff || '').replace(/\D/g, ''), 10);
+  if (!p || !d || d < 1 || d > 31) return null;
+  const s = new Date(`${p.start_date}T12:00:00`);
+  const m = new Date(s.getFullYear(), s.getMonth() + (d < 6 ? 1 : 0), d);
+  return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
+};
+const groupOf = (c) => {
+  if (c.frequency === 'eps_only') return { key: 'z-eps', label: 'EPS only' };
+  if (c.batch) return { key: 'y-batch', label: 'Batch · last working day · run together' };
+  const pd = String(c.pay_day || '').toLowerCase();
+  if (c.frequency === 'weekly') return { key: `w-${pd || 'zz'}`, label: pd ? `Paid ${c.pay_day}` : 'Weekly' };
+  if (/lwd|last/.test(pd)) return { key: 'x-lwd', label: 'Last working day' };
+  const n = parseInt(pd.replace(/\D/g, ''), 10);
+  return n ? { key: `m-${String(n).padStart(2, '0')}`, label: `Paid ${c.pay_day}` } : { key: 'm-zz', label: 'Pay date not set' };
+};
+
+export default function PayrollView() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
+  const { staffList, staffMap, staffColours, filters, entityList = [] } = useWorkPlanner();
+  const [sheet, setSheet] = useState(() => { try { return localStorage.getItem('payroll.sheet') || 'monthly'; } catch { return 'monthly'; } });
+  const [periods, setPeriods] = useState([]);
+  const [periodId, setPeriodId] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [ticks, setTicks] = useState({}); // `${client}|${step}` -> tick row
+  const [noteCounts, setNoteCounts] = useState({});
+  const [journal, setJournal] = useState({}); // realm_id -> status
+  const [outstandingOnly, setOutstandingOnly] = useState(false);
+  const [includeCeased, setIncludeCeased] = useState(false);
+  const [search, setSearch] = useState('');
+  const [drawer, setDrawer] = useState(null); // client id, or 'new'
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const today = todayISO();
+  const who = filters.teamFilter || null;
+  const freq = sheet === 'controls' ? 'monthly' : sheet;
+
+  useEffect(() => { try { localStorage.setItem('payroll.sheet', sheet); } catch { /* private window */ } }, [sheet]);
+
+  // Periods for this sheet; land on the one that contains today.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error: e } = await supabase.from('payroll_periods').select('*').eq('frequency', freq).order('start_date');
+      if (cancelled) return;
+      if (e) { setError(e.message); return; }
+      setPeriods(data || []);
+      const cur = (data || []).find((p) => p.start_date <= today && p.end_date >= today) || (data || [])[0];
+      setPeriodId((pid) => ((data || []).some((p) => p.id === pid) ? pid : cur?.id || null));
+    })();
+    return () => { cancelled = true; };
+  }, [freq, today]);
+  const period = periods.find((p) => p.id === periodId) || null;
+  const pIndex = periods.findIndex((p) => p.id === periodId);
+
+  const load = useCallback(async () => {
+    if (!period) return;
+    setLoading(true); setError(null);
+    try {
+      const wantFreq = freq === 'monthly' ? ['monthly', 'eps_only'] : ['weekly'];
+      const [{ data: cs, error: e1 }, { data: ts, error: e2 }, { data: ns }] = await Promise.all([
+        supabase.from('payroll_clients').select('*').in('frequency', wantFreq).order('sort_order').order('name').limit(1000),
+        supabase.from('payroll_ticks').select('*').eq('period_id', period.id).limit(5000),
+        supabase.from('payroll_period_notes').select('client_id').eq('period_id', period.id).limit(2000),
+      ]);
+      if (e1) throw e1; if (e2) throw e2;
+      setClients(cs || []);
+      const m = {}; (ts || []).forEach((t) => { m[`${t.client_id}|${t.step}`] = t; }); setTicks(m);
+      const nc = {}; (ns || []).forEach((n) => { nc[n.client_id] = (nc[n.client_id] || 0) + 1; }); setNoteCounts(nc);
+      const jp = journalPeriodOf(period);
+      if (jp) {
+        const { data: js } = await supabase.rpc('payroll_journal_status', { p_period: jp });
+        setJournal(Object.fromEntries((js || []).map((r) => [r.realm_id, r.status])));
+      } else setJournal({});
+    } catch (e) { setError(e.message || String(e)); }
+    finally { setLoading(false); }
+  }, [period, freq]);
+  useEffect(() => { load(); }, [load]);
+
+  const tickOf = (c, step) => ticks[`${c.id}|${step}`] || null;
+  const stateOf = (c, step) => (c.na_steps || []).includes(step) ? 'na-fixed' : (tickOf(c, step)?.state || 'open');
+  const isComplete = (c) => STEPS.every((s) => stateOf(c, s.id) !== 'open');
+  const lateFor = (c) => {
+    if (!period) return false;
+    const cut = freq === 'monthly' ? (cutoffDate(period, c.cutoff) || period.end_date) : period.end_date;
+    return today > cut;
+  };
+
+  const visible = useMemo(() => {
+    let list = clients.filter((c) => includeCeased || (c.active && !c.ceased_on));
+    if (who) list = list.filter((c) => c.runner_id === who || c.cover_id === who);
+    if (search.trim()) { const q = search.trim().toLowerCase(); list = list.filter((c) => c.name.toLowerCase().includes(q) || (c.standing_note || '').toLowerCase().includes(q)); }
+    if (outstandingOnly) list = list.filter((c) => !isComplete(c));
+    return list;
+  }, [clients, includeCeased, who, search, outstandingOnly, ticks]); // eslint-disable-line react-hooks/exhaustive-deps
+  const groups = useMemo(() => {
+    const m = new Map();
+    visible.forEach((c) => { const g = groupOf(c); if (!m.has(g.key)) m.set(g.key, { ...g, items: [] }); m.get(g.key).items.push(c); });
+    return [...m.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }, [visible]);
+  const activeClients = clients.filter((c) => c.active && !c.ceased_on);
+  const complete = activeClients.filter(isComplete).length;
+
+  // Click cycles open → done → n/a → open. Optimistic; the server records who and when.
+  const cycle = async (c, step) => {
+    const cur = stateOf(c, step);
+    if (cur === 'na-fixed') return;
+    const next = cur === 'open' ? 'done' : cur === 'done' ? 'na' : null;
+    const key = `${c.id}|${step}`;
+    const prev = ticks[key];
+    setTicks((t) => { const n = { ...t }; if (next) n[key] = { client_id: c.id, period_id: period.id, step, state: next, by_id: profile?.id, by_name: profile?.name, at: new Date().toISOString() }; else delete n[key]; return n; });
+    try { await callPayroll({ action: 'set_tick', client_id: c.id, period_id: period.id, step, state: next }); }
+    catch (e) { setError(e.message); setTicks((t) => { const n = { ...t }; if (prev) n[key] = prev; else delete n[key]; return n; }); }
+  };
+
+  const runnerLabel = (c) => (c.runner_id ? (staffMap[c.runner_id]?.name || '').split(' ')[0] : (c.runner_name || (c.batch ? 'Batch' : '—')));
+  const periodLabel = (p) => (p ? `${p.frequency === 'weekly' ? 'Week' : 'Month'} ${p.number} · ${p.tax_year} · ${fmt(p.start_date)} – ${fmt(p.end_date)}${p.frequency === 'monthly' ? ` · paid ${new Date(`${p.start_date}T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}` : '');
+
+  // ── styles ──
+  const th = { position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', borderBottom: '1px solid #cbd5e1', padding: '6px 6px', fontSize: 11, fontWeight: 600, color: '#475569', textAlign: 'center', verticalAlign: 'bottom', whiteSpace: 'normal', lineHeight: 1.25, height: 64, minWidth: 64 };
+  const thL = { ...th, textAlign: 'left' };
+  const td = { padding: '5px 6px', borderBottom: '1px solid #f1f5f9', fontSize: 12.5, textAlign: 'center', whiteSpace: 'nowrap', background: '#fff' };
+  const sticky1 = { position: 'sticky', left: 0, zIndex: 2, background: '#fff', minWidth: 190, maxWidth: 240, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', borderRight: '1px solid #f1f5f9' };
+  const sticky2 = { position: 'sticky', left: 240, zIndex: 2, background: '#fff', minWidth: 62, textAlign: 'left', borderRight: '1px solid #e5e7eb' };
+  const tile = (state, late) => ({
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, cursor: state === 'na-fixed' ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, userSelect: 'none',
+    ...(state === 'done' ? { background: '#dcfce7', color: '#166534' }
+      : state === 'na' || state === 'na-fixed' ? { background: state === 'na-fixed' ? '#f8fafc' : '#f1f5f9', color: '#94a3b8' }
+      : { border: `1px dashed ${late ? '#fca5a5' : '#cbd5e1'}`, background: late ? '#fef2f2' : '#fff', color: 'transparent' }),
+  });
+  const pill = (bg, fg) => ({ display: 'inline-block', padding: '1px 7px', borderRadius: 8, fontSize: 10.5, fontWeight: 600, background: bg, color: fg });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontFamily: font, minHeight: 0 }}>
+      {/* sheet + period bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #e5e7eb', background: '#fff', flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden' }}>
+          {[['weekly', 'Weekly'], ['monthly', 'Monthly'], ['controls', 'Controls']].map(([id, label]) => (
+            <button key={id} onClick={() => setSheet(id)} style={{ ...BTN.secondary.sm, border: 'none', borderRadius: 0, padding: '4px 12px', fontSize: 12.5, background: sheet === id ? '#dbeafe' : '#fff', color: sheet === id ? '#0e7fe0' : '#334155', fontWeight: sheet === id ? 600 : 500 }}>
+              {label}{id === 'controls' && <span style={{ ...pill('#fef3c7', '#92400e'), marginLeft: 6 }}>In development</span>}
+            </button>
+          ))}
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={() => pIndex > 0 && setPeriodId(periods[pIndex - 1].id)} disabled={pIndex <= 0} style={{ ...BTN.secondary.sm, padding: '2px 8px' }}>‹</button>
+          <select value={periodId || ''} onChange={(e) => setPeriodId(e.target.value)} style={{ padding: '4px 8px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', maxWidth: 360 }}>
+            {periods.map((p) => <option key={p.id} value={p.id}>{periodLabel(p)}</option>)}
+          </select>
+          <button onClick={() => pIndex >= 0 && pIndex < periods.length - 1 && setPeriodId(periods[pIndex + 1].id)} disabled={pIndex < 0 || pIndex >= periods.length - 1} style={{ ...BTN.secondary.sm, padding: '2px 8px' }}>›</button>
+          <button onClick={() => { const cur = periods.find((p) => p.start_date <= today && p.end_date >= today); if (cur) setPeriodId(cur.id); }} style={BTN.secondary.sm}>Now</button>
+        </span>
+        {sheet !== 'controls' && (
+          <>
+            <button onClick={() => setOutstandingOnly((v) => !v)} style={outstandingOnly ? { ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' } : BTN.secondary.sm}>Outstanding only</button>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients…" style={{ padding: '4px 10px', fontSize: 12.5, fontFamily: font, border: '1px solid #e5e7eb', borderRadius: 8, width: 170 }} />
+            <label style={{ fontSize: 12, color: '#64748b', display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={includeCeased} onChange={(e) => setIncludeCeased(e.target.checked)} /> ceased</label>
+          </>
+        )}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12.5, color: '#64748b' }}>{complete} of {activeClients.length} complete{who ? ` · ${(staffMap[who]?.name || '').split(' ')[0]} only` : ''}{loading ? ' · loading…' : ''}</span>
+        {sheet !== 'controls' && <button onClick={() => setDrawer('new')} style={BTN.primary.sm}>+ Payroll client</button>}
+      </div>
+      {error && <div style={{ margin: '8px 12px 0', padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}</div>}
+
+      {sheet === 'controls' ? (
+        <ControlsSheet period={period} clients={clients} journal={journal} ticks={ticks} stateOf={stateOf} />
+      ) : (
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0, padding: '0 0 12px' }}>
+          <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ ...thL, ...sticky1, zIndex: 4 }}>Client</th>
+                <th style={{ ...thL, ...sticky2, zIndex: 4 }}>Pay date</th>
+                <th style={{ ...th, minWidth: 56 }}>Cut-off</th>
+                <th style={{ ...th, minWidth: 70 }}>Runner</th>
+                <th style={{ ...th, minWidth: 56 }}>Cover</th>
+                {STEPS.filter((s) => freq === 'monthly' || s.id !== 'eps' || true).map((s) => <th key={s.id} style={{ ...th, maxWidth: 92 }}>{s.label}</th>)}
+                {freq === 'monthly' && <th style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e' }}>Journal posted to QuickBooks (live)</th>}
+                <th style={{ ...thL, minWidth: 220 }}>Standing note</th>
+                <th style={{ ...th, minWidth: 44 }}>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((g) => (
+                <React.Fragment key={g.key}>
+                  <tr><td colSpan={7 + STEPS.length + (freq === 'monthly' ? 1 : 0)} style={{ padding: '8px 10px 4px', fontSize: 11.5, fontWeight: 700, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', position: 'sticky', left: 0 }}>{g.label} <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {g.items.length}</span></td></tr>
+                  {g.items.map((c) => {
+                    const late = lateFor(c) && !isComplete(c);
+                    const js = c.realm_id ? journal[c.realm_id] : undefined;
+                    return (
+                      <tr key={c.id} style={{ opacity: c.active && !c.ceased_on ? 1 : 0.55 }}>
+                        <td style={{ ...td, ...sticky1, cursor: 'pointer', fontWeight: 500 }} onClick={() => setDrawer(c.id)} title={c.name}>{c.name}{c.entity_id ? '' : <span title="Not yet linked to a client record" style={{ marginLeft: 6, color: '#f59e0b' }}>•</span>}</td>
+                        <td style={{ ...td, ...sticky2 }}>{c.pay_day || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                        <td style={td}>{c.cutoff || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                        <td style={td}>{c.runner_id ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Avatar id={c.runner_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.runner_id]} />{runnerLabel(c)}</span> : runnerLabel(c)}</td>
+                        <td style={td}>{c.cover_id ? <Avatar id={c.cover_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.cover_id]} /> : ''}</td>
+                        {STEPS.map((s) => {
+                          const st = stateOf(c, s.id);
+                          const t = tickOf(c, s.id);
+                          const title = st === 'na-fixed' ? 'Not applicable for this client (set in the drawer)' : st === 'open' ? `${s.label} · not yet${late ? ' · past cut-off' : ''}` : `${st === 'done' ? 'Done' : 'Not applicable'} · ${t?.by_name || 'unknown'} · ${fmtTs(t?.at)}`;
+                          return (
+                            <td key={s.id} style={td}>
+                              <span onClick={() => cycle(c, s.id)} title={title} style={tile(st, late)}>{st === 'done' ? '✓' : st === 'na' || st === 'na-fixed' ? '–' : '·'}</span>
+                            </td>
+                          );
+                        })}
+                        {freq === 'monthly' && (
+                          <td style={td} title={c.realm_id ? `Journal control check, ${journalPeriodOf(period)}` : 'No QuickBooks realm linked'}>
+                            {c.frequency === 'eps_only' || !c.realm_id ? <span style={{ color: '#cbd5e1' }}>–</span>
+                              : js === 'checked' ? <span style={{ ...tile('done'), background: '#ccfbf1', color: '#0f766e', cursor: 'default' }}>✓</span>
+                              : <span style={{ ...tile('open'), border: 'none', background: '#fef3c7', color: '#92400e', cursor: 'default' }}>?</span>}
+                          </td>
+                        )}
+                        <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal', maxWidth: 320, fontSize: 11.5, color: '#64748b', lineHeight: 1.3 }}>{c.standing_note}</td>
+                        <td style={{ ...td, cursor: 'pointer', color: noteCounts[c.id] ? '#0e7fe0' : '#cbd5e1' }} onClick={() => setDrawer(c.id)}>{noteCounts[c.id] || '+'}</td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+              {!loading && visible.length === 0 && <tr><td colSpan={16} style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>Nothing to show for this filter.</td></tr>}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', gap: 14, padding: '8px 12px', fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
+            <span><span style={{ ...tile('done'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> done, hover for who and when</span>
+            <span><span style={{ ...tile('open'), width: 14, height: 14, verticalAlign: -2 }} /> not yet · click to tick</span>
+            <span><span style={{ ...tile('na'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>–</span> not applicable · click again to clear</span>
+            <span><span style={{ ...tile('open', true), width: 14, height: 14, verticalAlign: -2 }} /> past cut-off, still open</span>
+            {freq === 'monthly' && <span><span style={{ ...tile('done'), background: '#ccfbf1', color: '#0f766e', width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> journal seen in QuickBooks (live, not tickable)</span>}
+            <span><span style={{ color: '#f59e0b' }}>•</span> not linked to a client record</span>
+          </div>
+        </div>
+      )}
+
+      {drawer && (
+        <ClientDrawer
+          client={drawer === 'new' ? null : clients.find((c) => c.id === drawer)}
+          defaultFrequency={freq}
+          period={period}
+          ticks={ticks}
+          staffList={staffList} staffMap={staffMap} entityList={entityList} navigate={navigate}
+          onClose={() => setDrawer(null)}
+          onSaved={async () => { await load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ControlsSheet({ period, clients, journal, ticks, stateOf }) {
+  const rows = clients.filter((c) => c.active && !c.ceased_on && c.frequency !== 'eps_only');
+  const withRealm = rows.filter((c) => c.realm_id);
+  const seen = withRealm.filter((c) => journal[c.realm_id] === 'checked').length;
+  const said = rows.filter((c) => stateOf(c, 'processed') === 'done').length;
+  return (
+    <div style={{ padding: 16, overflow: 'auto', fontSize: 13.5, color: '#334155', maxWidth: 900 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Controls <span style={{ display: 'inline-block', padding: '1px 7px', borderRadius: 8, fontSize: 10.5, fontWeight: 600, background: '#fef3c7', color: '#92400e', marginLeft: 6 }}>In development</span></div>
+      <p style={{ margin: '6px 0 12px', color: '#64748b' }}>Three-way check for {period ? `${period.frequency === 'weekly' ? 'week' : 'month'} ${period.number}, ${period.tax_year}` : 'the period'}: what the team ticked, what BrightPay shows, what HMRC shows. The BrightPay and HMRC legs are not connected yet; the QuickBooks journal leg is live.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }}>
+        {[['Team says processed', `${said} of ${rows.length}`, '#0e7fe0'], ['Journal seen in QuickBooks', `${seen} of ${withRealm.length}`, '#0f766e'], ['BrightPay and HMRC', 'not connected', '#94a3b8']].map(([l, v, col]) => (
+          <div key={l} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', background: '#fff' }}>
+            <div style={{ fontSize: 11.5, color: '#64748b' }}>{l}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: col }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', marginBottom: 4 }}>Team vs QuickBooks, this month</div>
+      <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12.5 }}>
+        <thead><tr>{['Client', 'Team: processed', 'Team: FPS sent', 'QuickBooks: journal', 'Reads as'].map((h) => <th key={h} style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #cbd5e1', fontSize: 11, color: '#475569' }}>{h}</th>)}</tr></thead>
+        <tbody>
+          {withRealm.map((c) => {
+            const proc = stateOf(c, 'processed') === 'done', fps = stateOf(c, 'fps') === 'done', jr = journal[c.realm_id] === 'checked';
+            const verdict = proc && jr ? ['agree', '#166534'] : proc && !jr ? ['team says done, no journal yet', '#92400e'] : !proc && jr ? ['journal posted, not ticked', '#92400e'] : ['not yet', '#94a3b8'];
+            return (
+              <tr key={c.id}>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9' }}>{c.name}</td>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9' }}>{proc ? '✓' : '·'}</td>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9' }}>{fps ? '✓' : '·'}</td>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9' }}>{jr ? '✓' : '?'}</td>
+                <td style={{ padding: '5px 8px', borderBottom: '1px solid #f1f5f9', color: verdict[1], fontWeight: 600 }}>{verdict[0]}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p style={{ marginTop: 14, fontSize: 12, color: '#94a3b8' }}>Next: the BrightPay scraper (pay run and FPS status per employer) and the HMRC PAYE data, so a tick can be checked against both. BrightPay's audit report is the likely source.</p>
+    </div>
+  );
+}
+
+function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staffMap, entityList, navigate, onClose, onSaved }) {
+  const isNew = !client;
+  const [form, setForm] = useState(() => ({
+    name: client?.name || '', entity_id: client?.entity_id || '', frequency: client?.frequency || defaultFrequency, pay_day: client?.pay_day || '', cutoff: client?.cutoff || '',
+    pay_type: client?.pay_type || '', runner_id: client?.runner_id || '', runner_name: client?.runner_name || '', cover_id: client?.cover_id || '', batch: !!client?.batch,
+    na_steps: client?.na_steps || [], standing_note: client?.standing_note || '', active: client ? client.active : true, ceased_on: client?.ceased_on || '',
+  }));
+  const [notes, setNotes] = useState([]);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [entityQ, setEntityQ] = useState('');
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    if (!client || !period) return;
+    supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at').then(({ data }) => setNotes(data || []));
+  }, [client, period]);
+
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try {
+      await callPayroll({ action: 'save_client', id: client?.id, ...form, entity_id: form.entity_id || null, runner_id: form.runner_id || null, cover_id: form.cover_id || null, pay_type: form.pay_type || null, ceased_on: form.ceased_on || null });
+      await onSaved(); if (isNew) onClose();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const addNote = async () => {
+    if (!note.trim() || !client || !period) return;
+    setBusy(true); setErr(null);
+    try { await callPayroll({ action: 'add_note', client_id: client.id, period_id: period.id, note }); setNote(''); const { data } = await supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at'); setNotes(data || []); await onSaved(); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const inp = { padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: '100%', boxSizing: 'border-box', background: '#fff' };
+  const lab = { fontSize: 10.5, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 2 };
+  const entities = entityQ.trim().length >= 2 ? entityList.filter((e) => e.name.toLowerCase().includes(entityQ.trim().toLowerCase())).slice(0, 8) : [];
+  const linked = form.entity_id ? entityList.find((e) => e.id === form.entity_id) : null;
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.2)', zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: '96vw', height: '100%', background: '#fff', boxShadow: '-4px 0 16px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', fontFamily: font }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 8px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{isNew ? 'New payroll client' : 'Payroll client'}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.name || 'Untitled'}</div>
+          </div>
+          {linked && <button onClick={() => navigate(`/clients/${linked.id}`)} style={BTN.secondary.sm}>Open the client</button>}
+          <button onClick={onClose} style={BTN.secondary.sm}>Close</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {err && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{err}</div>}
+          <div><div style={lab}>Name (as the team know it)</div><input value={form.name} onChange={(e) => set('name', e.target.value)} style={inp} /></div>
+          <div>
+            <div style={lab}>Client record</div>
+            {linked ? <div style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ flex: 1 }}>{linked.name}</span><button onClick={() => set('entity_id', '')} style={BTN.secondary.sm}>Unlink</button></div>
+              : <>
+                <input value={entityQ} onChange={(e) => setEntityQ(e.target.value)} placeholder="Search Athena clients to link…" style={inp} />
+                {entities.map((e) => <div key={e.id} onClick={() => { set('entity_id', e.id); setEntityQ(''); }} style={{ padding: '5px 8px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>{e.name}</div>)}
+              </>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div><div style={lab}>Sheet</div><select value={form.frequency} onChange={(e) => set('frequency', e.target.value)} style={inp}><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="eps_only">EPS only</option></select></div>
+            <div><div style={lab}>Pay type</div><select value={form.pay_type} onChange={(e) => set('pay_type', e.target.value)} style={inp}>{PAY_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+            <div><div style={lab}>Pay date</div><input value={form.pay_day} onChange={(e) => set('pay_day', e.target.value)} placeholder="e.g. 28th, LWD, Friday" style={inp} /></div>
+            <div><div style={lab}>Cut-off</div><input value={form.cutoff} onChange={(e) => set('cutoff', e.target.value)} placeholder="e.g. 20th" style={inp} /></div>
+            <div><div style={lab}>Runner</div><select value={form.runner_id} onChange={(e) => set('runner_id', e.target.value)} style={inp}><option value="">— {form.runner_name ? `(${form.runner_name})` : ''}</option>{staffList.filter((s) => s.work_planner !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            <div><div style={lab}>Cover</div><select value={form.cover_id} onChange={(e) => set('cover_id', e.target.value)} style={inp}><option value="">—</option>{staffList.filter((s) => s.work_planner !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+          </div>
+          <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={form.batch} onChange={(e) => set('batch', e.target.checked)} /> Part of the Batch (run together on the last working day)</label>
+          <div>
+            <div style={lab}>Not applicable for this client</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+              {STEPS.map((s) => (
+                <label key={s.id} style={{ fontSize: 12.5, display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+                  <input type="checkbox" checked={form.na_steps.includes(s.id)} onChange={(e) => set('na_steps', e.target.checked ? [...form.na_steps, s.id] : form.na_steps.filter((x) => x !== s.id))} />{s.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div><div style={lab}>Standing note (shows on every sheet)</div><textarea value={form.standing_note} onChange={(e) => set('standing_note', e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }} /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+            <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} /> Active</label>
+            <div><div style={lab}>Ceased on</div><input type="date" value={form.ceased_on} onChange={(e) => set('ceased_on', e.target.value)} style={inp} /></div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={save} disabled={busy || !form.name.trim()} style={BTN.primary.sm}>{busy ? 'Saving…' : isNew ? 'Add client' : 'Save'}</button>
+          </div>
+
+          {client && period && (
+            <>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>This period · {period.frequency === 'weekly' ? 'week' : 'month'} {period.number}, {period.tax_year}</div>
+              <div style={{ fontSize: 12.5, display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 10px' }}>
+                {STEPS.map((s) => { const t = ticks[`${client.id}|${s.id}`]; const na = (client.na_steps || []).includes(s.id); return (
+                  <React.Fragment key={s.id}>
+                    <span style={{ color: na ? '#94a3b8' : '#0f172a' }}>{s.label}</span>
+                    <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{na ? 'n/a for this client' : t ? `${t.state === 'done' ? 'Done' : 'n/a'} · ${t.by_name || '?'} · ${fmtTs(t.at)}` : 'not yet'}</span>
+                  </React.Fragment>); })}
+              </div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569' }}>Notes this period <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {notes.length}</span></div>
+              {notes.map((n) => <div key={n.id} style={{ fontSize: 12.5, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}><span style={{ color: '#94a3b8' }}>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {fmtTs(n.at)}</span><div>{n.note}</div></div>)}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note for this period…" style={inp} onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }} />
+                <button onClick={addNote} disabled={busy || !note.trim()} style={BTN.secondary.sm}>Add</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
