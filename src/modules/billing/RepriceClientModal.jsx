@@ -1100,17 +1100,18 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
     finally { setBusy(null); }
   };
 
-  const draft = async (send = false) => {
+  // withPdf: attach the letter. A Gmail draft carries it for a proposal
+  // and not for a fee review, and can be changed in Gmail before sending.
+  const draft = async (send = false, withPdf = kind === 'proposal') => {
     if (!to) { setError('Pick or type a recipient first.'); return; }
-    if (send && !window.confirm(`Send this to ${to} now, from ${mailbox}?\n\nIt goes straight to the client${kind === 'proposal' ? ', with the letter attached' : ''}.`)) return;
-    setBusy(send ? 'send' : 'draft');
+    if (send && !window.confirm(`Send this to ${to} now, from ${mailbox}?\n\nIt goes straight to the client${withPdf ? ', with the letter attached as a PDF' : ', as an email only'}.`)) return;
+    setBusy(send ? (withPdf ? 'send-pdf' : 'send-email') : 'draft');
     setError(null);
     let issuedNow = null;
     try {
       issuedNow = issued ? { id: issued, url: acceptUrl } : await issue();
       const mail = composeRepriceEmail({ kind, clientName: entity.name, coveringText: covering, effectiveAt, summary, acceptUrl: issuedNow.url, lines, senderName: profile?.name });
-      // A fee review is just the email; a proposal carries its letter.
-      const attachments = kind === 'proposal'
+      const attachments = withPdf
         ? [{ filename: pdfFilename(entity.name), mime_type: 'application/pdf', content_base64: pdfBase64(await makePdf(issuedNow.url)) }]
         : [];
       const { data, error: fnErr } = await supabase.functions.invoke('gmail-create-draft', {
@@ -1209,14 +1210,14 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
                   </div>
                 </Field>
               )}
-              {kind === 'proposal' && <Field label="Attachment">
+              <Field label="Letter (PDF)" hint={'Attached only with "Send with PDF".'}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#f8fafc' }}>
                   <FileText size={16} style={{ color: '#b91c1c', flexShrink: 0 }} />
                   <span style={{ fontSize: 12.5, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pdfFilename(entity.name)}</span>
                   <button onClick={view} disabled={!!busy} style={BTN.secondary.sm}>{busy === 'view' ? '…' : 'View'}</button>
                   <button onClick={download} disabled={!!busy} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={12} />{busy === 'pdf' ? '…' : 'Save'}</button>
                 </div>
-              </Field>}
+              </Field>
             </>
           )}
         </div>
@@ -1224,17 +1225,17 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
         {/* Preview */}
         <div style={{ flex: '999 1 420px', minWidth: 0, minHeight: 520, height: '100%', display: 'flex', flexDirection: 'column', background: '#f3f5f8' }}>
           <div style={{ padding: '6px 14px', fontSize: 12, color: '#64748b', borderBottom: '1px solid #e5e7eb', background: '#fff', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {kind === 'proposal' && <PreviewTabs value={previewTab} onChange={setPreviewTab} />}
-            {previewTab === 'email' || kind !== 'proposal' ? (
+            <PreviewTabs value={previewTab} onChange={setPreviewTab} />
+            {previewTab === 'email' ? (
               <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 <strong style={{ color: '#0f172a' }}>{subject}</strong>
                 <span style={{ marginLeft: 8 }}>→ {to || 'no recipient'}</span>
               </span>
             ) : (
-              <span>{pdfFilename(entity.name)} — as attached to the email</span>
+              <span>{pdfFilename(entity.name)} — attached with "Send with PDF"</span>
             )}
           </div>
-          {previewTab === 'email' || kind !== 'proposal'
+          {previewTab === 'email'
             ? <iframe title="Email preview" srcDoc={email.bodyHtml} sandbox="" style={{ flex: 1, width: '100%', border: 'none' }} />
             : <PdfPreview build={makePdf} buildKey={JSON.stringify([kind, info?.contactName, effectiveAt, summary, letterOpts, lines.map((l) => [l.serviceId, l.current, l.next, l.reasonKey, l.otherText])])} />}
         </div>
@@ -1265,13 +1266,27 @@ function EmailStep({ entity, kind, profile, info, clientRows, lines, summary, ef
             {busy === 'draft' ? 'Saving draft…' : drafted ? 'Save another draft' : 'Save Gmail draft'}
           </button>
         )}
-        <button
-          onClick={() => draft(true)}
-          disabled={!!busy || !info || !to || !billingId || !mailbox || !!sentFrom}
-          style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to || sentFrom) ? 0.5 : 1 }}
-        >
-          <Mail size={14} /> {busy === 'send' ? 'Sending…' : sentFrom ? 'Sent' : 'Send now'}
-        </button>
+        {/* Either kind can go with or without the letter attached. */}
+        {sentFrom ? (
+          <button disabled style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: 0.5 }}><Mail size={14} /> Sent</button>
+        ) : (
+          <>
+            <button
+              onClick={() => draft(true, false)}
+              disabled={!!busy || !info || !to || !billingId || !mailbox}
+              style={{ ...BTN.secondary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to) ? 0.5 : 1 }}
+            >
+              <Mail size={14} /> {busy === 'send-email' ? 'Sending…' : 'Send email only'}
+            </button>
+            <button
+              onClick={() => draft(true, true)}
+              disabled={!!busy || !info || !to || !billingId || !mailbox}
+              style={{ ...BTN.primary.md, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6, opacity: (!info || !to) ? 0.5 : 1 }}
+            >
+              <FileText size={14} /> {busy === 'send-pdf' ? 'Sending…' : 'Send with PDF'}
+            </button>
+          </>
+        )}
       </div>
     </>
   );

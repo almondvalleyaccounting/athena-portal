@@ -124,7 +124,7 @@ export function defaultCoveringText({ kind = 'notice', contactName, clientName, 
     const opening = proposalOpening({ when, current: summary.current, next: summary.next, clientRequested, lastReviewed: reviewed ? lastReviewed : null });
     // The letter's words, with the table and the button in the email.
     paras.push(...opening.slice(0, 4));
-    paras.push('The table below sums it up and the attached letter has the detail. The changes in Part 1 go ahead either way.');
+    paras.push('The table below sums it up. The changes in Part 1 go ahead either way.');
     paras.push(opening[4]);
     return paras.join('\n\n');
   }
