@@ -46,7 +46,18 @@ const BUCKETS = [
 ];
 const monthShort = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'short' });
 const fmt = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
-const h1 = (n) => Math.round(n * 10) / 10;
+const h1 = (n) => Math.ceil(n - 1e-9); // dashboard hours round up to the whole hour
+// Heat tint by load: four stops of the blue ramp, scaled by the square root
+// of the cell's share of the busiest cell so small months still register.
+const HEAT = [
+  { bg: '#fff',    fg: '#0e7fe0', sub: '#94a3b8' },
+  { bg: '#E6F1FB', fg: '#0C447C', sub: '#185FA5' },
+  { bg: '#B5D4F4', fg: '#0C447C', sub: '#185FA5' },
+  { bg: '#85B7EB', fg: '#042C53', sub: '#0C447C' },
+  { bg: '#378ADD', fg: '#fff',    sub: '#E6F1FB' },
+];
+const heat = (n, max) => (!n ? HEAT[0] : HEAT[Math.max(1, Math.min(4, Math.ceil(4 * Math.sqrt(n / (max || 1)))))]);
+const NUM = { fontVariantNumeric: 'tabular-nums' };
 
 export default function OverviewDashboard({ onOpenTask }) {
   const { staffList, staffMap, staffColours, holidays = [], filters, quickTasks = [], entityMap = {} } = useWorkPlanner();
@@ -107,6 +118,11 @@ export default function OverviewDashboard({ onOpenTask }) {
     scheduled_hours: t.duration ? t.duration / 60 : 0,
   })), [quickTasks, who]);
   const inWindow = (j) => months.includes(j.month);
+  const maxCell = useMemo(() => {
+    const m = new Map();
+    visible.forEach((j) => { if (j.filing && inWindow(j)) { const k = `${j.month}|${j.type}`; m.set(k, (m.get(k) || 0) + 1); } });
+    return Math.max(0, ...m.values());
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
   // Counts are filings; hours (all=true) take every task.
   const cell = (month, type, all = false) => visible.filter((j) => (all || j.filing) && (month === 'all' ? inWindow(j) : j.month === month) && (type === 'all' || j.type === type));
   const bucket = (id, all = false) => (id === 'quick' ? quick : visible.filter((j) => (all || j.filing) && bucketOf(j) === id));
@@ -135,7 +151,7 @@ export default function OverviewDashboard({ onOpenTask }) {
   }, [holidays, who]);
 
   const head = { padding: '10px 12px', fontSize: 12.5, fontWeight: 700, color: '#475569', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' };
-  const rowHead = { padding: '10px 14px', fontSize: 13.5, fontWeight: 500, color: '#0f172a', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' };
+  const rowHead = { padding: '8px 14px', fontSize: 13.5, fontWeight: 500, color: '#0f172a', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center' };
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', fontFamily: font }}>
@@ -155,7 +171,7 @@ export default function OverviewDashboard({ onOpenTask }) {
         {months.map((mo) => {
           const off = offByMonth[mo];
           return (
-            <div key={mo} style={{ ...head, borderLeft: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div key={mo} style={{ ...head, borderLeft: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
               <span>{monthLabel(mo)}</span>
               {off ? <span title={`${off.days} day${off.days === 1 ? '' : 's'} off${!who && off.people.size > 1 ? ` across ${off.people.size} people` : ''}`} style={{ fontSize: 11.5, fontWeight: 600, color: '#9a3412', whiteSpace: 'nowrap' }}>🏖 {off.days} day{off.days === 1 ? '' : 's'} off{!who && off.people.size > 1 ? ` · ${off.people.size} people` : ''}</span> : <span style={{ fontSize: 11.5, fontWeight: 500, color: '#cbd5e1' }}>&nbsp;</span>}
             </div>
@@ -170,7 +186,7 @@ export default function OverviewDashboard({ onOpenTask }) {
               const list = cell(mo, t.id);
               const n = list.length;
               const hrs = hours(cell(mo, t.id, true));
-              const off = !!offByMonth[mo];
+              const c = heat(n, maxCell);
               return (
                 <button key={mo}
                   onClick={() => n && setTile({ month: mo, type: t.id })}
@@ -178,22 +194,35 @@ export default function OverviewDashboard({ onOpenTask }) {
                   onMouseMove={(e) => hover && setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h))}
                   onMouseLeave={() => setHover(null)}
                   disabled={!n}
-                  style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '10px 14px', textAlign: 'left', border: 'none', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #f1f5f9', background: n ? (off ? '#fff7ed' : '#fff') : '#fff', cursor: n ? 'pointer' : 'default', fontFamily: font }}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, padding: '8px 14px', border: 'none', borderBottom: '1px solid #f1f5f9', borderLeft: '1px solid #f1f5f9', background: c.bg, cursor: n ? 'pointer' : 'default', fontFamily: font, ...NUM }}
                   onFocus={() => {}}>
-                  <span style={{ fontSize: 18, fontWeight: 700, color: n ? (off ? '#9a3412' : '#0e7fe0') : '#e2e8f0', minWidth: 28 }}>{n}</span>
-                  {n > 0 && <span style={{ fontSize: 12, color: '#94a3b8' }}>{h1(hrs)}h</span>}
+                  {n ? <>
+                    <span style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.15, color: c.fg }}>{n}</span>
+                    <span style={{ fontSize: 11.5, lineHeight: 1.2, color: c.sub }}>{h1(hrs)}h</span>
+                  </> : <span style={{ fontSize: 17, lineHeight: 1.15, color: '#cbd5e1' }}>·</span>}
                 </button>
               );
             })}
-            <div style={{ padding: '10px 14px', textAlign: 'right', borderBottom: '1px solid #f1f5f9', borderLeft: '2px solid #cbd5e1', fontSize: 18, fontWeight: 700, color: '#0f172a', background: '#f1f5f9' }}>{cell('all', t.id).length ? <>{cell('all', t.id).length} <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b' }}>· {h1(hours(cell('all', t.id, true)))}h</span></> : <span style={{ color: '#cbd5e1' }}>0</span>}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, padding: '8px 14px', borderBottom: '1px solid #f1f5f9', borderLeft: '2px solid #cbd5e1', background: '#f1f5f9', ...NUM }}>
+              {cell('all', t.id).length ? <>
+                <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.15, color: '#0f172a' }}>{cell('all', t.id).length}</span>
+                <span style={{ fontSize: 11.5, lineHeight: 1.2, color: '#64748b' }}>{h1(hours(cell('all', t.id, true)))}h</span>
+              </> : <span style={{ fontSize: 17, lineHeight: 1.15, color: '#cbd5e1' }}>·</span>}
+            </div>
           </React.Fragment>
         ))}
 
         <div style={{ ...rowHead, fontWeight: 700, background: '#fafafa', borderBottom: 'none' }}>All work</div>
         {months.map((mo) => (
-          <div key={mo} style={{ padding: '10px 14px', borderLeft: '1px solid #f1f5f9', background: '#fafafa', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{cell(mo, 'all').length} <span style={{ fontSize: 12, fontWeight: 500, color: '#94a3b8' }}>· {h1(hours(cell(mo, 'all', true)))}h</span></div>
+          <div key={mo} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, padding: '8px 14px', borderLeft: '1px solid #f1f5f9', background: '#fafafa', ...NUM }}>
+            <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.15, color: '#0f172a' }}>{cell(mo, 'all').length}</span>
+            <span style={{ fontSize: 11.5, lineHeight: 1.2, color: '#64748b' }}>{h1(hours(cell(mo, 'all', true)))}h</span>
+          </div>
         ))}
-        <div style={{ padding: '10px 14px', textAlign: 'right', borderLeft: '2px solid #cbd5e1', background: '#e2e8f0', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{cell('all', 'all').length} <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>· {h1(hours(cell('all', 'all', true)))}h</span></div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, padding: '8px 14px', borderLeft: '2px solid #cbd5e1', background: '#e2e8f0', ...NUM }}>
+          <span style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.15, color: '#0f172a' }}>{cell('all', 'all').length}</span>
+          <span style={{ fontSize: 11.5, lineHeight: 1.2, color: '#475569' }}>{h1(hours(cell('all', 'all', true)))}h</span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, padding: '12px 14px 14px', borderTop: '1px solid #e5e7eb', background: '#f8fafc' }}>
