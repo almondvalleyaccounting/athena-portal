@@ -122,7 +122,7 @@ export default function StageBoardView({ onOpenTask }) {
                         {r && <span title={j.risk_reason || ''} style={{ padding: '0 6px', borderRadius: 8, fontSize: 10.5, fontWeight: 600, background: r.bg, color: r.fg }}>{r.label}</span>}
                       </div>
                       <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>
-                        {j.next ? `${j.next.label} · ${fmt(j.next.due_date)}` : g.id === 'unplanned' ? `Companies House ${fmt(j.ch_deadline)}` : g.id === 'done' ? 'All stages done' : ''}
+                        {j.next ? `${j.next.label} · ${fmt(j.next.due_date)}` : g.id === 'unplanned' ? `${j.template_key === 'self_assessment' ? 'Self assessment' : 'Companies House'} ${fmt(j.ch_deadline)}` : g.id === 'done' ? 'All stages done' : ''}
                       </div>
                     </div>
                   );

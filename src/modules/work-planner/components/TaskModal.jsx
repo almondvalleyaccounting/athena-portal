@@ -67,8 +67,11 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         const { data, error: e } = await supabase.from('job_milestones').select('*, job_plans(id, entity_id, period_end, status, risk, risk_reason, ch_deadline, entities(name))').eq('id', id).maybeSingle();
         if (e) throw e; setDetail(data);
       } else if (type === 'bm') {
-        const { data, error: e } = await supabase.from('bm_task_schedule_with_progress').select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, status, bm_deadline, bm_target_date, bm_status, bm_latest_action_date, manually_overridden_at, deadline_override').eq('id', id).maybeSingle();
-        if (e) throw e; setDetail(data);
+        const { data, error: e } = await supabase.from('bm_task_schedule_with_progress').select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, status, bm_deadline, bm_target_date, bm_status, bm_latest_action_date, manually_overridden_at').eq('id', id).maybeSingle();
+        if (e) throw e;
+        // The override columns (sql/330, 331) live on the base table, not the progress view.
+        const { data: ov } = await supabase.from('bm_task_schedule').select('deadline_override, assignee_override_id, assignee_override_kind').eq('id', id).maybeSingle();
+        setDetail({ ...data, ...(ov || {}) });
         const { data: wf } = await supabase.from('job_plans').select('entity_id, period_end').eq('status', 'committed').or(`prep_job_id.eq.${id},ch_job_id.eq.${id},ct_job_id.eq.${id}`).limit(1).maybeSingle();
         setWorkflow(wf || null);
       } else if (type === 'quick') {
