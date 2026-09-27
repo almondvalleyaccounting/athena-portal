@@ -78,6 +78,8 @@ export default function PayrollView() {
   const [includeCeased, setIncludeCeased] = useState(false);
   const [search, setSearch] = useState('');
   const [drawer, setDrawer] = useState(null); // client id, or 'new'
+  const [colFilters, setColFilters] = useState({}); // column key -> array of allowed values
+  const [filterMenu, setFilterMenu] = useState(null); // { key, label, x, y }
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const today = todayISO();
@@ -135,13 +137,45 @@ export default function PayrollView() {
     return today > cut;
   };
 
+  // The value a column shows for a row, as the filter sees it.
+  const valueOf = (c, key) => {
+    if (key === 'pay_day') return c.pay_day || '—';
+    if (key === 'cutoff') return c.cutoff || '—';
+    if (key === 'runner') return c.runner_id ? (staffMap[c.runner_id]?.name || '?') : (c.runner_name || (c.batch ? 'Batch' : '—'));
+    if (key === 'cover') return c.cover_id ? (staffMap[c.cover_id]?.name || '?') : '—';
+    if (key === 'journal') return c.frequency === 'eps_only' || !c.realm_id ? 'no realm' : journal[c.realm_id] === 'checked' ? 'posted' : 'not yet seen';
+    if (key === 'note') return c.standing_note ? 'has a note' : 'no note';
+    if (key === 'group') return groupOf(c).label;
+    const st = stateOf(c, key);
+    return st === 'done' ? 'done' : st === 'open' ? 'not yet' : 'n/a';
+  };
+  const activeFilterKeys = Object.keys(colFilters).filter((k) => colFilters[k] && colFilters[k].length);
   const visible = useMemo(() => {
     let list = clients.filter((c) => includeCeased || (c.active && !c.ceased_on));
+    for (const k of activeFilterKeys) { const allow = new Set(colFilters[k]); list = list.filter((c) => allow.has(valueOf(c, k))); }
     if (who) list = list.filter((c) => c.runner_id === who || c.cover_id === who);
     if (search.trim()) { const q = search.trim().toLowerCase(); list = list.filter((c) => displayName(c).toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (c.standing_note || '').toLowerCase().includes(q)); }
     if (outstandingOnly) list = list.filter((c) => !isComplete(c));
     return list;
-  }, [clients, includeCeased, who, search, outstandingOnly, ticks]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clients, includeCeased, who, search, outstandingOnly, ticks, colFilters, journal]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Distinct values for the open filter menu, from everything that is not hidden by the other filters.
+  const menuValues = useMemo(() => {
+    if (!filterMenu) return [];
+    let list = clients.filter((c) => includeCeased || (c.active && !c.ceased_on));
+    for (const k of activeFilterKeys) { if (k === filterMenu.key) continue; const allow = new Set(colFilters[k]); list = list.filter((c) => allow.has(valueOf(c, k))); }
+    const counts = new Map();
+    list.forEach((c) => { const v = valueOf(c, filterMenu.key); counts.set(v, (counts.get(v) || 0) + 1); });
+    return [...counts.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  }, [filterMenu, clients, includeCeased, colFilters, ticks, journal]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleValue = (key, v) => setColFilters((f) => {
+    const cur = f[key] && f[key].length ? [...f[key]] : menuValues.map(([x]) => x);
+    const next = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v];
+    const all = menuValues.map(([x]) => x);
+    if (all.every((x) => next.includes(x))) { const n = { ...f }; delete n[key]; return n; }
+    return { ...f, [key]: next };
+  });
+  const openFilter = (e, key, label) => { e.stopPropagation(); setFilterMenu((m) => (m?.key === key ? null : { key, label, x: e.clientX, y: e.clientY })); };
+  const isFiltered = (key) => !!(colFilters[key] && colFilters[key].length);
   const groups = useMemo(() => {
     const m = new Map();
     visible.forEach((c) => { const g = groupOf(c); if (!m.has(g.key)) m.set(g.key, { ...g, items: [] }); m.get(g.key).items.push(c); });
@@ -166,7 +200,9 @@ export default function PayrollView() {
   const periodLabel = (p) => (p ? `${p.frequency === 'weekly' ? 'Week' : 'Month'} ${p.number} · ${p.tax_year} · ${fmt(p.start_date)} – ${fmt(p.end_date)}${p.frequency === 'monthly' ? ` · paid ${new Date(`${p.start_date}T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}` : '');
 
   // ── styles ──
-  const th = { position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', borderBottom: '1px solid #cbd5e1', padding: '6px 6px', fontSize: 11, fontWeight: 600, color: '#475569', textAlign: 'center', verticalAlign: 'bottom', whiteSpace: 'normal', lineHeight: 1.25, height: 64, minWidth: 64 };
+  const th = { position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', borderBottom: '1px solid #cbd5e1', padding: '6px 6px', fontSize: 11, fontWeight: 600, color: '#475569', textAlign: 'center', verticalAlign: 'bottom', whiteSpace: 'normal', lineHeight: 1.25, height: 64, minWidth: 64, cursor: 'pointer', userSelect: 'none' };
+  const thF = (key) => (isFiltered(key) ? { background: '#dbeafe', color: '#0c447c', boxShadow: 'inset 0 -2px 0 #0e7fe0' } : {});
+  const Funnel = ({ k }) => (isFiltered(k) ? <span title="Filtered — click to change" style={{ marginLeft: 3, color: '#0e7fe0' }}>▼</span> : null);
   const thL = { ...th, textAlign: 'left' };
   const td = { padding: '5px 6px', borderBottom: '1px solid #f1f5f9', fontSize: 12.5, textAlign: 'center', whiteSpace: 'nowrap', background: '#fff' };
   const sticky1 = { position: 'sticky', left: 0, zIndex: 2, background: '#fff', minWidth: 190, maxWidth: 240, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', borderRight: '1px solid #f1f5f9' };
@@ -205,8 +241,13 @@ export default function PayrollView() {
             <label style={{ fontSize: 12, color: '#64748b', display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={includeCeased} onChange={(e) => setIncludeCeased(e.target.checked)} /> ceased</label>
           </>
         )}
+        {activeFilterKeys.length > 0 && (
+          <button onClick={() => setColFilters({})} title={activeFilterKeys.join(', ')} style={{ ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0c447c' }}>
+            ▼ {activeFilterKeys.length} column filter{activeFilterKeys.length === 1 ? '' : 's'} on · clear
+          </button>
+        )}
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 12.5, color: '#64748b' }}>{complete} of {activeClients.length} complete{who ? ` · ${(staffMap[who]?.name || '').split(' ')[0]} only` : ''}{loading ? ' · loading…' : ''}</span>
+        <span style={{ fontSize: 12.5, color: '#64748b' }}>{visible.length !== activeClients.length && !who && !search && !outstandingOnly ? `${visible.length} shown · ` : ''}{complete} of {activeClients.length} complete{who ? ` · ${(staffMap[who]?.name || '').split(' ')[0]} only` : ''}{loading ? ' · loading…' : ''}</span>
         {sheet !== 'controls' && <button onClick={() => setDrawer('new')} style={BTN.primary.sm}>+ Payroll client</button>}
       </div>
       {error && <div style={{ margin: '8px 12px 0', padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}</div>}
@@ -219,13 +260,13 @@ export default function PayrollView() {
             <thead>
               <tr>
                 <th style={{ ...thL, ...sticky1, zIndex: 4 }}>Client</th>
-                <th style={{ ...thL, ...sticky2, zIndex: 4 }}>Pay date</th>
-                <th style={{ ...th, minWidth: 56 }}>Cut-off</th>
-                <th style={{ ...th, minWidth: 70 }}>Runner</th>
-                <th style={{ ...th, minWidth: 56 }}>Cover</th>
-                {STEPS.filter((s) => freq === 'monthly' || s.id !== 'eps' || true).map((s) => <th key={s.id} style={{ ...th, maxWidth: 92 }}>{s.label}</th>)}
-                {freq === 'monthly' && <th style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e' }}>Journal posted to QuickBooks (live)</th>}
-                <th style={{ ...thL, minWidth: 220 }}>Standing note</th>
+                <th onClick={(e) => openFilter(e, 'pay_day', 'Pay date')} style={{ ...thL, ...sticky2, zIndex: 4, ...thF('pay_day') }}>Pay date<Funnel k="pay_day" /></th>
+                <th onClick={(e) => openFilter(e, 'cutoff', 'Cut-off')} style={{ ...th, minWidth: 56, ...thF('cutoff') }}>Cut-off<Funnel k="cutoff" /></th>
+                <th onClick={(e) => openFilter(e, 'runner', 'Runner')} style={{ ...th, minWidth: 70, ...thF('runner') }}>Runner<Funnel k="runner" /></th>
+                <th onClick={(e) => openFilter(e, 'cover', 'Cover')} style={{ ...th, minWidth: 56, ...thF('cover') }}>Cover<Funnel k="cover" /></th>
+                {STEPS.map((s) => <th key={s.id} onClick={(e) => openFilter(e, s.id, s.label)} style={{ ...th, maxWidth: 92, ...thF(s.id) }}>{s.label}<Funnel k={s.id} /></th>)}
+                {freq === 'monthly' && <th onClick={(e) => openFilter(e, 'journal', 'Journal posted')} style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e', ...thF('journal') }}>Journal posted to QuickBooks (live)<Funnel k="journal" /></th>}
+                <th onClick={(e) => openFilter(e, 'note', 'Standing note')} style={{ ...thL, minWidth: 220, ...thF('note') }}>Standing note<Funnel k="note" /></th>
                 <th style={{ ...th, minWidth: 44 }}>Notes</th>
               </tr>
             </thead>
@@ -246,7 +287,7 @@ export default function PayrollView() {
                         {STEPS.map((s) => {
                           const st = stateOf(c, s.id);
                           const t = tickOf(c, s.id);
-                          const title = st === 'na-fixed' ? 'Not applicable for this client (set in the drawer)' : st === 'open' ? `${s.label} · not yet${late ? ' · past cut-off' : ''}` : `${st === 'done' ? 'Done' : 'Not applicable'} · ${t?.by_name || 'unknown'} · ${fmtTs(t?.at)}`;
+                          const title = st === 'na-fixed' ? 'Not applicable for this client (set in the drawer)' : st === 'open' ? `${s.label} · not yet${late ? ' · past cut-off' : ''}` : `${st === 'done' ? 'Done' : 'Not applicable'} · ${t?.by_name || 'unknown'} · ${t?.source === 'import' ? 'from the spreadsheet' : fmtTs(t?.at)}`;
                           return (
                             <td key={s.id} style={td}>
                               <span onClick={() => cycle(c, s.id)} title={title} style={tile(st, late)}>{st === 'done' ? '✓' : st === 'na' || st === 'na-fixed' ? '–' : '·'}</span>
@@ -277,6 +318,28 @@ export default function PayrollView() {
             <span><span style={{ ...tile('open', true), width: 14, height: 14, verticalAlign: -2 }} /> past cut-off, still open</span>
             {freq === 'monthly' && <span><span style={{ ...tile('done'), background: '#ccfbf1', color: '#0f766e', width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> journal seen in QuickBooks (live, not tickable)</span>}
             <span><span style={{ color: '#f59e0b' }}>•</span> not linked to a client record</span>
+          </div>
+        </div>
+      )}
+
+      {filterMenu && (
+        <div onClick={() => setFilterMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: 'fixed', left: Math.min(filterMenu.x, window.innerWidth - 260), top: Math.min(filterMenu.y + 8, window.innerHeight - 320), width: 240, maxHeight: 300, overflowY: 'auto', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: 8, fontFamily: font, fontSize: 12.5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <span style={{ fontWeight: 700, color: '#0f172a', flex: 1 }}>{filterMenu.label}</span>
+              {isFiltered(filterMenu.key) && <button onClick={() => setColFilters((f) => { const n = { ...f }; delete n[filterMenu.key]; return n; })} style={{ ...BTN.secondary.sm, padding: '0 7px', fontSize: 11 }}>Clear</button>}
+            </div>
+            {menuValues.map(([v, n]) => {
+              const on = !isFiltered(filterMenu.key) || colFilters[filterMenu.key].includes(v);
+              return (
+                <label key={String(v)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 2px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={on} onChange={() => toggleValue(filterMenu.key, v)} />
+                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{String(v)}</span>
+                  <span style={{ color: '#94a3b8' }}>{n}</span>
+                </label>
+              );
+            })}
+            {menuValues.length === 0 && <div style={{ color: '#cbd5e1' }}>Nothing to filter.</div>}
           </div>
         </div>
       )}
@@ -440,7 +503,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
                 {STEPS.map((s) => { const t = ticks[`${client.id}|${s.id}`]; const na = (client.na_steps || []).includes(s.id); return (
                   <React.Fragment key={s.id}>
                     <span style={{ color: na ? '#94a3b8' : '#0f172a' }}>{s.label}</span>
-                    <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{na ? 'n/a for this client' : t ? `${t.state === 'done' ? 'Done' : 'n/a'} · ${t.by_name || '?'} · ${fmtTs(t.at)}` : 'not yet'}</span>
+                    <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{na ? 'n/a for this client' : t ? `${t.state === 'done' ? 'Done' : 'n/a'} · ${t.by_name || '?'} · ${t.source === 'import' ? 'from the spreadsheet' : fmtTs(t.at)}` : 'not yet'}</span>
                   </React.Fragment>); })}
               </div>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'baseline', gap: 8 }}>

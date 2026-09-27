@@ -98,7 +98,7 @@ grant all on public.payroll_clients, public.payroll_periods, public.payroll_tick
 -- Tax weeks and tax months. Week 1 starts 6 April; a year has 53 weeks when
 -- 6 April + 52 weeks still falls inside it. Month n runs 6th to 5th.
 insert into public.payroll_periods (frequency, tax_year, number, start_date, end_date)
-select 'weekly', format('%s/%s', y, to_char(y + 1, 'FM00')), w,
+select 'weekly', format('%s/%s', y, to_char(mod(y + 1, 100), 'FM00')), w,
        make_date(y, 4, 6) + (w - 1) * 7,
        least(make_date(y, 4, 6) + (w - 1) * 7 + 6, make_date(y + 1, 4, 5))
 from generate_series(2023, 2027) y, generate_series(1, 53) w
@@ -106,7 +106,7 @@ where make_date(y, 4, 6) + (w - 1) * 7 <= make_date(y + 1, 4, 5)
 on conflict do nothing;
 
 insert into public.payroll_periods (frequency, tax_year, number, start_date, end_date)
-select 'monthly', format('%s/%s', y, to_char(y + 1, 'FM00')), m,
+select 'monthly', format('%s/%s', y, to_char(mod(y + 1, 100), 'FM00')), m,
        (make_date(y, 4, 6) + ((m - 1) || ' months')::interval)::date,
        (make_date(y, 4, 6) + (m || ' months')::interval - interval '1 day')::date
 from generate_series(2023, 2027) y, generate_series(1, 12) m
