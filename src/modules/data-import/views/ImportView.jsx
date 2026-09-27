@@ -823,8 +823,12 @@ function SectionTitle({ children, note }) {
 
 // A closed-by-default box for what is worth knowing but asks nothing of you.
 function Collapsible({ title, summary, open, children }) {
+  // `open` can force the box open (e.g. when its contents changed); it never
+  // shuts it on you — only your own click does that.
+  const [isOpen, setIsOpen] = useState(!!open);
+  useEffect(() => { if (open) setIsOpen(true); }, [open]);
   return (
-    <details open={open || undefined} style={{ marginTop: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+    <details open={isOpen} onToggle={(e) => setIsOpen(e.currentTarget.open)} style={{ marginTop: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
       <summary style={{ cursor: 'pointer', padding: '12px 16px', fontSize: 14.5 }}>
         <span style={{ fontWeight: 600, color: '#0f172a' }}>{title}</span>
         {summary && <span style={{ fontSize: 13, color: '#64748b', marginLeft: 10 }}>{summary}</span>}
