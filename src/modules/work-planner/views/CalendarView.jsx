@@ -351,13 +351,28 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
 
   // ── Month: stages, jobs and hours per day; click a day to see it ──
   if (calendarView === 'month') {
+    // Only the people on the board (the team filter narrows this), and each
+    // day's load against their capacity so the month reads as a heat map.
+    const ids = new Set(rows.map((r) => r.id || 'unassigned'));
     const perDay = new Map();
     for (const [key, c] of items) {
-      const iso = key.split('|')[1];
+      const [pid, iso] = key.split('|');
+      if (!ids.has(pid)) continue;
       if (!perDay.has(iso)) perDay.set(iso, { stages: 0, jobs: 0, hours: 0 });
       const d = perDay.get(iso);
       d.stages += c.ms.length; d.jobs += c.bm.length + c.quick.length + c.block.length; d.hours += c.hours;
     }
+    const capOf = (d) => rows.reduce((sum, r) => sum + (r.id ? (holidayMap[`${r.id}|${formatISO(d)}`] ? 0 : dayCapacity(r, d)) : 0), 0);
+    // Five stops of the blue ramp by load / capacity; over capacity turns amber, then red.
+    const heat = (ratio, hasWork) => {
+      if (!hasWork) return { bg: '#fff', fg: '#94a3b8', num: '#64748b' };
+      if (ratio > 1.2) return { bg: '#f09595', fg: '#501313', num: '#501313' };
+      if (ratio > 1.0) return { bg: '#fac775', fg: '#412402', num: '#412402' };
+      if (ratio > 0.8) return { bg: '#378add', fg: '#e6f1fb', num: '#fff' };
+      if (ratio > 0.55) return { bg: '#85b7eb', fg: '#042c53', num: '#042c53' };
+      if (ratio > 0.3) return { bg: '#b5d4f4', fg: '#0c447c', num: '#0c447c' };
+      return { bg: '#e6f1fb', fg: '#185fa5', num: '#0c447c' };
+    };
     return (
       <div style={{ padding: 10, fontFamily: font }}>
         {floating}
@@ -371,21 +386,41 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
             const c = perDay.get(iso);
             const other = d.getMonth() !== anchor.getMonth();
             const weekend = d.getDay() === 0 || d.getDay() === 6;
+            const cap = capOf(d);
+            const hours = c ? c.hours : 0;
+            const ratio = cap > 0 ? hours / cap : (hours > 0 ? 1.5 : 0);
+            const h = heat(ratio, !!c && (c.stages + c.jobs) > 0);
+            const isToday = sameDay(d, now);
+            const r1 = (n) => Math.round(n * 10) / 10;
             return (
-              <div key={i} onClick={() => setDayModal(iso)} style={{ minHeight: 78, padding: 6, borderRight: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', opacity: other ? 0.4 : 1, background: sameDay(d, now) ? '#eff6ff' : weekend ? '#fafafa' : '#fff', cursor: 'pointer' }}>
-                <div style={{ fontSize: 13, fontWeight: sameDay(d, now) ? 700 : 500, color: sameDay(d, now) ? '#0e7fe0' : '#64748b' }}>{d.getDate()}{bankHolidays[iso] && <span style={{ fontSize: 10, color: '#9a3412', marginLeft: 4 }} title={bankHolidays[iso]}>BH</span>}</div>
-                {c && (
-                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 4 }}>
-                    {c.stages > 0 && <div>{c.stages} stage{c.stages === 1 ? '' : 's'}</div>}
-                    {c.jobs > 0 && <div>{c.jobs} job{c.jobs === 1 ? '' : 's'}</div>}
-                    <div style={{ color: c.hours > 0 ? '#0f172a' : '#94a3b8', fontWeight: 600 }}>{Math.round(c.hours * 10) / 10}h</div>
+              <div key={i} onClick={() => setDayModal(iso)} title={c ? `${r1(hours)}h of ${r1(cap)}h capacity` : cap > 0 ? `${r1(cap)}h capacity, nothing planned` : 'No capacity'}
+                style={{ minHeight: 82, padding: 4, borderRight: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', opacity: other ? 0.35 : 1, background: weekend && !c ? '#fafafa' : '#fff', cursor: 'pointer' }}>
+                <div style={{ height: '100%', minHeight: 74, borderRadius: 8, padding: '6px 8px', background: h.bg, boxShadow: isToday ? 'inset 0 0 0 2px #0e7fe0' : 'none', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', transition: 'background 0.15s' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                    <span style={{ fontSize: 13, fontWeight: isToday ? 700 : 600, color: h.num }}>{d.getDate()}</span>
+                    {bankHolidays[iso] && <span style={{ fontSize: 10, fontWeight: 600, color: h.fg, opacity: 0.8 }} title={bankHolidays[iso]}>BH</span>}
+                    <span style={{ flex: 1 }} />
+                    {c && (c.stages + c.jobs) > 0 && <span style={{ fontSize: 15, fontWeight: 700, color: h.num, fontVariantNumeric: 'tabular-nums' }}>{r1(hours)}h</span>}
                   </div>
-                )}
+                  {c && (c.stages + c.jobs) > 0 ? (
+                    <div style={{ fontSize: 11, color: h.fg, marginTop: 'auto', lineHeight: 1.3 }}>
+                      {c.jobs > 0 && <div>{c.jobs} job{c.jobs === 1 ? '' : 's'}</div>}
+                      {c.stages > 0 && <div>{c.stages} stage{c.stages === 1 ? '' : 's'}</div>}
+                      {cap > 0 && <div style={{ opacity: 0.8 }}>{Math.round(ratio * 100)}% of {r1(cap)}h</div>}
+                    </div>
+                  ) : cap > 0 ? <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 'auto' }}>{r1(cap)}h free</div> : null}
+                </div>
               </div>
             );
           })}
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>Click a day to see what is on it. Weekend work shows here and in Full week; Work week hides Saturday and Sunday.</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#94a3b8', marginTop: 8, flexWrap: 'wrap' }}>
+          <span>Load against {filters.teamFilter ? 'their' : 'the team'} capacity:</span>
+          {[['#e6f1fb', 'light'], ['#b5d4f4', ''], ['#85b7eb', ''], ['#378add', 'busy'], ['#fac775', 'over'], ['#f09595', 'well over']].map(([bg, lab], i) => (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 14, height: 10, borderRadius: 3, background: bg, display: 'inline-block' }} />{lab}</span>
+          ))}
+          <span style={{ marginLeft: 'auto' }}>Click a day to see what is on it.</span>
+        </div>
       </div>
     );
   }

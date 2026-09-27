@@ -102,13 +102,6 @@ export default function FilterBar({
       {view === 'calendar' && (
         <>
           <div style={sepStyle} />
-          <button style={btnStyle} onClick={() => onCalNav(-1)}>&#8592;</button>
-          <span style={{ fontSize: 14, fontWeight: 500, minWidth: 120, textAlign: 'center' }}>
-            {calTitle}
-          </span>
-          <button style={btnStyle} onClick={() => onCalNav(1)}>&#8594;</button>
-          <button style={btnStyle} onClick={onCalToday}>Today</button>
-          <div style={sepStyle} />
           {CALENDAR_VIEWS.map((v) => (
             <button
               key={v.id}
@@ -118,6 +111,13 @@ export default function FilterBar({
               {v.label}
             </button>
           ))}
+          <div style={sepStyle} />
+          <button style={btnStyle} onClick={() => onCalNav(-1)}>&#8592;</button>
+          <span style={{ fontSize: 14, fontWeight: 500, minWidth: 120, textAlign: 'center' }}>
+            {calTitle}
+          </span>
+          <button style={btnStyle} onClick={() => onCalNav(1)}>&#8594;</button>
+          <button style={btnStyle} onClick={onCalToday}>Today</button>
         </>
       )}
 
