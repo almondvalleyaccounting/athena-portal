@@ -65,7 +65,8 @@ const groupOf = (c) => {
 export default function PayrollView() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const { staffList, staffMap, staffColours, filters, entityList = [] } = useWorkPlanner();
+  const { staffList, staffMap, staffColours, filters, entityList = [], entityMap = {} } = useWorkPlanner();
+  const displayName = (c) => (c.entity_id && entityMap[c.entity_id]?.name) || c.name;
   const [sheet, setSheet] = useState(() => { try { return localStorage.getItem('payroll.sheet') || 'monthly'; } catch { return 'monthly'; } });
   const [periods, setPeriods] = useState([]);
   const [periodId, setPeriodId] = useState(null);
@@ -137,7 +138,7 @@ export default function PayrollView() {
   const visible = useMemo(() => {
     let list = clients.filter((c) => includeCeased || (c.active && !c.ceased_on));
     if (who) list = list.filter((c) => c.runner_id === who || c.cover_id === who);
-    if (search.trim()) { const q = search.trim().toLowerCase(); list = list.filter((c) => c.name.toLowerCase().includes(q) || (c.standing_note || '').toLowerCase().includes(q)); }
+    if (search.trim()) { const q = search.trim().toLowerCase(); list = list.filter((c) => displayName(c).toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || (c.standing_note || '').toLowerCase().includes(q)); }
     if (outstandingOnly) list = list.filter((c) => !isComplete(c));
     return list;
   }, [clients, includeCeased, who, search, outstandingOnly, ticks]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -237,7 +238,7 @@ export default function PayrollView() {
                     const js = c.realm_id ? journal[c.realm_id] : undefined;
                     return (
                       <tr key={c.id} style={{ opacity: c.active && !c.ceased_on ? 1 : 0.55 }}>
-                        <td style={{ ...td, ...sticky1, cursor: 'pointer', fontWeight: 500 }} onClick={() => setDrawer(c.id)} title={c.name}>{c.name}{c.entity_id ? '' : <span title="Not yet linked to a client record" style={{ marginLeft: 6, color: '#f59e0b' }}>•</span>}</td>
+                        <td style={{ ...td, ...sticky1, cursor: 'pointer', fontWeight: 500 }} onClick={() => setDrawer(c.id)} title={displayName(c)}>{displayName(c)}{c.entity_id ? '' : <span title="Not yet linked to a client record — open and pick the client" style={{ marginLeft: 6, color: '#f59e0b' }}>•</span>}</td>
                         <td style={{ ...td, ...sticky2 }}>{c.pay_day || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                         <td style={td}>{c.cutoff || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                         <td style={td}>{c.runner_id ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Avatar id={c.runner_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.runner_id]} />{runnerLabel(c)}</span> : runnerLabel(c)}</td>
@@ -286,7 +287,7 @@ export default function PayrollView() {
           defaultFrequency={freq}
           period={period}
           ticks={ticks}
-          staffList={staffList} staffMap={staffMap} entityList={entityList} navigate={navigate}
+          staffList={staffList} staffMap={staffMap} entityList={entityList} entityMap={entityMap} navigate={navigate}
           onClose={() => setDrawer(null)}
           onSaved={async () => { await load(); }}
         />
@@ -336,7 +337,7 @@ function ControlsSheet({ period, clients, journal, ticks, stateOf }) {
   );
 }
 
-function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staffMap, entityList, navigate, onClose, onSaved }) {
+function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staffMap, entityList, entityMap, navigate, onClose, onSaved }) {
   const isNew = !client;
   const [form, setForm] = useState(() => ({
     name: client?.name || '', entity_id: client?.entity_id || '', frequency: client?.frequency || defaultFrequency, pay_day: client?.pay_day || '', cutoff: client?.cutoff || '',
@@ -379,17 +380,17 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px 8px', borderBottom: '1px solid #e5e7eb' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{isNew ? 'New payroll client' : 'Payroll client'}</div>
-            <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.name || 'Untitled'}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{(form.entity_id && entityMap[form.entity_id]?.name) || form.name || 'Pick a client'}</div>
           </div>
           {linked && <button onClick={() => navigate(`/clients/${linked.id}`)} style={BTN.secondary.sm}>Open the client</button>}
           <button onClick={onClose} style={BTN.secondary.sm}>Close</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {err && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{err}</div>}
-          <div><div style={lab}>Name (as the team know it)</div><input value={form.name} onChange={(e) => set('name', e.target.value)} style={inp} /></div>
           <div>
-            <div style={lab}>Client record</div>
-            {linked ? <div style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ flex: 1 }}>{linked.name}</span><button onClick={() => set('entity_id', '')} style={BTN.secondary.sm}>Unlink</button></div>
+            <div style={lab}>Athena client (required)</div>
+            {client?.name && (!linked || linked.name !== client.name) && <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 4 }}>On the spreadsheet as “{client.name}”</div>}
+            {linked ? <div style={{ fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ flex: 1 }}>{linked.name}</span><button onClick={() => set('entity_id', '')} style={BTN.secondary.sm}>Change</button></div>
               : <>
                 <input value={entityQ} onChange={(e) => setEntityQ(e.target.value)} placeholder="Search Athena clients to link…" style={inp} />
                 {entities.map((e) => <div key={e.id} onClick={() => { set('entity_id', e.id); setEntityQ(''); }} style={{ padding: '5px 8px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}>{e.name}</div>)}
@@ -420,7 +421,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
             <div><div style={lab}>Ceased on</div><input type="date" value={form.ceased_on} onChange={(e) => set('ceased_on', e.target.value)} style={inp} /></div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={save} disabled={busy || !form.name.trim()} style={BTN.primary.sm}>{busy ? 'Saving…' : isNew ? 'Add client' : 'Save'}</button>
+            <button onClick={save} disabled={busy || !form.entity_id} title={form.entity_id ? '' : 'Pick the Athena client first'} style={BTN.primary.sm}>{busy ? 'Saving…' : isNew ? 'Add client' : 'Save'}</button>
           </div>
 
           {client && period && (

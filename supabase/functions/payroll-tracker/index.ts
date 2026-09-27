@@ -91,7 +91,16 @@ Deno.serve(async (req) => {
         const id = optUuid(p.id, "id");
         const row: Record<string, unknown> = { updated_at: now, updated_by: me };
         if (p.name !== undefined) { const n = optText(p.name, 200); if (!n) throw new BadRequest("name required"); row.name = n; }
-        if (p.entity_id !== undefined) row.entity_id = optUuid(p.entity_id, "entity_id");
+        // A payroll client is always an Athena client (Bobby, 2026-09-27): the
+        // link is required on create and cannot be cleared. The display name
+        // follows the entity.
+        if (p.entity_id !== undefined) {
+          const eid = optUuid(p.entity_id, "entity_id");
+          if (!eid) throw new BadRequest("Pick the Athena client this payroll belongs to");
+          const { data: ent } = await db.from("entities").select("id, name").eq("id", eid).maybeSingle();
+          if (!ent) throw new BadRequest("Client not found", 404);
+          row.entity_id = eid; row.name = ent.name;
+        }
         if (p.realm_id !== undefined) row.realm_id = optText(p.realm_id, 40);
         if (p.employer_id !== undefined) row.employer_id = p.employer_id === null || p.employer_id === "" ? null : Number(p.employer_id);
         if (p.frequency !== undefined) { if (!FREQ.has(String(p.frequency))) throw new BadRequest("frequency must be weekly, monthly or eps_only"); row.frequency = p.frequency; }
@@ -115,7 +124,7 @@ Deno.serve(async (req) => {
           if (error) throw new Error(error.message);
           return json({ success: true, client: data });
         }
-        if (!row.name) throw new BadRequest("name required");
+        if (!row.entity_id) throw new BadRequest("Pick the Athena client this payroll belongs to");
         if (!row.frequency) throw new BadRequest("frequency required");
         const { data, error } = await db.from("payroll_clients").insert(row).select("*").single();
         if (error) throw new Error(error.message);
