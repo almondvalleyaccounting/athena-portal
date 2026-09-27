@@ -1,5 +1,5 @@
 -- ============================================================
--- 334 — A payroll client is always an Athena client
+-- 335 — A payroll client is always an Athena client
 --
 -- Bobby, 2026-09-27: no free-text payroll client names. Every row on the
 -- Payroll tab is tagged to an entity (current, prospect or former). The
@@ -13,4 +13,4 @@ alter table public.payroll_clients
   alter column entity_id set not null;
 
 comment on column public.payroll_clients.entity_id is
-  'The Athena client this payroll belongs to. Required (sql/334); name mirrors entities.name.';
+  'The Athena client this payroll belongs to. Required (sql/335); name mirrors entities.name.';
