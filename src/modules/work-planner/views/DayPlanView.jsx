@@ -231,6 +231,8 @@ export default function DayPlanView({ selectorOpen, onSelectorClose, onOpenQuick
     ];
     if (x.type === 'ms') items.push({ label: 'Not required (skip)', run: () => { if (window.confirm(`Skip "${x.title}" on this job?`)) act({ action: 'skip', milestone_id: x.item.id }).catch((er) => setError(er.message)); } });
     if (x.date !== day && x.type !== 'block') items.push({ label: 'Move to this day', run: () => moveTo(x, day).then(load).catch((er) => setError(er.message)) });
+    items.push({ label: 'Log time…', run: () => setAsk({ title: 'Log time', subtitle: `${x.title}${x.client ? ` · ${x.client}` : ''}`, cta: 'Log', note: 'Goes straight to your timesheet. The task stays open.', run: (m) => { if (!(m > 0)) throw new Error('Enter the minutes'); return callJobPlan({ action: 'log_time', task: x.type === 'block' ? { type: 'block', id: x.item._masterId, occurrence_date: x.date } : { type: x.type, id: x.item.id }, minutes: m }); } }) });
+    if (x.type === 'bm' || x.type === 'ms') items.push({ label: 'Reassign…', run: () => onOpenTask({ type: x.type, id: x.item.id, reassign: true }) });
     if (x.entity_id) items.push({ label: 'Email…', run: () => setEmail(x) });
     if (x.type === 'quick') items.push({ label: 'Edit', run: () => onOpenQuick && onOpenQuick(x.item) });
     if (x.date === day && x.type !== 'block') items.push({ label: 'Back to Incomplete', run: () => moveTo(x, prevWorkingISO).then(load).catch((er) => setError(er.message)) });
