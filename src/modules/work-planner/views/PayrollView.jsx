@@ -219,9 +219,9 @@ export default function PayrollView() {
   const sticky2 = { position: 'sticky', left: 240, zIndex: 2, background: '#fff', minWidth: 62, textAlign: 'left', borderRight: '1px solid #e5e7eb' };
   const tile = (state, late) => ({
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 5, cursor: state === 'na-fixed' ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, userSelect: 'none',
-    ...(state === 'done' ? { background: '#dcfce7', color: '#166534' }
-      : state === 'na' || state === 'na-fixed' ? { background: state === 'na-fixed' ? '#f8fafc' : '#f1f5f9', color: '#94a3b8' }
-      : { border: `1px dashed ${late ? '#fca5a5' : '#cbd5e1'}`, background: late ? '#fef2f2' : '#fff', color: 'transparent' }),
+    ...(state === 'done' ? { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' }
+      : state === 'na' || state === 'na-fixed' ? { background: '#e2e8f0', color: '#e2e8f0', border: '1px solid #e2e8f0' }
+      : { border: `1px solid ${late ? '#fca5a5' : '#cbd5e1'}`, background: late ? '#fef2f2' : '#fff', color: 'transparent' }),
   });
   const pill = (bg, fg) => ({ display: 'inline-block', padding: '1px 7px', borderRadius: 8, fontSize: 10.5, fontWeight: 600, background: bg, color: fg });
 
@@ -300,7 +300,7 @@ export default function PayrollView() {
                           const title = st === 'na-fixed' ? 'Not applicable for this client (set in the drawer)' : st === 'open' ? `${s.label} · not yet${late ? ' · past cut-off' : ''}` : `${st === 'done' ? 'Done' : 'Not applicable'} · ${t?.by_name || 'unknown'} · ${t?.source === 'import' ? 'from the spreadsheet' : fmtTs(t?.at)}`;
                           return (
                             <td key={s.id} style={td}>
-                              <span onClick={() => cycle(c, s.id)} onContextMenu={(e) => { e.preventDefault(); setNaMenu({ client: c, step: s.id, label: s.label, x: e.clientX, y: e.clientY }); }} title={`${title} · right-click to change whether this step applies`} style={tile(st, late)}>{st === 'done' ? '✓' : st === 'na' || st === 'na-fixed' ? '–' : '·'}</span>
+                              <span onClick={() => cycle(c, s.id)} onContextMenu={(e) => { e.preventDefault(); setNaMenu({ client: c, step: s.id, label: s.label, x: e.clientX, y: e.clientY }); }} title={`${title} · right-click to change whether this step applies`} style={tile(st, late)}>{st === 'done' ? '✓' : ''}</span>
                             </td>
                           );
                         })}
@@ -322,9 +322,9 @@ export default function PayrollView() {
             </tbody>
           </table>
           <div style={{ display: 'flex', gap: 14, padding: '8px 12px', fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>
-            <span><span style={{ ...tile('done'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> done, hover for who and when</span>
-            <span><span style={{ ...tile('open'), width: 14, height: 14, verticalAlign: -2 }} /> not yet · click to tick, click again to untick</span>
-            <span><span style={{ ...tile('na'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>–</span> not applicable for this client · right-click a cell to set or unset (it sticks for every period)</span>
+            <span><span style={{ ...tile('done'), width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> green tick · done, hover for who and when</span>
+            <span><span style={{ ...tile('open'), width: 14, height: 14, verticalAlign: -2 }} /> white · not done · click to tick, click again to untick</span>
+            <span><span style={{ ...tile('na'), width: 14, height: 14, verticalAlign: -2 }} /> greyed out · not applicable for this client · right-click a cell to set or unset (it sticks for every period)</span>
             <span><span style={{ ...tile('open', true), width: 14, height: 14, verticalAlign: -2 }} /> past cut-off, still open</span>
             {freq === 'monthly' && <span><span style={{ ...tile('done'), background: '#ccfbf1', color: '#0f766e', width: 14, height: 14, fontSize: 10, verticalAlign: -2 }}>✓</span> journal seen in QuickBooks (live, not tickable)</span>}
             <span><span style={{ color: '#f59e0b' }}>•</span> not linked to a client record</span>
