@@ -1024,7 +1024,69 @@ async function cashFlowMonthly(sb: any, realmId: string, start: string, end: str
   };
 }
 
+// Tracker (sql/332): the reconciled-to date of every bank and card account.
+// QuickBooks has no reconciliation endpoint, but the TransactionList report
+// takes cleared=Reconciled; the latest such transaction per account is the
+// date the rec has reached. Incremental after the first run: we only ask for
+// transactions since the oldest date we already hold, less a month.
+async function pullBankRecs(sb: any, realmId: string) {
+  const acc = await qboQuery(sb, realmId, "select Id, Name, AcctNum, AccountType, AccountSubType, CurrentBalance, Active from Account where AccountType in ('Bank','Credit Card') MAXRESULTS 1000");
+  const accounts: any[] = acc?.QueryResponse?.Account || [];
+  const { data: known } = await sb.from("tracker_bank_recs").select("qbo_account_id, reconciled_to").eq("realm_id", realmId);
+  const knownMap = new Map<string, string | null>((known || []).map((k: any) => [k.qbo_account_id, k.reconciled_to]));
+  const oldest = (known || []).map((k: any) => k.reconciled_to).filter(Boolean).sort()[0] as string | undefined;
+  const start = oldest ? fmt(new Date(new Date(`${oldest}T12:00:00Z`).getTime() - 35 * 86400000)) : "2015-01-01";
+  const end = fmt(new Date(Date.now() + 366 * 86400000));
+  const resp = await qboFetch(sb, realmId, `reports/TransactionList?start_date=${start}&end_date=${end}&cleared=Reconciled&columns=tx_date,txn_type,account_name&minorversion=75`);
+  if (!resp.ok) throw new Error(`TransactionList failed: ${resp.status} ${(await resp.text()).slice(0, 200)}`);
+  const rep = await resp.json();
+  const cols: string[] = (rep?.Columns?.Column || []).map((c: any) => String(c.ColTitle || ""));
+  const iDate = cols.findIndex((c) => /date/i.test(c)); const iAcc = cols.findIndex((c) => /account/i.test(c));
+  const latest = new Map<string, { last: string; n: number }>();
+  const walk = (n: any) => {
+    if (!n) return;
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (n.ColData) {
+      const d = n.ColData[iDate]?.value; const a = n.ColData[iAcc]?.value;
+      if (d && a) { const cur = latest.get(a); if (!cur) latest.set(a, { last: d, n: 1 }); else { cur.n++; if (d > cur.last) cur.last = d; } }
+    }
+    if (n.Rows) walk(n.Rows.Row);
+  };
+  walk(rep?.Rows?.Row);
+  // The report labels an account "<AcctNum> <Name>" (or just the name); match on the tail.
+  const forAccount = (a: any) => {
+    const name = String(a.Name || ""); const num = a.AcctNum ? String(a.AcctNum) : null;
+    for (const [label, v] of latest) {
+      if (label === name || (num && label === `${num} ${name}`) || label.endsWith(` ${name}`)) return v;
+    }
+    return null;
+  };
+  const { data: conn } = await sb.from("qbo_report_connections").select("entity_id").eq("realm_id", realmId).maybeSingle();
+  const now = new Date().toISOString();
+  const rows = accounts.map((a) => {
+    const v = forAccount(a);
+    const prev = knownMap.get(String(a.Id)) || null;
+    const reconciledTo = v && (!prev || v.last > prev) ? v.last : prev;
+    return {
+      realm_id: realmId, qbo_account_id: String(a.Id), entity_id: conn?.entity_id ?? null,
+      account_name: a.Name, account_type: a.AccountType, account_sub_type: a.AccountSubType,
+      current_balance: Number(a.CurrentBalance || 0), active: a.Active !== false,
+      reconciled_to: reconciledTo, reconciled_count: v?.n ?? null, checked_at: now,
+    };
+  });
+  if (rows.length) {
+    const { error } = await sb.from("tracker_bank_recs").upsert(rows, { onConflict: "realm_id,qbo_account_id" });
+    if (error) throw new Error(error.message);
+  }
+  return {
+    accounts: rows.length, since: start,
+    oldest_reconciled_to: rows.filter((r) => r.active && r.reconciled_to).map((r) => r.reconciled_to).sort()[0] ?? null,
+    by_account: rows.map((r) => ({ id: r.qbo_account_id, name: r.account_name, reconciled_to: r.reconciled_to, count: r.reconciled_count })),
+  };
+}
+
 const METRICS: Record<string, (sb: any, realmId: string) => Promise<any>> = {
+  bank_recs: pullBankRecs,
   company: pullCompany,
   pl_summary: pullPlSummary,
   pl_fytd: pullPlFytd,

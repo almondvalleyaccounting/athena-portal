@@ -40,6 +40,7 @@ import CapacityView from './views/CapacityView';
 import ReadyNowView from './views/ReadyNowView';
 import DriftView from './views/DriftView';
 import TodayView from './views/TodayView';
+import TrackerView from './views/TrackerView';
 import DayPlanView from './views/DayPlanView';
 import TaskModal from './components/TaskModal';
 import EmailModal from './components/EmailModal';
@@ -73,6 +74,7 @@ const TASK_PLANNER_TABS = [
   { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
   { id: 'kanban',   label: 'Stage board', path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
+  { id: 'tracker',  label: 'Tracker',     path: '/planner/tracker' },
 ];
 const TEAM_TABS = [
   { id: 'team', label: 'Team', path: '/planner/team' },
@@ -971,6 +973,9 @@ export default function WorkPlannerModule() {
           )}
           {activeTab === 'completed' && (
             <CompletedView />
+          )}
+          {activeTab === 'tracker' && (
+            <TrackerView />
           )}
           {activeTab === 'ready' && (
             <ReadyNowView
