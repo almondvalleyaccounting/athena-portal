@@ -177,7 +177,7 @@ export default function TrackerView() {
   );
 }
 
-// The client drawer: bank accounts from QuickBooks, the journal check, and the
+// The client modal: bank accounts from QuickBooks, the journal check, and the
 // control-account lines and queries with a date, note and author.
 function Drawer({ row, profile, onClose, onChanged, navigate }) {
   const { staffMap } = useWorkPlanner();
@@ -207,8 +207,8 @@ function Drawer({ row, profile, onClose, onChanged, navigate }) {
   const inp = { fontFamily: font, fontSize: 12.5, padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6 };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.18)', zIndex: 100 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 520, maxWidth: '96vw', background: '#fff', boxShadow: '-4px 0 16px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', fontFamily: font }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.25)', zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 760, maxWidth: '96vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
         <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.client}</div>
