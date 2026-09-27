@@ -266,7 +266,7 @@ export default function PayrollView() {
                 <th onClick={(e) => openFilter(e, 'cover', 'Cover')} style={{ ...th, minWidth: 56, ...thF('cover') }}>Cover<Funnel k="cover" /></th>
                 {STEPS.map((s) => <th key={s.id} onClick={(e) => openFilter(e, s.id, s.label)} style={{ ...th, maxWidth: 92, ...thF(s.id) }}>{s.label}<Funnel k={s.id} /></th>)}
                 {freq === 'monthly' && <th onClick={(e) => openFilter(e, 'journal', 'Journal posted')} style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e', ...thF('journal') }}>Journal posted to QuickBooks (live)<Funnel k="journal" /></th>}
-                <th onClick={(e) => openFilter(e, 'note', 'Standing note')} style={{ ...thL, minWidth: 220, ...thF('note') }}>Standing note<Funnel k="note" /></th>
+                <th onClick={(e) => openFilter(e, 'note', 'Important notes')} style={{ ...thL, minWidth: 220, ...thF('note') }}>Important notes<Funnel k="note" /></th>
                 <th style={{ ...th, minWidth: 44 }}>Notes</th>
               </tr>
             </thead>
@@ -459,6 +459,11 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {err && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{err}</div>}
+          <div style={{ borderLeft: '5px solid #0891b2', background: '#ecfeff', borderRadius: '0 8px 8px 0', padding: '10px 14px' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#0e7490', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>Important notes <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· shown on every sheet</span></div>
+            <textarea value={form.standing_note} onChange={(e) => set('standing_note', e.target.value)} rows={Math.min(8, Math.max(2, (form.standing_note || '').split(String.fromCharCode(10)).length + 1))} placeholder="Anything the runner must know every time: who sends the hours, when, how payslips go out…"
+              style={{ width: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', resize: 'vertical', fontFamily: font, fontSize: 15, fontWeight: 500, lineHeight: 1.5, color: '#164e63', outline: 'none', padding: 0 }} />
+          </div>
           <div>
             <div style={lab}>Athena client (required)</div>
             {client?.name && (!linked || linked.name !== client.name) && <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 4 }}>On the spreadsheet as “{client.name}”</div>}
@@ -487,7 +492,6 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
               ))}
             </div>
           </div>
-          <div><div style={lab}>Standing note (shows on every sheet)</div><textarea value={form.standing_note} onChange={(e) => set('standing_note', e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
             <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} /> Active</label>
             <div><div style={lab}>Ceased on</div><input type="date" value={form.ceased_on} onChange={(e) => set('ceased_on', e.target.value)} style={inp} /></div>
