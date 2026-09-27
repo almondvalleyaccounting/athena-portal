@@ -32,7 +32,7 @@ const RISK = {
 
 function fmt(iso) { return iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''; }
 
-export default function StageBoardView() {
+export default function StageBoardView({ onOpenTask }) {
   const navigate = useNavigate();
   const { filters, staffMap, staffColours } = useWorkPlanner();
   const [jobs, setJobs] = useState([]);
@@ -106,7 +106,14 @@ export default function StageBoardView() {
                 {items.map((j) => {
                   const r = RISK[j.risk];
                   return (
-                    <div key={`${j.entity_id}|${j.period_end}`} onClick={() => navigate(`/planner/plan/${j.entity_id}/${j.period_end}`)}
+                    <div key={`${j.entity_id}|${j.period_end}`} onClick={() => {
+                      // The task, not the workflow (Bobby, 2026-09-27): the next stage when
+                      // the job is planned, else the BM job; the workflow is a button in the modal.
+                      const bm = j.prep_job_id || j.ch_job_id || j.ct_job_id;
+                      if (onOpenTask && j.next) onOpenTask({ type: 'ms', id: j.next.id });
+                      else if (onOpenTask && bm) onOpenTask({ type: 'bm', id: bm });
+                      else navigate(`/planner/plan/${j.entity_id}/${j.period_end}`);
+                    }}
                       style={{ padding: '7px 9px', background: '#fff', border: '1px solid #e5e7eb', borderLeft: `3px solid ${g.colour}`, borderRadius: 6, marginBottom: 5, cursor: 'pointer' }}>
                       <div style={{ fontSize: 12.5, fontWeight: 500, marginBottom: 2 }}>{j.client}</div>
                       <div style={{ fontSize: 11.5, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>

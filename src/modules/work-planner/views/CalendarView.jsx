@@ -204,7 +204,7 @@ export default function CalendarView({ calendarView, anchor, onOpen, onPickDay, 
       title = `${x.label} · ${p?.entities?.name || ''}`;
       const pending = x.status === 'pending';
       items.push({ label: 'Open', run: () => onOpenTask({ type: 'ms', id: x.id }) });
-      items.push({ label: 'Open the plan', run: () => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`) });
+      items.push({ label: 'Open the workflow', run: () => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`) });
       items.push({ label: 'Done…', disabled: !pending, run: () => setAsk({ title: x.label, subtitle: p?.entities?.name, defaultMins: x.hours ? Math.round(Number(x.hours) * 60) : null, run: (m) => act({ action: 'mark_done', milestone_id: x.id, minutes: m }) }) });
       items.push({ label: 'Not required (skip)', disabled: !pending, run: () => { if (window.confirm(`Skip "${x.label}" on this job?`)) act({ action: 'skip', milestone_id: x.id }).catch((er) => setError(er.message)); } });
       items.push({ label: 'Move to today', disabled: !pending || x.due_date === formatISO(now), run: () => act({ action: 'move_milestone', milestone_id: x.id, due_date: formatISO(now) }).catch((er) => setError(er.message)) });

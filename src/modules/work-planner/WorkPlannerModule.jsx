@@ -44,6 +44,7 @@ import DayPlanView from './views/DayPlanView';
 import TaskModal from './components/TaskModal';
 import EmailModal from './components/EmailModal';
 import HolidayModal from './components/HolidayModal';
+import JobSelectorModal from './components/JobSelectorModal';
 import TeamView from './views/TeamView';
 import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
@@ -828,7 +829,7 @@ export default function WorkPlannerModule() {
     { label: 'Quick task', hint: 'A one-off task for someone', run: () => setQuickModal({ _new: true }) },
     { label: 'Block', hint: 'Standing work on a cadence', run: () => setModal('new') },
     { label: 'Holiday', hint: 'Time off, cover and handover', run: () => setHolidayOpen(true) },
-    ...((activeTab === 'day' || activeTab === 'calendar') ? [{ label: 'Jobs onto a day', hint: 'Pull BrightManager jobs in from the Job Selector', run: () => setSelectorOpen(true) }] : []),
+    { label: 'Job Selector', hint: 'Pull BrightManager jobs onto a day', run: () => setSelectorOpen(true) },
   ];
 
   return (
@@ -966,7 +967,7 @@ export default function WorkPlannerModule() {
             />
           )}
           {activeTab === 'kanban' && (
-            <StageBoardView />
+            <StageBoardView onOpenTask={setTaskModal} />
           )}
           {activeTab === 'completed' && (
             <CompletedView />
@@ -1066,6 +1067,12 @@ export default function WorkPlannerModule() {
 
       {guideOpen && <CalendarGuide onClose={() => setGuideOpen(false)} />}
       {emailModal && <EmailModal ctx={emailModal} staffList={staffList} profile={profile} onClose={() => setEmailModal(null)} />}
+      {/* Day plan and Planner host the Job Selector themselves (they know the
+          day in view); every other tab gets it here, defaulting to today. */}
+      {selectorOpen && activeTab !== 'day' && activeTab !== 'calendar' && (
+        <JobSelectorModal staffList={staffList} entityMap={entityMap} profile={profile} teamFilter={teamFilter} defaultDate={today()}
+          onScheduled={() => setRefreshTick((t) => t + 1)} onClose={() => setSelectorOpen(false)} />
+      )}
       {holidayOpen && <HolidayModal holidays={holidays} staffList={staffList} staffMap={staffMap} profile={profile} canManage={!!profile?.can_manage_portal} onChanged={refreshHolidays} onClose={() => setHolidayOpen(false)} />}
       {taskModal && (
         <TaskModal
