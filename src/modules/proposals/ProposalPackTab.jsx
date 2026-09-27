@@ -197,11 +197,11 @@ function DesignArea({ selected, setSelected, current, edit, dirty, drafts, saved
   const accent = ACCENTS[current.accent] || ACCENTS.ocean;
 
   return (
-    <div className="flex gap-4 items-start" style={{ minHeight: 600 }}>
+    <div className="flex flex-col xl:flex-row gap-4 items-stretch xl:items-start" style={{ minHeight: 600 }}>
       {/* Pages */}
-      <div className="w-56 shrink-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="w-full xl:w-56 shrink-0 bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-100">Pages</div>
-        <div className="max-h-[70vh] overflow-y-auto">
+        <div className="max-h-48 xl:max-h-[70vh] overflow-y-auto">
           {ALL_PAGES.map((p) => {
             const Ico = ICON_COMPONENTS[(drafts[p.key] || saved[p.key] || p).icon] || ICON_COMPONENTS.FileText;
             return (
@@ -218,7 +218,7 @@ function DesignArea({ selected, setSelected, current, edit, dirty, drafts, saved
       </div>
 
       {/* Page */}
-      <div ref={stage} className="flex-1 min-w-0 flex flex-col items-center gap-2">
+      <div ref={stage} className="flex-1 min-w-0 w-full flex flex-col items-center gap-2">
         <div className="text-xs text-gray-400">Click any text on the page to edit it. Hover a point to remove it.</div>
         <Scaled width={width}>
           <PackPage page={current} editable onChange={edit} clientName="Client name" services={['Year-end accounts and Corporation Tax', 'Bookkeeping', 'VAT returns']} dateText={todayText()} />
@@ -226,7 +226,7 @@ function DesignArea({ selected, setSelected, current, edit, dirty, drafts, saved
       </div>
 
       {/* Design */}
-      <div className="w-64 shrink-0 bg-white border border-gray-200 rounded-lg p-3 space-y-4">
+      <div className="w-full xl:w-64 shrink-0 bg-white border border-gray-200 rounded-lg p-3 space-y-4">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Icon</div>
           <div className="grid grid-cols-6 gap-1">
@@ -306,8 +306,8 @@ function DesignArea({ selected, setSelected, current, edit, dirty, drafts, saved
 function BuildArea({ clientName, setClientName, chosen, setChosen, packPages, serviceTitles, downloadPdf }) {
   const toggle = (key) => setChosen((c) => (c.includes(key) ? c.filter((k) => k !== key) : [...c, key]));
   return (
-    <div className="flex gap-4 items-start">
-      <div className="w-72 shrink-0 bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+      <div className="w-full lg:w-72 shrink-0 bg-white border border-gray-200 rounded-lg p-3 space-y-3">
         <label className="block">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Client</span>
           <input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client or business name"
