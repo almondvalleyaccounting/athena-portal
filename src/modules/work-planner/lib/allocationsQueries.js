@@ -180,6 +180,29 @@ export async function commitAllocationDraft(id, staffId) {
   if (error) throw error;
 }
 
+// Proposals the team has ticked Done in the last 60 days, so the proposals
+// list can keep showing them (with who ticked them) until BM confirms.
+export async function fetchDoneAllocationChanges() {
+  const since = new Date(Date.now() - 60 * 86400000).toISOString();
+  const { data, error } = await supabase
+    .from('allocation_changes')
+    .select('*')
+    .eq('status', 'committed')
+    .gte('committed_at', since);
+  if (error) throw error;
+  return data || [];
+}
+
+// Untick Done: back to a live draft. Fails on the one-draft-per-cell index if
+// someone has since proposed a different change for the same cell.
+export async function reopenAllocationChange(id) {
+  const { error } = await supabase
+    .from('allocation_changes')
+    .update({ status: 'draft', committed_at: null, committed_by: null })
+    .eq('id', id);
+  if (error) throw error;
+}
+
 // ── Service reviewers (independent of BM fee earners) ──
 // Two reviewer roles: vat_review, accounts_preparation. Sourced
 // from BM's "Monitor" columns at import time; users override in

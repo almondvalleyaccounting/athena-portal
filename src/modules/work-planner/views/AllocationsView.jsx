@@ -6,6 +6,7 @@ import {
   fetchAllocationDrafts, fetchAllocationEntities,
   fetchInferredAllocations, fetchClientGroups,
   upsertAllocationDraft, discardAllocationDraft,
+  commitAllocationDraft, fetchDoneAllocationChanges, reopenAllocationChange,
   fetchServiceReviewers, upsertServiceReviewer, deleteServiceReviewer,
 } from '../lib/allocationsQueries';
 import { teamColour } from '../lib/helpers';
@@ -24,6 +25,9 @@ export default function AllocationsView() {
   const [entities, setEntities] = useState([]);
   const [inferred, setInferred] = useState([]);
   const [drafts, setDrafts] = useState([]);
+  // Proposals ticked Done (status 'committed'). The next BM tasks import
+  // re-checks each one and reopens it if BM still disagrees (sql/110).
+  const [doneChanges, setDoneChanges] = useState([]);
   const [groups, setGroups] = useState([]);
   const [reviewers, setReviewers] = useState([]);
   const [groupModalEntityId, setGroupModalEntityId] = useState(null);
@@ -47,17 +51,19 @@ export default function AllocationsView() {
     let cancelled = false;
     async function load() {
       try {
-        const [e, inf, d, g, rv] = await Promise.all([
+        const [e, inf, d, g, rv, dn] = await Promise.all([
           fetchAllocationEntities(),
           fetchInferredAllocations(),
           fetchAllocationDrafts(),
           fetchClientGroups(),
           fetchServiceReviewers(),
+          fetchDoneAllocationChanges(),
         ]);
         if (!cancelled) {
           setEntities(e);
           setInferred(inf);
           setDrafts(d);
+          setDoneChanges(dn);
           setGroups(g);
           setReviewers(rv);
         }
@@ -379,6 +385,19 @@ export default function AllocationsView() {
 
         <div style={{ flex: 1 }} />
 
+        {drafts.length === 0 && doneChanges.length > 0 && (
+          <button
+            onClick={() => setProposalsOpen(true)}
+            title="Review reallocations already ticked done"
+            style={{
+              fontSize: 13, color: '#166534', background: '#dcfce7',
+              border: '1px solid #86efac', padding: '4px 10px', borderRadius: 12,
+              fontFamily: "'Outfit', sans-serif", cursor: 'pointer', fontWeight: 500,
+            }}
+          >
+            All reallocations done ({doneChanges.length}) →
+          </button>
+        )}
         {drafts.length > 0 && (
           <>
             <button
@@ -449,6 +468,7 @@ export default function AllocationsView() {
       {proposalsOpen && (
         <ProposalsModal
           drafts={drafts}
+          doneChanges={doneChanges}
           resolvedDrafts={resolvedDrafts}
           entities={entities}
           staffMap={staffMap}
@@ -456,6 +476,30 @@ export default function AllocationsView() {
           onDiscardDraft={async (id) => {
             await discardAllocationDraft(id);
             setDrafts((prev) => prev.filter((d) => d.id !== id));
+          }}
+          onMarkDone={async (id) => {
+            const d = drafts.find((x) => x.id === id);
+            if (!d) return;
+            const now = new Date().toISOString();
+            setDrafts((prev) => prev.filter((x) => x.id !== id));
+            setDoneChanges((prev) => [...prev, { ...d, status: 'committed', committed_at: now, committed_by: profile?.id ?? null }]);
+            try {
+              await commitAllocationDraft(id, profile?.id);
+            } catch (err) {
+              alert(`Couldn't mark done: ${err.message}`);
+              setRefreshTick((t) => t + 1);
+            }
+          }}
+          onUndoDone={async (id) => {
+            const d = doneChanges.find((x) => x.id === id);
+            if (!d) return;
+            try {
+              await reopenAllocationChange(id);
+              setDoneChanges((prev) => prev.filter((x) => x.id !== id));
+              setDrafts((prev) => [...prev, { ...d, status: 'draft', committed_at: null, committed_by: null }]);
+            } catch (err) {
+              alert(`Couldn't reopen — there may already be a newer proposal for this client and service. (${err.message})`);
+            }
           }}
           onClearResolved={handleClearResolved}
           onClose={() => setProposalsOpen(false)}
@@ -802,8 +846,10 @@ function CellEditor({ entityId, serviceId, initialFeeEarnerId, staffList, onCanc
 
 // ── Proposals review modal ──
 
-function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMap, onDiscardDraft, onClearResolved, onClose }) {
-  const [filter, setFilter] = useState('all'); // 'all' | 'active' | 'resolved'
+function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMap, inferredMap, onDiscardDraft, onClearResolved, onMarkDone, onUndoDone, onClose }) {
+  // 'all' | 'todo' | 'done' | 'resolved'
+  const [filter, setFilter] = useState('todo');
+  const [busy, setBusy] = useState(null); // row id mid-save
 
   const entityById = useMemo(() => {
     const m = new Map();
@@ -814,28 +860,68 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
   const serviceLabel = (id) => ALLOCATION_SERVICES.find((s) => s.id === id)?.label || id;
   const resolvedIds = useMemo(() => new Set(resolvedDrafts.map((d) => d.id)), [resolvedDrafts]);
 
-  const rows = useMemo(() => {
-    const enriched = drafts.map((d) => {
+  // A row's state:
+  //   todo      — proposed, nobody has ticked it yet
+  //   resolved  — not ticked, but BM already shows the proposed person
+  //   done      — ticked Done; waiting for the next BM import to confirm
+  //   confirmed — ticked Done and BM now agrees
+  // The BM import still has the last word: a Done row BM disagrees with is
+  // reopened to To do (reconcile_allocation_changes, sql/110).
+  const all = useMemo(() => {
+    const enrich = (d, ticked) => {
       const inf = inferredMap.get(`${d.entity_id}__${d.canonical_service_id}`);
       const bmId = inf?.assignee_id || null;
-      const resolved = resolvedIds.has(d.id);
+      const bmAgrees = !!(bmId && d.proposed_fee_earner_id && bmId === d.proposed_fee_earner_id);
+      const state = ticked ? (bmAgrees ? 'confirmed' : 'done') : (resolvedIds.has(d.id) ? 'resolved' : 'todo');
       return {
         id: d.id,
-        entity_id: d.entity_id,
         client: entityById.get(d.entity_id)?.name || '(unknown)',
         service: serviceLabel(d.canonical_service_id),
         from: bmId ? (staffMap[bmId]?.name || '—') : 'unassigned',
         to: d.proposed_fee_earner_id ? (staffMap[d.proposed_fee_earner_id]?.name || '—') : 'unassigned',
-        resolved,
-        note: d.note,
-        source: inf ? (inf.via_fallback ? 'BM (fallback)' : 'BM') : 'gap',
+        state,
+        ticked,
+        doneBy: d.committed_by ? (staffMap[d.committed_by]?.name || null) : null,
+        doneAt: d.committed_at,
       };
-    });
-    enriched.sort((a, b) => a.client.localeCompare(b.client) || a.service.localeCompare(b.service));
-    if (filter === 'active') return enriched.filter((r) => !r.resolved);
-    if (filter === 'resolved') return enriched.filter((r) => r.resolved);
-    return enriched;
-  }, [drafts, inferredMap, entityById, staffMap, resolvedIds, filter]);
+    };
+    const list = [...drafts.map((d) => enrich(d, false)), ...doneChanges.map((d) => enrich(d, true))];
+    list.sort((a, b) => a.client.localeCompare(b.client) || a.service.localeCompare(b.service));
+    return list;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafts, doneChanges, inferredMap, entityById, staffMap, resolvedIds]);
+
+  const counts = useMemo(() => ({
+    all: all.length,
+    todo: all.filter((r) => r.state === 'todo').length,
+    done: all.filter((r) => r.state === 'done').length,
+    resolved: all.filter((r) => r.state === 'resolved' || r.state === 'confirmed').length,
+  }), [all]);
+
+  const rows = useMemo(() => {
+    if (filter === 'todo') return all.filter((r) => r.state === 'todo');
+    if (filter === 'done') return all.filter((r) => r.state === 'done');
+    if (filter === 'resolved') return all.filter((r) => r.state === 'resolved' || r.state === 'confirmed');
+    return all;
+  }, [all, filter]);
+
+  const toggle = async (r) => {
+    setBusy(r.id);
+    try {
+      if (r.ticked) await onUndoDone(r.id);
+      else await onMarkDone(r.id);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const PILL = {
+    todo:      { label: 'To do',                   bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' },
+    resolved:  { label: 'Matches BM',              bg: '#dcfce7', fg: '#166534', bd: '#86efac' },
+    done:      { label: 'Done · BM check pending', bg: '#e0f2fe', fg: '#075985', bd: '#7dd3fc' },
+    confirmed: { label: 'Done · BM confirmed',     bg: '#dcfce7', fg: '#166534', bd: '#86efac' },
+  };
+  const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 
   return (
     <div
@@ -850,7 +936,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#fff', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-          width: 'min(960px, 92vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+          width: 'min(1040px, 94vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column',
         }}
       >
         {/* Header */}
@@ -858,9 +944,10 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#0f172a' }}>Reallocation proposals</h2>
           <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 6, padding: 2 }}>
             {[
-              ['all', `All (${drafts.length})`],
-              ['active', `Active (${drafts.length - resolvedDrafts.length})`],
-              ['resolved', `Resolved (${resolvedDrafts.length})`],
+              ['todo', `To do (${counts.todo})`],
+              ['done', `Done (${counts.done})`],
+              ['resolved', `Matches BM (${counts.resolved})`],
+              ['all', `All (${counts.all})`],
             ].map(([k, label]) => (
               <button
                 key={k}
@@ -880,6 +967,7 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
           {resolvedDrafts.length > 0 && (
             <button
               onClick={() => { onClearResolved(); }}
+              title="Discard unticked proposals where BM already shows the proposed person"
               style={{
                 fontSize: 13, fontWeight: 500, padding: '5px 12px', borderRadius: 6,
                 border: '1px solid #16a34a', background: '#dcfce7', color: '#166534', cursor: 'pointer',
@@ -892,17 +980,21 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
             style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
           >Close</button>
         </div>
+        <div style={{ padding: '6px 18px', fontSize: 12, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+          Tick a row once the change is made in BrightManager. The next BM import checks it: if BM still shows someone else, the row goes back to To do.
+        </div>
 
         {/* Body */}
         <div style={{ overflow: 'auto', flex: 1 }}>
           {rows.length === 0 ? (
             <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>
-              No proposals match this filter.
+              {filter === 'todo' ? 'Nothing left to do.' : 'No proposals match this filter.'}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
                 <tr>
+                  <th style={{ ...modalTh, width: 56, textAlign: 'center' }}>Done</th>
                   <th style={modalTh}>Client</th>
                   <th style={modalTh}>Service</th>
                   <th style={modalTh}>From (BM)</th>
@@ -912,34 +1004,47 @@ function ProposalsModal({ drafts, resolvedDrafts, entities, staffMap, inferredMa
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.id} style={{ background: i % 2 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
-                    <td style={modalTd}>{r.client}</td>
-                    <td style={{ ...modalTd, color: '#475569' }}>{r.service}</td>
-                    <td style={{ ...modalTd, color: '#475569' }}>{r.from}</td>
-                    <td style={{ ...modalTd, fontWeight: 500 }}>{r.to}</td>
-                    <td style={modalTd}>
-                      {r.resolved ? (
+                {rows.map((r, i) => {
+                  const pill = PILL[r.state];
+                  return (
+                    <tr key={r.id} style={{ background: i % 2 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
+                      <td style={{ ...modalTd, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={r.ticked}
+                          disabled={busy === r.id}
+                          onChange={() => toggle(r)}
+                          title={r.ticked ? 'Untick: back to To do' : 'Mark done in BrightManager'}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#16a34a' }}
+                        />
+                      </td>
+                      <td style={{ ...modalTd, color: r.ticked ? '#64748b' : undefined }}>{r.client}</td>
+                      <td style={{ ...modalTd, color: '#475569' }}>{r.service}</td>
+                      <td style={{ ...modalTd, color: '#475569' }}>{r.from}</td>
+                      <td style={{ ...modalTd, fontWeight: 500, color: r.ticked ? '#64748b' : undefined }}>{r.to}</td>
+                      <td style={modalTd}>
                         <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-                          background: '#dcfce7', color: '#166534', border: '1px solid #86efac',
-                          }}>Resolved</span>
-                      ) : (
-                        <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-                          background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
-                          }}>Active</span>
-                      )}
-                    </td>
-                    <td style={{ ...modalTd, textAlign: 'right' }}>
-                      <button
-                        onClick={() => onDiscardDraft(r.id)}
-                        title="Discard this proposal"
-                        style={{ ...BTN.danger.sm, cursor: 'pointer' }}
-                      >Discard</button>
-                    </td>
-                  </tr>
-                ))}
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
+                          background: pill.bg, color: pill.fg, border: `1px solid ${pill.bd}`,
+                        }}>{pill.label}</span>
+                        {r.ticked && (
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                            {r.doneBy ? `${r.doneBy} · ` : ''}{shortDate(r.doneAt)}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...modalTd, textAlign: 'right' }}>
+                        {!r.ticked && (
+                          <button
+                            onClick={() => onDiscardDraft(r.id)}
+                            title="Discard this proposal"
+                            style={{ ...BTN.danger.sm, cursor: 'pointer' }}
+                          >Discard</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
