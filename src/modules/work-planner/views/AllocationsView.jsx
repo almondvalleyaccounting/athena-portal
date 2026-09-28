@@ -936,7 +936,8 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
       <div
         style={{
           background: '#fff', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-          width: 'min(1040px, 94vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column',
+          // Fixed size, so switching tabs doesn't make it jump about.
+          width: 'min(1040px, 94vw)', height: '85vh', display: 'flex', flexDirection: 'column',
         }}
       >
         {/* Header */}
@@ -991,7 +992,15 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
               {filter === 'todo' ? 'Nothing left to do.' : 'No proposals match this filter.'}
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '24%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: 170 }} />
+              </colgroup>
               <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
                 <tr>
                   <th style={modalTh}>Client</th>
