@@ -210,7 +210,10 @@ Deno.serve(async (req) => {
   // Headline = the shared definition (SA name-match OR Personal Tax, due by
   // next 31 Jan). The PT sub-line stays as a breakdown of what's included.
   const saCount = (buckets.sa_next_jan as number) ?? 0;
-  const personalTaxCount = (saRows || []).filter((r: Row) => r.service === "Personal Tax").length;
+  // Submissions only, like the headline — the preparation task under the same
+  // job isn't a return (Bobby, 2026-09-28); MTD updates aren't SA (sql/338).
+  const personalTaxCount = (saRows || []).filter((r: Row) => r.service === "Personal Tax"
+    && /Submission/i.test(String(r.bm_task_name || "")) && !/\bMTD\b/i.test(String(r.bm_task_name || ""))).length;
 
   const { data: prevSnap } = await service.from("deadline_digest_snapshots")
     .select("snapshot_date, payload").lt("snapshot_date", ymd(today))
