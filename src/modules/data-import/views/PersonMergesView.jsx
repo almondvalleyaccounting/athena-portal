@@ -59,6 +59,30 @@ export default function PersonMergesView() {
     setBusyId(null);
   }
 
+  // A blocked pair is blocked because the names disagree — the guard that
+  // keeps a father and son sharing a BM reference apart. It is also what a
+  // married name looks like (Laura Wright → Laura Clark). So it can be
+  // merged, but only by someone saying in words why, and the reason goes
+  // on the review row before the merge runs.
+  async function overrideMerge(r) {
+    const why = window.prompt(`"${r.absorbed_name}" and "${r.survivor_name}" have different names, so the import wouldn't merge them.
+
+Only merge if you know they're the same person (e.g. a name change after marriage). The record keeps the name "${r.survivor_name}".
+
+Why are they the same person?`, '');
+    if (why === null) return;
+    if (!why.trim()) { setError('Nothing merged — give the reason they are the same person.'); return; }
+    setBusyId(r.id); setError(null); setFlash(null);
+    try {
+      await setPersonMergeVerdict([r.id], 'proposed', `Same person (confirmed by staff): ${why.trim()}`);
+      const res = await applyPersonMerges([r.id]);
+      if (res?.failed?.length) setError(`Not merged: ${res.failed[0].message}`);
+      else setFlash(`Merged ${r.absorbed_name} into ${r.survivor_name}.`);
+      await load();
+    } catch (e) { setError(e.message); }
+    setBusyId(null);
+  }
+
   async function reject(r) {
     if (!window.confirm(`Keep "${r.survivor_name}" and "${r.absorbed_name}" as two different people?\n\nThe proposal is closed and won't be offered again.`)) return;
     setBusyId(r.id); setError(null); setFlash(null);
@@ -87,7 +111,18 @@ export default function PersonMergesView() {
           {r.absorbed_code_requests > 0 && (
             <span style={chipStyle('info')}>{r.absorbed_code_requests} CH-code chase{r.absorbed_code_requests === 1 ? '' : 's'} moves across</span>
           )}
-          {isBlocked && <span style={chipStyle('danger')}>Blocked: {r.block_reason || 'names disagree'}</span>}
+          {/* The import's block_reason says "same person reference", but the
+              absorbed row never has a reference — the only thing tying a
+              blocked pair together is that both sit on the same client. Say
+              what actually links them, so an old contact replaced by a new
+              one reads as that, and a real name change (same code) stands out. */}
+          {isBlocked && (
+            <span style={chipStyle(r.survivor_code && r.survivor_code === r.absorbed_code ? 'warning' : 'danger')} title={r.block_reason || undefined}>
+              {r.survivor_code && r.survivor_code === r.absorbed_code
+                ? 'Names differ, but same CH personal code — likely a name change'
+                : 'Names differ — only link is a shared client (usually an old contact BM has since replaced)'}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
           <Side label="Keeps" name={r.survivor_name} dob={r.survivor_dob} code={r.survivor_code} entities={splitEntities(r.survivor_entities)} />
@@ -95,9 +130,11 @@ export default function PersonMergesView() {
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           {isBlocked ? (
-            <span style={{ fontSize: 12.5, color: '#64748b', alignSelf: 'center' }}>
-              Blocked proposals can't be merged here — fix the name in BrightManager, or check they really are the same person.
-            </span>
+            <button onClick={() => overrideMerge(r)} disabled={busy}
+              title="Names differ — only if you know it's one person, e.g. a change of name"
+              style={{ ...BTN.secondary.sm, opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}>
+              {busy ? 'Working…' : 'Same person (name changed) — merge'}
+            </button>
           ) : (
             <button onClick={() => merge(r)} disabled={busy} style={{ ...BTN.primary.sm, opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}>
               {busy ? 'Working…' : 'Merge'}

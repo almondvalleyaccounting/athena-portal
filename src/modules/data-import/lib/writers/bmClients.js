@@ -309,11 +309,13 @@ export async function applyPersonMerges(ids) {
   return data;
 }
 
-export async function setPersonMergeVerdict(ids, verdict) {
+// `note` is why — required by the UI when merging a blocked (names differ)
+// pair, stored on the review row as decision_note (sql/342).
+export async function setPersonMergeVerdict(ids, verdict, note = null) {
   const clean = [...new Set((ids || []).filter(Boolean))];
   if (!clean.length) return 0;
   const { data, error } = await supabase.rpc('set_bm_person_merge_verdict', {
-    p_ids: clean, p_verdict: verdict,
+    p_ids: clean, p_verdict: verdict, p_note: note,
   });
   if (error) throw error;
   return data || 0;
