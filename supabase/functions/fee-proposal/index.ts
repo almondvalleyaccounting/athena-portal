@@ -30,6 +30,10 @@
 //       Closes it. clear_pending removes the staged amounts it tagged, so the
 //       client's current fees stand.
 //
+//   { action: "discard_staged", entity_id, note? }
+//       Deletes a fee review that was staged but never issued: the staged
+//       amounts not tagged to an open fee change are dropped.
+//
 //   { action: "preview_go_live" | "approve_go_live", billing_id, go_live_date,
 //     catchup?: { reason: "approval_late"|"template_late"|"other", note? } }
 //       The go-live date must be approved before anything is pushed
@@ -147,6 +151,7 @@ Deno.serve(async (req) => {
       const { error } = await sb.from("fee_proposals").update({ gmail_draft_id: draft, updated_at: new Date().toISOString() }).eq("id", id);
       return error ? json({ success: false, error: error.message }, 500) : json({ success: true });
     }
+    case "discard_staged": return await discardStaged(sb, body, userId);
     default: return json({ success: false, error: "Unknown action" }, 400);
   }
 });
@@ -296,6 +301,51 @@ async function close(sb: Sb, b: Record<string, unknown>, userId: string | null, 
   }
 
   await audit(`fee_proposal_${status}`, id, { note: b.note || null, cleared_pending_lines: cleared });
+  return json({ success: true, cleared });
+}
+
+// Delete a fee review that was staged but never issued: drop the staged new
+// fees on this client's active rows so the current fees stand. Lines tagged
+// to an open fee change (issued / accepted) are left alone — those go
+// through withdraw, which closes the proposal as well.
+//   { action: "discard_staged", entity_id }
+async function discardStaged(sb: Sb, b: Record<string, unknown>, userId: string | null) {
+  const entityId = String(b.entity_id || "");
+  if (!entityId) return json({ success: false, error: "entity_id required" }, 400);
+  const { data: open } = await sb.from("fee_proposals").select("id")
+    .eq("entity_id", entityId).in("status", ["issued", "accepted"]);
+  const openIds = new Set(((open || []) as Service[]).map((p) => String(p.id)));
+  const { data: rows, error } = await sb.from("live_billing").select("id, services")
+    .eq("entity_id", entityId).eq("status", "active");
+  if (error) return json({ success: false, error: error.message }, 500);
+
+  let cleared = 0;
+  for (const r of (rows || []) as Service[]) {
+    let touched = false;
+    const services = ((r.services as Service[]) || []).map((s) => {
+      if (s.pending_monthly_amount == null) return s;
+      if (s.pending_proposal_id && openIds.has(String(s.pending_proposal_id))) return s;
+      touched = true; cleared += 1;
+      return {
+        ...s,
+        pending_monthly_amount: null, pending_effective_at: null, pending_uplift_reason: null,
+        pending_uplift_reason_key: null, pending_uplift_staged_at: null, pending_proposal_id: null,
+        pending_changes: null, pending_needs_acceptance: null,
+      };
+    });
+    if (!touched) continue;
+    const stillPending = services.some((s) => s.pending_monthly_amount != null);
+    const { error: upErr } = await sb.from("live_billing").update({
+      services,
+      ...(stillPending ? {} : { uplift_review_status: null, uplift_reviewed_by: null, uplift_reviewed_at: null }),
+    }).eq("id", r.id);
+    if (upErr) return json({ success: false, error: upErr.message }, 500);
+  }
+  if (cleared === 0) return json({ success: false, error: "Nothing staged to discard for this client" }, 409);
+  await sb.from("audit_log").insert({
+    user_id: userId, action: "fee_review_discarded", entity_type: "entity", entity_id: entityId,
+    detail: { cleared_pending_lines: cleared, note: b.note || null },
+  });
   return json({ success: true, cleared });
 }
 

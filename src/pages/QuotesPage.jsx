@@ -13,6 +13,8 @@ import { BTN } from '../lib/buttonStyles';
 import { useFeeReviews, annualDelta, reviewAsRow, ReviewStateBadge, reviewHref, REVIEW_STATE } from '../modules/billing/FeeReviewsPanel';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired', superseded: 'Superseded' };
+// Fee reviews that can still be deleted: staged, or issued but not yet in QuickBooks.
+const DELETABLE_REVIEW_STATES = ['unsent', 'drafted', 'notice', 'awaiting', 'accepted'];
 const FILTER_STATUS_OPTIONS = ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'declined', 'expired', 'superseded'];
 
 // Status card definitions — pipeline is the aggregate default.
@@ -219,7 +221,8 @@ export default function QuotesPage() {
     const mult = mNet > 0 ? mGross / mNet : 1.2;
     return net * mult;
   };
-  const feeReviews = useFeeReviews();
+  const [reviewsReload, setReviewsReload] = useState(0);
+  const feeReviews = useFeeReviews(reviewsReload);
   const cardData = useMemo(() => {
     const visible = quotes.filter(q => q.status !== 'deleted');
     const vat = netGross === 'net' ? 1 : 1.2;
@@ -375,6 +378,30 @@ export default function QuotesPage() {
 
   const monthlyOf = (q) => (netGross === 'net' ? q.monthly_net : q.monthly_gross);
 
+  // Delete a fee review: a staged-only one has its staged fees discarded; an
+  // issued one is withdrawn with its staged fees removed. Either way the
+  // client's current fees stand, and it's recorded in the audit log.
+  const deleteReview = async (r) => {
+    const issued = r.state !== 'unsent';
+    const lines = [
+      `Delete the fee review for ${r.name}?`,
+      '',
+      'The staged new fees are removed and the current fees stay as they are.',
+    ];
+    if (issued) lines.push('The fee change is marked withdrawn, so the accept link stops working.');
+    if (r.state === 'drafted') lines.push('', 'The Gmail draft is still in the mailbox; delete it there so it is never sent.');
+    if (!window.confirm(lines.join('\n'))) return;
+    const body = issued
+      ? { action: 'withdraw', proposal_id: r.proposalId, clear_pending: true, note: 'Deleted from the Quotes list' }
+      : { action: 'discard_staged', entity_id: r.entityId, note: 'Deleted from the Quotes list' };
+    const { data, error } = await supabase.functions.invoke('fee-proposal', { body });
+    if (error || !data?.success) {
+      window.alert(`Couldn't delete the fee review: ${data?.error || error?.message || 'unknown error'}`);
+      return;
+    }
+    setReviewsReload((n) => n + 1);
+  };
+
   const columns = [
     {
       key: 'quote_ref', label: 'Quote Ref', width: '20%',
@@ -443,16 +470,47 @@ export default function QuotesPage() {
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 3, height: 24, padding: '0 6px',
               border: `1px solid ${n ? '#bae6fd' : '#e5e7eb'}`, background: '#fff', borderRadius: 6,
-              cursor: 'pointer', color: n ? '#0e7fe0' : '#94a3b8', marginRight: q._review ? 28 : 4,
+              cursor: 'pointer', color: n ? '#0e7fe0' : '#94a3b8', marginRight: 4,
             }}
           >
             <MessageSquare size={13} />{n > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{n}</span>}
           </button>
         );
         if (q._review) {
+          const canDelete = DELETABLE_REVIEW_STATES.includes(q._review.state);
           return (
-            <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+            <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
               {commentsBtn}
+              {canDelete ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (menuQuoteId === q.id) { setMenuQuoteId(null); return; }
+                    const r = e.currentTarget.getBoundingClientRect();
+                    setMenuPos({ top: r.bottom + 4, left: r.right - 160 });
+                    setMenuQuoteId(q.id);
+                  }}
+                  title="Actions"
+                  aria-label="Actions"
+                  style={{
+                    width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none', background: 'none', borderRadius: 4, cursor: 'pointer', color: '#94a3b8',
+                  }}
+                >
+                  &#8942;
+                </button>
+              ) : <span style={{ width: 24 }} />}
+              {menuQuoteId === q.id && (
+                <div style={{
+                  position: 'fixed', top: menuPos.top, left: menuPos.left,
+                  background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, minWidth: 160,
+                  fontSize: 13, padding: 4, textAlign: 'left',
+                }}>
+                  <MenuItem onClick={() => { setMenuQuoteId(null); navigate(reviewHref(q._review)); }}>Open</MenuItem>
+                  <MenuItem danger onClick={() => { setMenuQuoteId(null); deleteReview(q._review); }}>Delete fee review</MenuItem>
+                </div>
+              )}
             </div>
           );
         }

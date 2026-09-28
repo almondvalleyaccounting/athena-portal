@@ -44,7 +44,8 @@ export const STAGE = {
 export const annualDelta = (r) => ((Number(r.next) || 0) - (Number(r.current) || 0)) * 12;
 
 // Every client's fee review at its latest state, or null while loading.
-export function useFeeReviews() {
+// Change `reloadKey` to fetch again (e.g. after a review is deleted).
+export function useFeeReviews(reloadKey = 0) {
   const [rows, setRows] = useState(null);
   useEffect(() => {
     let live = true;
@@ -67,7 +68,7 @@ export function useFeeReviews() {
         const state = p.status === 'issued' && !p.sent_at ? 'drafted'
           : p.status === 'issued' ? (p.kind === 'proposal' ? 'awaiting' : 'notice') : p.status;
         byEntity.set(p.entity_id, {
-          entityId: p.entity_id, name: p.entity?.name || 'Client', state, kind: p.kind,
+          entityId: p.entity_id, name: p.entity?.name || 'Client', state, kind: p.kind, proposalId: p.id,
           current: p.summary?.current, next: p.summary?.next, effectiveAt: p.effective_at, when: p.issued_at,
         });
       }
@@ -91,7 +92,7 @@ export function useFeeReviews() {
         .sort((a, b) => String(b.when || '').localeCompare(String(a.when || ''))));
     })();
     return () => { live = false; };
-  }, []);
+  }, [reloadKey]);
   return rows;
 }
 
