@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { fetchAllRows } from '../lib/fetchAllRows';
 import { useAuth } from '../shell/AppShell';
 import { fmt, StatusBadge, Btn } from '../components/ui';
+import { useFeeReviews, annualDelta } from '../modules/billing/FeeReviewsPanel';
 
 // Fee engine dashboard, in four bands:
 //   A  the book today      — live_billing (fee-gated: can_view_client_fees)
@@ -306,6 +307,24 @@ export default function DashboardPage() {
       total, clients, top10, mix, upliftsPending, upliftsLiveThisMonth,
     };
   }, [book]);
+
+  // ── Fee reviews (single-client fee review, sql/300). Fee-gated: the hook
+  // returns nothing to staff without fee access. A review counts by its
+  // annual DELTA, as on the Quotes list. ──────────────────────────────
+  const feeReviews = useFeeReviews();
+  const reviews = useMemo(() => {
+    const agg = (list) => ({
+      count: list.length,
+      delta: list.reduce((s, r) => s + annualDelta(r), 0),
+      oldest: list.reduce((m, r) => Math.max(m, daysSince(r.when)), 0),
+    });
+    const list = feeReviews || [];
+    return {
+      unsent: agg(list.filter((r) => r.stage === 'review_draft')),
+      awaiting: agg(list.filter((r) => r.state === 'awaiting')),
+    };
+  }, [feeReviews]);
+  const signedK = (v) => `${v > 0 ? '+' : v < 0 ? '-' : ''}${fmtK(Math.abs(v))}`;
 
   // ── B: quotes waiting on someone (all time — a stale quote is stale
   // whatever period the page is showing) ─────────────────────────────
@@ -626,6 +645,17 @@ export default function DashboardPage() {
               note={`Oldest ${waiting.draft.oldest} days`} onClick={() => navigate('/manage/quotes?card=draft')} />
             <ActionCard label="Expired, chase or close" count={waiting.expired.count} value={waiting.expired.value}
               note={`Oldest ${waiting.expired.oldest} days`} onClick={() => navigate('/manage/quotes?card=expired')} />
+            {canViewFees && (
+              <>
+                <ActionCard label="Fee reviews not sent" count={reviews.unsent.count} tone="warn"
+                  note={`${signedK(reviews.unsent.delta)} a year · oldest ${reviews.unsent.oldest} days`}
+                  onClick={() => navigate('/manage/quotes?card=review_draft')} />
+                <ActionCard label="Fee reviews awaiting acceptance" count={reviews.awaiting.count}
+                  tone={reviews.awaiting.oldest > 30 ? 'danger' : 'warn'} noteTone={reviews.awaiting.oldest > 30 ? 'danger' : null}
+                  note={`${signedK(reviews.awaiting.delta)} a year · oldest ${reviews.awaiting.oldest} days`}
+                  onClick={() => navigate('/manage/quotes?card=sent')} />
+              </>
+            )}
           </div>
 
           {/* C — quote pipeline */}
@@ -640,8 +670,21 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-3 md:grid-cols-7 gap-1 mt-1">
               {ROLLUP_STAGES.map((k, i) => (
-                <StageTile key={k} viewKey={k} first={i === 0} last={i === ROLLUP_STAGES.length - 1} />
+                <StageTile key={k} viewKey={k} first={i === 0} last={i === ROLLUP_STAGES.length - 1 && !canViewFees} />
               ))}
+              {canViewFees && (
+                // Fee reviews live on the Quotes list (Draft (reviews)), so this
+                // tile opens it there rather than filtering the dashboard.
+                <button
+                  type="button"
+                  onClick={() => navigate('/manage/quotes?card=review_draft')}
+                  className="text-left p-2.5 border-2 border-transparent bg-amber-50 hover:border-ocean-300 rounded-r-lg transition-all"
+                >
+                  <p className="text-[11px] font-medium text-amber-800">Draft (reviews)</p>
+                  <p className="text-lg font-bold font-mono text-ocean-700 leading-tight">{reviews.unsent.count}</p>
+                  <p className="text-[11px] font-mono text-green-700">{signedK(reviews.unsent.delta)}/yr</p>
+                </button>
+              )}
             </div>
             <button
               onClick={() => navigate(`/manage/quotes?card=${QUOTES_CARD[statusView] || statusView}`)}

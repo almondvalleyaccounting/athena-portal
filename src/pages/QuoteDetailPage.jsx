@@ -9,6 +9,7 @@ import AddToGroupPanel from '../components/AddToGroupPanel';
 import SendQuoteModal from '../components/SendQuoteModal';
 import CommitToLiveModal from '../components/CommitToLiveModal';
 import BillingComparisonPanel from '../components/BillingComparisonPanel';
+import QuoteCommentsPanel from '../components/QuoteCommentsPanel';
 import { useAuth } from '../shell/AppShell';
 
 export default function QuoteDetailPage() {
@@ -535,6 +536,9 @@ export default function QuoteDetailPage() {
       <div className="mb-3">
         <AddToGroupPanel quote={quote} profile={profile} />
       </div>
+
+      {/* Internal comments */}
+      <QuoteCommentsPanel quoteId={quote.id} profile={profile} />
 
       {/* Audit Trail */}
       {audit.length > 0 && (
