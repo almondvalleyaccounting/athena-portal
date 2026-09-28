@@ -23,6 +23,7 @@ const STATUS_VIEW_FILTERS = {
   committed: ['committed'],
   pipeline_committed: ['draft', 'pending_approval', 'approved', 'sent', 'accepted', 'committed'],
   rejected: ['declined'],
+  expired: ['expired'],
 };
 
 const STATUS_VIEW_LABELS = {
@@ -35,11 +36,12 @@ const STATUS_VIEW_LABELS = {
   committed: 'Committed',
   pipeline_committed: 'Pipeline + Committed',
   rejected: 'Rejected',
+  expired: 'Expired',
 };
 
 // The funnel runs left to right; the roll-ups and Rejected sit beneath it.
 const FUNNEL_STAGES = ['draft', 'awaiting_approval', 'approved', 'sent', 'accepted', 'committed'];
-const ROLLUP_STAGES = ['pipeline', 'pipeline_committed', 'rejected'];
+const ROLLUP_STAGES = ['pipeline', 'pipeline_committed', 'rejected', 'expired'];
 
 const TIME_FILTERS = [
   { label: 'All Time', value: 'all' },
@@ -513,6 +515,23 @@ export default function DashboardPage() {
     const isActive = statusView === viewKey;
     const d = statusCards[viewKey] || { volume: 0, value: 0 };
     const committed = viewKey === 'committed';
+    // Pipeline + Committed is the headline figure: a filled tile, like the
+    // Total Pipeline card on the Quotes list.
+    if (viewKey === 'pipeline_committed') {
+      return (
+        <button
+          type="button"
+          onClick={() => setStatusView(viewKey)}
+          className={`text-left p-2.5 border-2 transition-all ${first ? 'rounded-l-lg' : ''} ${last ? 'rounded-r-lg' : ''} ${
+            isActive ? 'border-ocean-900 bg-ocean-700 shadow-sm' : 'border-ocean-600 bg-ocean-600 hover:border-ocean-800'
+          }`}
+        >
+          <p className="text-[11px] font-semibold text-ocean-100">{STATUS_VIEW_LABELS[viewKey]}</p>
+          <p className="text-lg font-bold font-mono text-white leading-tight">{d.volume}</p>
+          <p className="text-[11px] font-mono font-semibold text-white">{fmt(d.value)}</p>
+        </button>
+      );
+    }
     return (
       <button
         type="button"
@@ -618,7 +637,7 @@ export default function DashboardPage() {
                 <StageTile key={k} viewKey={k} first={i === 0} last={i === FUNNEL_STAGES.length - 1} />
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-1 mt-1 md:w-1/2">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-1 mt-1">
               {ROLLUP_STAGES.map((k, i) => (
                 <StageTile key={k} viewKey={k} first={i === 0} last={i === ROLLUP_STAGES.length - 1} />
               ))}
