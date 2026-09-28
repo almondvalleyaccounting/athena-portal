@@ -981,7 +981,7 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
           >Close</button>
         </div>
         <div style={{ padding: '6px 18px', fontSize: 12, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-          Tick a row once the change is made in BrightManager. The next BM import checks it: if BM still shows someone else, the row goes back to To do.
+          Press Done once the change is made in BrightManager. The next BM import checks it: if BM still shows someone else, the row goes back to To do.
         </div>
 
         {/* Body */}
@@ -994,7 +994,6 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ background: '#f8fafc', position: 'sticky', top: 0 }}>
                 <tr>
-                  <th style={{ ...modalTh, width: 56, textAlign: 'center' }}>Done</th>
                   <th style={modalTh}>Client</th>
                   <th style={modalTh}>Service</th>
                   <th style={modalTh}>From (BM)</th>
@@ -1008,16 +1007,6 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
                   const pill = PILL[r.state];
                   return (
                     <tr key={r.id} style={{ background: i % 2 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
-                      <td style={{ ...modalTd, textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={r.ticked}
-                          disabled={busy === r.id}
-                          onChange={() => toggle(r)}
-                          title={r.ticked ? 'Untick: back to To do' : 'Mark done in BrightManager'}
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#16a34a' }}
-                        />
-                      </td>
                       <td style={{ ...modalTd, color: r.ticked ? '#64748b' : undefined }}>{r.client}</td>
                       <td style={{ ...modalTd, color: '#475569' }}>{r.service}</td>
                       <td style={{ ...modalTd, color: '#475569' }}>{r.from}</td>
@@ -1033,13 +1022,28 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
                           </div>
                         )}
                       </td>
-                      <td style={{ ...modalTd, textAlign: 'right' }}>
-                        {!r.ticked && (
+                      <td style={{ ...modalTd, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {r.ticked ? (
                           <button
-                            onClick={() => onDiscardDraft(r.id)}
-                            title="Discard this proposal"
-                            style={{ ...BTN.danger.sm, cursor: 'pointer' }}
-                          >Discard</button>
+                            onClick={() => toggle(r)}
+                            disabled={busy === r.id}
+                            title="Not done after all: back to To do"
+                            style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
+                          >Undo</button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => toggle(r)}
+                              disabled={busy === r.id}
+                              title="The change is made in BrightManager"
+                              style={{ ...BTN.primary.sm, cursor: 'pointer', marginRight: 6 }}
+                            >Done</button>
+                            <button
+                              onClick={() => onDiscardDraft(r.id)}
+                              title="Discard this proposal"
+                              style={{ ...BTN.danger.sm, cursor: 'pointer' }}
+                            >Discard</button>
+                          </>
                         )}
                       </td>
                     </tr>
