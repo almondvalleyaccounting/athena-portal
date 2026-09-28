@@ -624,19 +624,34 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
             <div><div style={lab}>Runner</div><select value={form.runner_id} onChange={(e) => set('runner_id', e.target.value)} style={inp}><option value="">— {form.runner_name ? `(${form.runner_name})` : ''}</option>{staffList.filter((s) => s.work_planner !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
             <div><div style={lab}>Cover</div><select value={form.cover_id} onChange={(e) => set('cover_id', e.target.value)} style={inp}><option value="">—</option>{staffList.filter((s) => s.work_planner !== false).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
           </div>
-          <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={form.batch} onChange={(e) => set('batch', e.target.checked)} /> Part of the Batch (run together on the last working day)</label>
+          <label style={{ ...inp, display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', background: form.batch ? '#eff6ff' : '#fff', borderColor: form.batch ? '#93c5fd' : '#cbd5e1' }}>
+            <input type="checkbox" checked={form.batch} onChange={(e) => set('batch', e.target.checked)} />
+            <span>Part of the Batch <span style={{ color: '#94a3b8' }}>· run together on the last working day</span></span>
+          </label>
           <div>
-            <div style={lab}>Not applicable for this client</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
-              {STEPS.map((s) => (
-                <label key={s.id} style={{ fontSize: 12.5, display: 'inline-flex', gap: 5, alignItems: 'center' }}>
-                  <input type="checkbox" checked={form.na_steps.includes(s.id)} onChange={(e) => set('na_steps', e.target.checked ? [...form.na_steps, s.id] : form.na_steps.filter((x) => x !== s.id))} />{s.label}
-                </label>
-              ))}
+            <div style={lab}>Steps for this client</div>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 6 }}>Click a step that never applies to this client. It shows grey in every period until you click it back.</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: `repeat(${Math.ceil(STEPS.length / 2)}, auto)`, gridAutoFlow: 'column', gap: 6 }}>
+              {STEPS.map((s, i) => {
+                const na = form.na_steps.includes(s.id);
+                return (
+                  <button key={s.id} type="button" onClick={() => set('na_steps', na ? form.na_steps.filter((x) => x !== s.id) : [...form.na_steps, s.id])}
+                    title={na ? 'Not applicable for this client — click to make it apply' : 'Applies — click if it never applies to this client'}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 12.5, textAlign: 'left',
+                      border: `1px solid ${na ? '#e2e8f0' : '#cbd5e1'}`, background: na ? '#f1f5f9' : '#fff', color: na ? '#94a3b8' : '#0f172a' }}>
+                    <span style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
+                      ...(na ? { background: '#e2e8f0', color: '#94a3b8' } : { background: '#dcfce7', color: '#166534' }) }}>{na ? '–' : i + 1}</span>
+                    <span style={{ flex: 1, textDecoration: na ? 'line-through' : 'none' }}>{s.label}</span>
+                    {na && <span style={{ fontSize: 10.5, fontWeight: 600 }}>n/a</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
-            <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} /> Active</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div><div style={lab}>Status</div>
+              <label style={{ ...inp, display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} /> Active</label>
+            </div>
             <div><div style={lab}>Ceased on</div><input type="date" value={form.ceased_on} onChange={(e) => set('ceased_on', e.target.value)} style={inp} /></div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
