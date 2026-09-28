@@ -847,7 +847,7 @@ export default function BillingPage() {
           <textarea
             value={l.description}
             onChange={(e)=>changeLineDescription(idx,e.target.value)}
-            placeholder={serviceDefaults[l.service] ? 'Standard description — type over it if this one differs' : 'Optional...'}
+            placeholder={serviceDefaults[l.service] ? 'Standard description — type over it if this one differs' : 'Description for the invoice (visible to client)'}
             title={l.descAuto ? "The QuickBooks product's standard description — edit it freely" : undefined}
             rows={2}
             style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4,color:l.descAuto?'#475569':undefined}}
