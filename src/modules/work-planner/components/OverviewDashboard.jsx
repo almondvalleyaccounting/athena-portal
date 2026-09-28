@@ -36,12 +36,15 @@ export const TILE_TYPES = [
   { id: 'ct',          label: 'Corporation tax', services: ['Corporation Tax'] },
   { id: 'vat',         label: 'VAT returns',     services: ['VAT'] },
   { id: 'sa',          label: 'Self assessment', services: ['Self Assessment', 'Personal Tax'] },
+  { id: 'mtd',         label: 'MTD income tax' },
   { id: 'cs',          label: 'Confirmation statements', services: ['Confirmation Statement'] },
   { id: 'bookkeeping', label: 'Bookkeeping',     services: ['Bookkeeping', 'Management Accounts'] },
   { id: 'other',       label: 'Other' },
 ];
-const typeOf = (service) => TILE_TYPES.find((t) => t.services?.includes(service))?.id || 'other';
-const STAGED = new Set(['accounts', 'ct', 'vat', 'sa']); // types whose BM job is several tasks
+// BM files MTD quarterly updates under Personal Tax; they're a different
+// filing from the annual return (Bobby, 2026-09-28), so the task name decides.
+const typeOf = (service, name) => (/MTD/i.test(name || '') ? 'mtd' : TILE_TYPES.find((t) => t.services?.includes(service))?.id || 'other');
+const STAGED = new Set(['accounts', 'ct', 'vat', 'sa', 'mtd']); // types whose BM job is several tasks
 const isFiling = (type, name) => !STAGED.has(type) || /Submission/i.test(name || '');
 const monthKey = (iso) => String(iso).slice(0, 7);
 const monthLabel = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
@@ -77,6 +80,7 @@ const REF = {
   cs:       { label: 'Company no.', of: (e) => e?.company_number },
   ct:       { label: 'UTR',         of: (e) => e?.utr },
   sa:       { label: 'UTR',         of: (e) => e?.utr },
+  mtd:      { label: 'UTR',         of: (e) => e?.utr },
   vat:      { label: 'VAT no.',     of: (e) => e?.vat_number },
 };
 const refOf = (j) => { const r = REF[j.type]; return r ? (r.of(j.entities) || '—') : ''; };
@@ -138,7 +142,7 @@ export default function OverviewDashboard({ onOpenTask }) {
       const done = new Set((openC || []).map((c) => c.bm_task_schedule_id));
       setJobs((bm || [])
         .filter((r) => !done.has(r.id) && !['nlac', 'archived'].includes(r.entities?.entity_status))
-        .map((r) => { const type = typeOf(r.service); return { ...r, type, filing: isFiling(type, r.bm_task_name), month: monthKey(r[col]) }; }));
+        .map((r) => { const type = typeOf(r.service, r.bm_task_name); return { ...r, type, filing: isFiling(type, r.bm_task_name), month: monthKey(r[col]) }; }));
     } catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
   }, [months, col]);
