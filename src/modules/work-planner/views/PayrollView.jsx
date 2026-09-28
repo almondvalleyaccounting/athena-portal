@@ -83,6 +83,7 @@ export default function PayrollView() {
   const [search, setSearch] = useState('');
   const [drawer, setDrawer] = useState(null); // client id, or 'new'
   const [colFilters, setColFilters] = useState({}); // column key -> array of allowed values
+  const [sort, setSort] = useState(null); // { key, dir: 'asc' | 'desc' } — a sorted sheet is one flat list
   const [filterMenu, setFilterMenu] = useState(null); // { key, label, x, y }
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -180,11 +181,23 @@ export default function PayrollView() {
   });
   const openFilter = (e, key, label) => { e.stopPropagation(); setFilterMenu((m) => (m?.key === key ? null : { key, label, x: e.clientX, y: e.clientY })); };
   const isFiltered = (key) => !!(colFilters[key] && colFilters[key].length);
+  // Sort value: dates and cut-offs by their day number, steps done > not yet > n/a, else text.
+  const sortValue = (c, key) => {
+    if (key === 'client') return displayName(c).toLowerCase();
+    if (key === 'pay_day' || key === 'cutoff') { const v = String(c[key] || ''); const n = parseInt(v.replace(/\D/g, ''), 10); return n ? n : /lwd|last/i.test(v) ? 32 : v ? 40 + v.toLowerCase().charCodeAt(0) : 99; }
+    if (['runner', 'cover', 'journal', 'note', 'group'].includes(key)) return String(valueOf(c, key)).toLowerCase();
+    const st = stateOf(c, key); return st === 'done' ? 0 : st === 'open' ? 1 : 2;
+  };
   const groups = useMemo(() => {
+    if (sort) {
+      const items = [...visible].sort((a, b) => { const x = sortValue(a, sort.key), y = sortValue(b, sort.key); const r = x < y ? -1 : x > y ? 1 : displayName(a).localeCompare(displayName(b)); return sort.dir === 'desc' ? -r : r; });
+      return [{ key: 'sorted', label: `Sorted by ${sort.label} ${sort.dir === 'asc' ? '▲' : '▼'}`, items }];
+    }
     const m = new Map();
     visible.forEach((c) => { const g = groupOf(c); if (!m.has(g.key)) m.set(g.key, { ...g, items: [] }); m.get(g.key).items.push(c); });
     return [...m.values()].sort((a, b) => a.key.localeCompare(b.key));
-  }, [visible]);
+  }, [visible, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const SortMark = ({ k }) => (sort?.key === k ? <span title="Sorted — click to change" style={{ marginLeft: 3, color: '#0e7fe0' }}>{sort.dir === 'asc' ? '▲' : '▼'}</span> : null);
   const activeClients = clients.filter((c) => c.active && !c.ceased_on);
   const complete = activeClients.filter(isComplete).length;
 
@@ -224,7 +237,7 @@ export default function PayrollView() {
 
   // ── styles ──
   const th = { position: 'sticky', top: 0, zIndex: 3, background: '#f8fafc', borderBottom: '1px solid #cbd5e1', padding: '6px 6px', fontSize: 11, fontWeight: 600, color: '#475569', textAlign: 'center', verticalAlign: 'bottom', whiteSpace: 'normal', lineHeight: 1.25, height: 64, minWidth: 64, cursor: 'pointer', userSelect: 'none' };
-  const thF = (key) => (isFiltered(key) ? { background: '#dbeafe', color: '#0c447c', boxShadow: 'inset 0 -2px 0 #0e7fe0' } : {});
+  const thF = (key) => (isFiltered(key) || sort?.key === key ? { background: '#dbeafe', color: '#0c447c', boxShadow: 'inset 0 -2px 0 #0e7fe0' } : {});
   const Funnel = ({ k }) => (isFiltered(k) ? <span title="Filtered — click to change" style={{ marginLeft: 3, color: '#0e7fe0' }}>▼</span> : null);
   const thL = { ...th, textAlign: 'left' };
   const td = { padding: '5px 6px', borderBottom: '1px solid #f1f5f9', fontSize: 12.5, textAlign: 'center', whiteSpace: 'nowrap', background: '#fff' };
@@ -269,6 +282,11 @@ export default function PayrollView() {
             ▼ {activeFilterKeys.length} column filter{activeFilterKeys.length === 1 ? '' : 's'} on · clear
           </button>
         )}
+        {sort && (
+          <button onClick={() => setSort(null)} style={{ ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0c447c' }}>
+            Sorted by {sort.label} {sort.dir === 'asc' ? '▲' : '▼'} · clear
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 12.5, color: '#64748b' }}>{visible.length !== activeClients.length && !who && !search && !outstandingOnly ? `${visible.length} shown · ` : ''}{complete} of {activeClients.length} complete{who ? ` · ${(staffMap[who]?.name || '').split(' ')[0]} only` : ''}{loading ? ' · loading…' : ''}</span>
         {sheet !== 'controls' && <button onClick={() => setDrawer('new')} style={BTN.primary.sm}>+ Payroll client</button>}
@@ -282,14 +300,14 @@ export default function PayrollView() {
           <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
             <thead>
               <tr>
-                <th style={{ ...thL, ...sticky1, zIndex: 4 }}>Client</th>
-                <th onClick={(e) => openFilter(e, 'pay_day', 'Pay date')} style={{ ...thL, ...sticky2, zIndex: 4, ...thF('pay_day') }}>Pay date<Funnel k="pay_day" /></th>
-                <th onClick={(e) => openFilter(e, 'cutoff', 'Cut-off')} style={{ ...th, minWidth: 56, ...thF('cutoff') }}>Cut-off<Funnel k="cutoff" /></th>
-                <th onClick={(e) => openFilter(e, 'runner', 'Runner')} style={{ ...th, textAlign: 'left', minWidth: 96, ...thF('runner') }}>Runner<Funnel k="runner" /></th>
-                <th onClick={(e) => openFilter(e, 'cover', 'Cover')} style={{ ...th, textAlign: 'left', minWidth: 90, ...thF('cover') }}>Cover<Funnel k="cover" /></th>
-                {STEPS.map((s) => <th key={s.id} onClick={(e) => openFilter(e, s.id, s.label)} style={{ ...th, maxWidth: 92, ...thF(s.id) }}>{s.label}<Funnel k={s.id} /></th>)}
-                {freq === 'monthly' && <th onClick={(e) => openFilter(e, 'journal', 'Journal posted')} style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e', ...thF('journal') }}>Journal posted to QuickBooks (live)<Funnel k="journal" /></th>}
-                <th onClick={(e) => openFilter(e, 'note', 'Important notes')} style={{ ...thL, minWidth: 220, ...thF('note') }}>Important notes<Funnel k="note" /></th>
+                <th onClick={() => setSort((x) => (x?.key === 'client' ? (x.dir === 'asc' ? { key: 'client', dir: 'desc', label: 'Client' } : null) : { key: 'client', dir: 'asc', label: 'Client' }))} title="Click to sort by client" style={{ ...thL, ...sticky1, zIndex: 4, cursor: 'pointer', ...(sort?.key === 'client' ? { background: '#dbeafe', color: '#0c447c', boxShadow: 'inset 0 -2px 0 #0e7fe0' } : {}) }}>Client<SortMark k="client" /></th>
+                <th onClick={(e) => openFilter(e, 'pay_day', 'Pay date')} style={{ ...thL, ...sticky2, zIndex: 4, ...thF('pay_day') }}>Pay date<Funnel k="pay_day" /><SortMark k="pay_day" /></th>
+                <th onClick={(e) => openFilter(e, 'cutoff', 'Cut-off')} style={{ ...th, minWidth: 56, ...thF('cutoff') }}>Cut-off<Funnel k="cutoff" /><SortMark k="cutoff" /></th>
+                <th onClick={(e) => openFilter(e, 'runner', 'Runner')} style={{ ...th, textAlign: 'left', minWidth: 96, ...thF('runner') }}>Runner<Funnel k="runner" /><SortMark k="runner" /></th>
+                <th onClick={(e) => openFilter(e, 'cover', 'Cover')} style={{ ...th, textAlign: 'left', minWidth: 90, ...thF('cover') }}>Cover<Funnel k="cover" /><SortMark k="cover" /></th>
+                {STEPS.map((s) => <th key={s.id} onClick={(e) => openFilter(e, s.id, s.label)} style={{ ...th, maxWidth: 92, ...thF(s.id) }}>{s.label}<Funnel k={s.id} /><SortMark k={s.id} /></th>)}
+                {freq === 'monthly' && <th onClick={(e) => openFilter(e, 'journal', 'Journal posted')} style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e', ...thF('journal') }}>Journal posted to QuickBooks (live)<Funnel k="journal" /><SortMark k="journal" /></th>}
+                <th onClick={(e) => openFilter(e, 'note', 'Important notes')} style={{ ...thL, minWidth: 220, ...thF('note') }}>Important notes<Funnel k="note" /><SortMark k="note" /></th>
                 <th style={{ ...th, minWidth: 44 }}>Notes</th>
               </tr>
             </thead>
@@ -377,6 +395,12 @@ export default function PayrollView() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <span style={{ fontWeight: 700, color: '#0f172a', flex: 1 }}>{filterMenu.label}</span>
               {isFiltered(filterMenu.key) && <button onClick={() => setColFilters((f) => { const n = { ...f }; delete n[filterMenu.key]; return n; })} style={{ ...BTN.secondary.sm, padding: '0 7px', fontSize: 11 }}>Clear</button>}
+            </div>
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #f1f5f9' }}>
+              {[['asc', '▲ Sort A→Z / low→high'], ['desc', '▼ Sort Z→A / high→low']].map(([dir, label]) => (
+                <button key={dir} onClick={() => { setSort(sort?.key === filterMenu.key && sort.dir === dir ? null : { key: filterMenu.key, dir, label: filterMenu.label }); setFilterMenu(null); }}
+                  style={{ ...BTN.secondary.sm, flex: 1, fontSize: 11, padding: '3px 6px', ...(sort?.key === filterMenu.key && sort.dir === dir ? { background: '#dbeafe', borderColor: '#0e7fe0', color: '#0c447c' } : {}) }}>{label}</button>
+              ))}
             </div>
             {menuValues.map(([v, n]) => {
               const on = !isFiltered(filterMenu.key) || colFilters[filterMenu.key].includes(v);
