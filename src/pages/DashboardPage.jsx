@@ -605,7 +605,7 @@ export default function DashboardPage() {
             <ActionCard label="Drafts" count={waiting.draft.count} value={waiting.draft.value}
               note={`Oldest ${waiting.draft.oldest} days`} onClick={() => navigate('/manage/quotes?card=draft')} />
             <ActionCard label="Expired, chase or close" count={waiting.expired.count} value={waiting.expired.value}
-              note={`Oldest ${waiting.expired.oldest} days`} onClick={() => navigate('/manage/quotes')} />
+              note={`Oldest ${waiting.expired.oldest} days`} onClick={() => navigate('/manage/quotes?card=expired')} />
           </div>
 
           {/* C — quote pipeline */}

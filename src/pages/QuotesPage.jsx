@@ -27,9 +27,10 @@ const STATUS_CARDS = [
   { key: 'committed', label: 'Committed to Live', statuses: ['committed'] },
   { key: 'pipeline_committed', label: 'Pipeline + Committed', statuses: [...PIPELINE_STATUSES, 'committed'] },
   { key: 'declined', label: 'Rejected', statuses: ['declined'] },
+  { key: 'expired', label: 'Expired', statuses: ['expired'] },
 ];
 
-const VALID_CARDS = ['draft', 'review_draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'pipeline_committed', 'declined'];
+const VALID_CARDS = ['draft', 'review_draft', 'pending_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed', 'pipeline_committed', 'declined', 'expired'];
 
 // A fee review's change in fees: always signed.
 const signedFmt = (n) => { const v = Number(n) || 0; return `${v > 0 ? '+' : v < 0 ? '-' : ''}${fmt(Math.abs(v))}`; };
