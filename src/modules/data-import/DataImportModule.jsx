@@ -5,6 +5,7 @@ import ImportView from './views/ImportView';
 import HistoryView from './views/HistoryView';
 import CompaniesHouseView from './views/CompaniesHouseView';
 import TaxCalcView from './views/TaxCalcView';
+import PersonMergesView from './views/PersonMergesView';
 import { useAuth } from '../../shell/AppShell';
 
 const font = "'Outfit', sans-serif";
@@ -15,6 +16,7 @@ const TABS = [
   { id: 'history', label: 'History', path: '/admin/import/history' },
   { id: 'ch', label: 'Companies House', path: '/admin/import/companies-house' },
   { id: 'taxcalc', label: 'TaxCalc', path: '/admin/import/taxcalc' },
+  { id: 'people', label: 'Duplicate people', path: '/admin/import/people' },
 ];
 
 export default function DataImportModule() {
@@ -42,6 +44,7 @@ export default function DataImportModule() {
     if (location.pathname.startsWith('/admin/import/run')) return 'run';
     if (location.pathname.startsWith('/admin/import/companies-house')) return 'ch';
     if (location.pathname.startsWith('/admin/import/taxcalc')) return 'taxcalc';
+    if (location.pathname.startsWith('/admin/import/people')) return 'people';
     return 'status';
   })();
 
@@ -86,6 +89,7 @@ export default function DataImportModule() {
           <Route path="history" element={<HistoryView />} />
           <Route path="companies-house" element={<CompaniesHouseView />} />
           <Route path="taxcalc" element={<TaxCalcView />} />
+          <Route path="people" element={<PersonMergesView />} />
           <Route path="*" element={<Navigate to="/admin/import" replace />} />
         </Routes>
       </div>

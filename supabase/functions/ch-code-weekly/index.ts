@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
       .in("kind", ["email_out", "system", "status_change"]).gte("created_at", since).order("created_at"),
     service.from("staff_profiles").select("id, email").eq("is_active", true),
     service.from("ch_code_requests")
-      .select("id, chase_count, emails_sent, status, stage, handling, escalation_status, last_chased_at, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id, entity_status)")
+      .select("id, chase_count, emails_sent, status, stage, handling, escalation_status, escalated_at, last_chased_at, person:people(name), entity:entities!ch_code_requests_entity_id_fkey(name, id, entity_status)")
       .not("stage", "in", "(s6_submitted,s7_rejected)"),
   ]);
 
@@ -237,8 +237,15 @@ Deno.serve(async (req) => {
 
     let next: string;
     let rank: number;
-    if (r.escalation_status && r.escalation_status !== "none") {
-      next = `Escalated — call ${person.split(" ")[0]}`;
+    // An escalation is a manager's decision, not Admin's next call, and the
+    // automatic reminders have stopped for it — so it sorts above everything
+    // and says so. "call_needed" is the rung below: Admin rings the client.
+    if (r.escalation_status === "escalated_tracy") {
+      const since = r.escalated_at ? ` since ${shortDate(r.escalated_at as string)}` : "";
+      next = `ESCALATED${since} — reminders stopped, needs a manager's decision`;
+      rank = -1;
+    } else if (r.escalation_status === "call_needed") {
+      next = `Call needed — call ${person.split(" ")[0]}`;
       rank = 0;
     } else if (chases >= maxChases) {
       next = "Chases exhausted — call needed";
@@ -286,7 +293,7 @@ Deno.serve(async (req) => {
     ${heading("Codes still needed", actions.length)}
       ${tableOpen}
         ${actions.map((a) => `<tr>
-          <td style="padding:8px 12px;border-top:1px solid #f1f5f9;color:#0f172a;font-weight:600;">${esc(a.who)}<div style="font-weight:400;color:#64748b;font-size:12px;padding-top:2px;">${esc(a.next)}</div></td>
+          <td style="padding:8px 12px;border-top:1px solid #f1f5f9;color:#0f172a;font-weight:600;">${esc(a.who)}<div style="font-weight:${a.rank < 0 ? 700 : 400};color:${a.rank < 0 ? "#dc2626" : "#64748b"};font-size:12px;padding-top:2px;">${esc(a.next)}</div></td>
           <td style="padding:8px 12px;border-top:1px solid #f1f5f9;text-align:right;white-space:nowrap;color:${a.daysLeft != null && a.daysLeft <= 30 ? "#dc2626" : "#94a3b8"};font-size:12px;">${a.daysLeft != null ? `CS ${a.daysLeft}d` : ""}</td>
         </tr>`).join("")}
       ${tableClose}` : `
