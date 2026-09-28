@@ -4,6 +4,24 @@ import { HelpCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { resolveModuleId } from '../lib/help';
 
+// "## " starts a heading, "- " a bullet; anything else is a plain line.
+function HelpBody({ text }) {
+  const lines = text.split('\n');
+  return (
+    <div style={{ fontSize: 13.5, color: '#334155', lineHeight: 1.5 }}>
+      {lines.map((l, i) => {
+        if (l.startsWith('## ')) {
+          return <div key={i} style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: i ? '14px 0 4px' : '0 0 4px' }}>{l.slice(3)}</div>;
+        }
+        if (l.startsWith('- ')) {
+          return <div key={i} style={{ display: 'flex', gap: 6, padding: '1px 0' }}><span style={{ color: '#94a3b8' }}>•</span><span>{l.slice(2)}</span></div>;
+        }
+        return l.trim() ? <div key={i} style={{ whiteSpace: 'pre-wrap' }}>{l}</div> : null;
+      })}
+    </div>
+  );
+}
+
 export default function HelpButton() {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
@@ -55,7 +73,7 @@ export default function HelpButton() {
       {open && (
         <div style={{
           position: 'absolute', top: '100%', right: 0, marginTop: 8,
-          width: 340, maxHeight: 420, overflowY: 'auto',
+          width: 380, maxHeight: '75vh', overflowY: 'auto',
           background: '#fff', border: '1px solid #e5e7eb',
           borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
           zIndex: 200, fontFamily: "'Outfit', sans-serif",
@@ -74,9 +92,7 @@ export default function HelpButton() {
               <div style={{ fontSize: 13, color: '#94a3b8' }}>No help written for this page yet.</div>
             ) : (
               <>
-                <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                  {content?.body || 'No help written for this page yet.'}
-                </div>
+                <HelpBody text={content?.body || 'No help written for this page yet.'} />
                 {content?.screenshot_url && (
                   <img
                     src={content.screenshot_url}

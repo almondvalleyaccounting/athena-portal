@@ -9,9 +9,17 @@ const ADMIN_ROUTES = [
   { prefix: '/admin/import', id: 'admin-import' },
 ];
 
+// Pages that share a nav child with sibling tabs but have their own help.
+const EXACT_ROUTES = [
+  { path: '/planner', id: 'wp-overview' },
+];
+
 // Resolves the current page to a help_content.module_id, matching the same
 // route-prefix logic TopBar's breadcrumb uses (deepest child wins, else parent).
 export function resolveModuleId(pathname) {
+  const exact = EXACT_ROUTES.find((r) => pathname.replace(/\/$/, '') === r.path);
+  if (exact) return exact.id;
+
   const admin = ADMIN_ROUTES.find((r) => pathname.startsWith(r.prefix));
   if (admin) return admin.id;
 
