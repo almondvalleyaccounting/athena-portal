@@ -78,6 +78,8 @@ const TASK_PLANNER_TABS = [
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
   { id: 'payroll',  label: 'Payroll',     path: '/planner/payroll' },
 ];
+// Tabs whose team filter opens on the signed-in person; every other tab opens on everyone.
+const MY_DEFAULT_TABS = new Set(['day', 'tracker', 'quick', 'sched', 'calendar']);
 const TEAM_TABS = [
   { id: 'team', label: 'Team', path: '/planner/team' },
 ];
@@ -120,7 +122,7 @@ export default function WorkPlannerModule() {
   const [error, setError] = useState(null);
 
   // ── UI state ──
-  const [teamFilter, setTeamFilter] = useState('');
+  const [teamFilter, setTeamFilterRaw] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [clientLetter, setClientLetter] = useState(null); // 'A'..'Z' | '#' | null
   const [serviceFilter, setServiceFilter] = useState('');
@@ -131,7 +133,16 @@ export default function WorkPlannerModule() {
   const [taskModal, setTaskModal] = useState(null); // { type, id, occurrence_date? }
   const [emailModal, setEmailModal] = useState(null); // EmailModal ctx
   const [holidayOpen, setHolidayOpen] = useState(false);
-  const autoTeamRef = useRef(false); // Overview defaults the team filter to me once, not every visit
+  // The team filter's default is per tab (Bobby, 2026-09-28): the personal
+  // tabs open on me, the rest on the whole team. A choice made on a tab is
+  // kept for that tab for the session.
+  const teamChoiceRef = useRef({});
+  const activeTabRef = useRef(null);
+  const setTeamFilter = (v) => setTeamFilterRaw((prev) => {
+    const next = typeof v === 'function' ? v(prev) : v;
+    if (activeTabRef.current) teamChoiceRef.current[activeTabRef.current] = next;
+    return next;
+  });
   const [holidays, setHolidays] = useState([]); // staff_holidays (sql/317)
   // `${staffId}|${iso}` for every day off, so views can ask in O(1).
   const holidayMap = useMemo(() => {
@@ -718,14 +729,11 @@ export default function WorkPlannerModule() {
     return `${s.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} \u2014 ${end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
   }
 
-  // The Overview opens on me the first time; clearing the filter then sticks
-  // across tabs (it used to snap back to me on every return).
   useEffect(() => {
-    if (activeTab === 'mytasks' && !teamFilter && profile?.id && !autoTeamRef.current) {
-      autoTeamRef.current = true;
-      setTeamFilter(profile.id);
-    }
-  }, [activeTab, profile]); // eslint-disable-line react-hooks/exhaustive-deps
+    activeTabRef.current = activeTab;
+    const chosen = teamChoiceRef.current[activeTab];
+    setTeamFilterRaw(chosen !== undefined ? chosen : (MY_DEFAULT_TABS.has(activeTab) && profile?.id ? profile.id : ''));
+  }, [activeTab, profile?.id]);
 
   // Clear highlight when popover closes
   useEffect(() => {

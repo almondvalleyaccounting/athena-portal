@@ -8,7 +8,9 @@ function firstChar(name) {
   return /[0-9]/.test(c) ? '#' : /[A-Z]/.test(c) ? c : '#';
 }
 
-export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf }) {
+// steady: the dropdown keeps one height while you type, so a modal it sits in
+// doesn't scroll about as the results narrow (Bobby, 2026-09-28, Blocks).
+export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf, steady = false }) {
   // "+ Add" is only offered when the caller actually handed us a way to create
   // a client. Most call sites (filters, settings) don't — and the row used to
   // render for them anyway, so clicking it threw into an empty catch and looked
@@ -85,11 +87,11 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
             minWidth: isSmall ? 260 : '100%',
             background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6,
             boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, padding: '2px 0',
-            display: 'flex', flexDirection: 'column', maxHeight: 360,
+            display: 'flex', flexDirection: 'column', maxHeight: 360, ...(steady ? { height: 300 } : {}),
           }}
         >
-          {/* Alphabet jumper — only when no free-text query. */}
-          {!query.trim() && (
+          {/* Alphabet jumper — kept while typing so the list doesn't jump up. */}
+          {(steady || !query.trim()) && (
             <div style={{
               display: 'flex', flexWrap: 'wrap', gap: 2,
               padding: '6px 6px 4px',

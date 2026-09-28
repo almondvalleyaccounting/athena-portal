@@ -98,8 +98,9 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
   const shown = list.map((it, i) => ({ it, i })).filter(({ it }) => !filter.trim() || (entityMap?.[it.entity_id]?.name || it.label || '').toLowerCase().includes(filter.trim().toLowerCase()));
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.2)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 18, width: 560, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontFamily: font }}>
+    // No close on a backdrop click: a stray click outside lost a half-built block (Bobby, 2026-09-28).
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.2)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(2px)' }}>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 18, width: 560, maxWidth: '94vw', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontFamily: font }}>
         <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 600, marginBottom: 4 }}>{isEdit ? 'Edit block' : 'New block'}</h3>
         <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 12 }}>A repeating block of time on the Planner that is not a BrightManager job. It counts against capacity and logs to the timesheet when completed.</div>
 
@@ -132,7 +133,7 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, cursor: 'pointer' }}>
               <input type="radio" name="scope" checked={form.scope === 'client'} onChange={() => set('scope', 'client')} style={{ accentColor: '#0e7fe0' }} />One client
             </label>
-            {form.scope === 'client' && <div style={{ flex: 1, minWidth: 220 }}><ClientTypeAhead entityList={entityList} value={form.entity_id} onChange={(id) => set('entity_id', id)} onAddNew={onAddEntity} /></div>}
+            {form.scope === 'client' && <div style={{ flex: 1, minWidth: 220 }}><ClientTypeAhead steady entityList={entityList} value={form.entity_id} onChange={(id) => set('entity_id', id)} onAddNew={onAddEntity} /></div>}
           </div>
           <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 3 }}>{form.scope === 'client' ? 'Time logs to this client; no sub-tasks.' : 'Tag the clients below; time can be logged per client when the block is completed.'}</div>
         </div>
@@ -200,7 +201,7 @@ export default function StandingBlockModal({ block, items = [], staffList, entit
             {kind.byClient && <button onClick={addSuggested} disabled={suggesting} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>{suggesting ? 'Looking…' : `Add my ${kind.service.toLowerCase()} clients`}</button>}
           </div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-            <div style={{ flex: 1 }}><ClientTypeAhead entityList={untagged} value="" onChange={addClient} onAddNew={onAddEntity} /></div>
+            <div style={{ flex: 1 }}><ClientTypeAhead steady entityList={untagged} value="" onChange={addClient} onAddNew={onAddEntity} /></div>
             {list.length > 6 && <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter the list" style={{ ...inputStyle, width: 160 }} />}
           </div>
           {list.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>No clients tagged. Time is logged against the block as a whole.</div>}
