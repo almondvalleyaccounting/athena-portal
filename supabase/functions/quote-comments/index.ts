@@ -1,17 +1,19 @@
 // quote-comments — Athena Portal
 //
-// The writes behind the Comments panel on a quote (sql/344). The browser holds
-// SELECT on quote_comments and nothing else, because a new mutating path is an
-// edge function (CLAUDE.md). Attribution is the JWT's user, never a field in
-// the body.
+// The writes behind internal comments on quotes (sql/344 quote_comments) and
+// on a client's fee review (sql/345 fee_review_comments). The browser holds
+// SELECT on both and nothing else, because a new mutating path is an edge
+// function (CLAUDE.md). Attribution is the JWT's user, never a field in the
+// body.
 //
 // Body: { action, ...fields }
-//   add     { quote_id, body }   anyone who can see the quote
-//   delete  { comment_id }       the author only
+//   add     { quote_id, body }            anyone who can see the quote
+//   add     { entity_id, body }           a fee review: fee staff who can see the client's figures
+//   delete  { comment_id, kind? }         the author only; kind "quote" (default) | "review"
 //
-// Whether the caller can see the quote is decided by the database, not here:
-// the quote is looked up through a client carrying the caller's own JWT, so
-// quotes' RLS (fee staff, quote staff, per-client figure scoping) applies.
+// Whether the caller can see the quote or review is decided by the database,
+// not here: it is looked up through a client carrying the caller's own JWT,
+// so the tables' own RLS (fee/quote staff, per-client figure scoping) applies.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
@@ -62,10 +64,27 @@ Deno.serve(async (req) => {
   try {
     switch (p.action) {
       case "add": {
-        const quoteId = uuid(p.quote_id, "quote_id");
         const body = String(p.body ?? "").trim();
         if (!body) throw new BadRequest("body required");
         if (body.length > MAX_TEXT) throw new BadRequest("body too long");
+
+        if (p.entity_id != null) {
+          const entityId = uuid(p.entity_id, "entity_id");
+          // A fee review exists as a fee_proposals row or a live_billing line,
+          // both fee-gated and figure-scoped; RLS decides whether it's visible.
+          const [{ data: fp }, { data: lb }] = await Promise.all([
+            asCaller.from("fee_proposals").select("id").eq("entity_id", entityId).limit(1),
+            asCaller.from("live_billing").select("id").eq("entity_id", entityId).limit(1),
+          ]);
+          if (!fp?.length && !lb?.length) throw new BadRequest("Fee review not found", 404);
+          const { data, error } = await db.from("fee_review_comments")
+            .insert({ entity_id: entityId, author_id: me, body })
+            .select("id, entity_id, author_id, body, created_at").single();
+          if (error) throw new Error(error.message);
+          return json({ success: true, comment: data });
+        }
+
+        const quoteId = uuid(p.quote_id, "quote_id");
         // RLS decides: a quote the caller can't read is "not found".
         const { data: q } = await asCaller.from("quotes").select("id").eq("id", quoteId).maybeSingle();
         if (!q) throw new BadRequest("Quote not found", 404);
@@ -78,10 +97,11 @@ Deno.serve(async (req) => {
 
       case "delete": {
         const commentId = uuid(p.comment_id, "comment_id");
-        const { data: c } = await db.from("quote_comments").select("id, author_id").eq("id", commentId).maybeSingle();
+        const table = p.kind === "review" ? "fee_review_comments" : "quote_comments";
+        const { data: c } = await db.from(table).select("id, author_id").eq("id", commentId).maybeSingle();
         if (!c) throw new BadRequest("Comment not found", 404);
         if (c.author_id !== me) throw new BadRequest("Only the author can delete a comment", 403);
-        const { error } = await db.from("quote_comments").delete().eq("id", commentId);
+        const { error } = await db.from(table).delete().eq("id", commentId);
         if (error) throw new Error(error.message);
         return json({ success: true });
       }

@@ -6,6 +6,10 @@ import { downloadCSV } from '../lib/exportUtils';
 import AlphabetFilter, { firstCharBucket } from '../components/AlphabetFilter';
 import DataTable from '../components/DataTable';
 import { fetchAllRows } from '../lib/fetchAllRows';
+import { MessageSquare } from 'lucide-react';
+import QuoteCommentsPanel from '../components/QuoteCommentsPanel';
+import { useAuth } from '../shell/AppShell';
+import { BTN } from '../lib/buttonStyles';
 import { useFeeReviews, annualDelta, reviewAsRow, ReviewStateBadge, reviewHref, REVIEW_STATE } from '../modules/billing/FeeReviewsPanel';
 
 const STATUS_LABELS = { draft: 'Draft', pending_approval: 'Awaiting Approval', approved: 'Approved', sent: 'Sent to Client', accepted: 'Accepted', committed: 'Committed to Live', declined: 'Rejected', expired: 'Expired', superseded: 'Superseded' };
@@ -331,6 +335,23 @@ export default function QuotesPage() {
   };
 
   const [menuQuoteId, setMenuQuoteId] = useState(null);
+  const { profile } = useAuth();
+
+  // Internal comments: counts for the row badges, and the thread open in the
+  // comments window ({ quoteId } or { entityId, name } for a fee review).
+  // Fee review comments are fee-gated, so staff without fee access get none.
+  const [commentCounts, setCommentCounts] = useState({ quote: {}, review: {} });
+  const [commentsFor, setCommentsFor] = useState(null);
+  useEffect(() => {
+    (async () => {
+      const [qc, rc] = await Promise.all([
+        fetchAllRows(() => supabase.from('quote_comments').select('id, quote_id').order('id')).catch(() => []),
+        fetchAllRows(() => supabase.from('fee_review_comments').select('id, entity_id').order('id')).catch(() => []),
+      ]);
+      const tally = (rows, key) => rows.reduce((m, r) => { m[r[key]] = (m[r[key]] || 0) + 1; return m; }, {});
+      setCommentCounts({ quote: tally(qc, 'quote_id'), review: tally(rc, 'entity_id') });
+    })();
+  }, []);
   // Fixed-position coords for the row actions menu so it isn't clipped by the
   // table card's overflow-hidden (which the last row otherwise hits).
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -407,9 +428,37 @@ export default function QuotesPage() {
       render: (q) => <span className="text-gray-500">{q.created_at ? new Date(q.created_at).toLocaleDateString('en-GB') : '—'}</span>,
     },
     {
-      key: 'actions', label: '', width: 48, align: 'right', sortable: false,
-      render: (q) => (q._review ? null : (
-        <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+      key: 'actions', label: '', width: 84, align: 'right', sortable: false,
+      render: (q) => {
+        const n = q._review ? (commentCounts.review[q._review.entityId] || 0) : (commentCounts.quote[q.id] || 0);
+        const commentsBtn = (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setCommentsFor(q._review ? { entityId: q._review.entityId, name: q._review.name } : { quoteId: q.id, name: q.quote_ref });
+            }}
+            title={n ? `${n} comment${n === 1 ? '' : 's'}` : 'Add a comment'}
+            aria-label="Comments"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3, height: 24, padding: '0 6px',
+              border: `1px solid ${n ? '#bae6fd' : '#e5e7eb'}`, background: '#fff', borderRadius: 6,
+              cursor: 'pointer', color: n ? '#0e7fe0' : '#94a3b8', marginRight: q._review ? 28 : 4,
+            }}
+          >
+            <MessageSquare size={13} />{n > 0 && <span style={{ fontSize: 12, fontWeight: 700 }}>{n}</span>}
+          </button>
+        );
+        if (q._review) {
+          return (
+            <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+              {commentsBtn}
+            </div>
+          );
+        }
+        return (
+        <div data-no-row-click style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+          {commentsBtn}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -444,7 +493,8 @@ export default function QuotesPage() {
             </div>
           )}
         </div>
-      )),
+        );
+      },
     },
   ];
 
@@ -650,6 +700,31 @@ export default function QuotesPage() {
           onPage={setPage}
           selection={selectMode ? { selected, onChange: setSelected } : undefined}
         />
+      )}
+
+      {/* Comments window — only Close closes it. */}
+      {commentsFor && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl flex flex-col" style={{ width: 'min(560px, 94vw)', height: '70vh' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-ocean-700 truncate">
+                {commentsFor.entityId ? `Fee review: ${commentsFor.name}` : commentsFor.name}
+              </h3>
+              <button onClick={() => setCommentsFor(null)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Close</button>
+            </div>
+            <div className="p-4 overflow-auto flex-1">
+              <QuoteCommentsPanel
+                bare
+                quoteId={commentsFor.quoteId}
+                entityId={commentsFor.entityId}
+                profile={profile}
+                onCount={(count) => setCommentCounts((prev) => (commentsFor.entityId
+                  ? { ...prev, review: { ...prev.review, [commentsFor.entityId]: count } }
+                  : { ...prev, quote: { ...prev.quote, [commentsFor.quoteId]: count } }))}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

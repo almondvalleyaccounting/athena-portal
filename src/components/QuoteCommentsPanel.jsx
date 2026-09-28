@@ -2,10 +2,19 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Btn } from './ui';
 
-// Internal notes on a quote (sql/344). Staff-only: never on the PDF, the email
-// or the client's accept page. Reads come straight from quote_comments (RLS
-// follows the quote); writes go through the quote-comments edge function.
-export default function QuoteCommentsPanel({ quoteId, profile }) {
+// Internal notes on a quote (sql/344 quote_comments) or on a client's fee
+// review (sql/345 fee_review_comments, one thread per client). Staff-only:
+// never on the PDF, the email or the client's accept page. Reads come straight
+// from the table (RLS follows the quote / fee access); writes go through the
+// quote-comments edge function.
+//
+// Pass quoteId for a quote, or entityId for a fee review. onCount(n) reports
+// the thread's length so a list can keep its comment badge in step.
+export default function QuoteCommentsPanel({ quoteId, entityId, profile, onCount, bare = false }) {
+  const isReview = !quoteId && !!entityId;
+  const table = isReview ? 'fee_review_comments' : 'quote_comments';
+  const keyCol = isReview ? 'entity_id' : 'quote_id';
+  const keyVal = isReview ? entityId : quoteId;
   const [comments, setComments] = useState([]);
   const [names, setNames] = useState({});
   const [draft, setDraft] = useState('');
@@ -14,18 +23,20 @@ export default function QuoteCommentsPanel({ quoteId, profile }) {
 
   const load = useCallback(async () => {
     const { data, error: err } = await supabase
-      .from('quote_comments')
+      .from(table)
       .select('id, author_id, body, created_at')
-      .eq('quote_id', quoteId)
+      .eq(keyCol, keyVal)
       .order('created_at', { ascending: false });
     if (err) { setError(err.message); return; }
     setComments(data || []);
+    onCount?.((data || []).length);
     const ids = [...new Set((data || []).map((c) => c.author_id).filter(Boolean))];
     if (ids.length) {
       const { data: staff } = await supabase.from('staff_profiles').select('id, name').in('id', ids);
       setNames(Object.fromEntries((staff || []).map((s) => [s.id, s.name])));
     }
-  }, [quoteId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, keyCol, keyVal]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -41,7 +52,7 @@ export default function QuoteCommentsPanel({ quoteId, profile }) {
     setSaving(true);
     setError('');
     try {
-      await call({ action: 'add', quote_id: quoteId, body });
+      await call(isReview ? { action: 'add', entity_id: entityId, body } : { action: 'add', quote_id: quoteId, body });
       setDraft('');
       await load();
     } catch (e) {
@@ -54,15 +65,15 @@ export default function QuoteCommentsPanel({ quoteId, profile }) {
     if (!confirm('Delete this comment?')) return;
     setError('');
     try {
-      await call({ action: 'delete', comment_id: id });
-      setComments((prev) => prev.filter((c) => c.id !== id));
+      await call({ action: 'delete', comment_id: id, kind: isReview ? 'review' : 'quote' });
+      await load();
     } catch (e) {
       setError(e.message);
     }
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3">
+    <div className={bare ? '' : 'bg-white rounded-lg border border-gray-200 p-3 mb-3'}>
       <div className="flex items-baseline justify-between mb-2">
         <h3 className="text-xs font-semibold text-gray-500">Comments{comments.length ? ` (${comments.length})` : ''}</h3>
         <span className="text-[11px] text-gray-400">Internal only, never shown to the client</span>
@@ -71,7 +82,7 @@ export default function QuoteCommentsPanel({ quoteId, profile }) {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) add(); }}
-        placeholder="Add a note about this quote…"
+        placeholder={isReview ? 'Add a note about this fee review…' : 'Add a note about this quote…'}
         rows={2}
         maxLength={4000}
         className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-ocean-300 resize-y"
