@@ -924,8 +924,9 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
   const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 
   return (
+    // Only the Close button closes it: a stray click beside a long checklist
+    // shouldn't throw the team out of it.
     <div
-      onClick={onClose}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.4)', zIndex: 50,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -933,7 +934,6 @@ function ProposalsModal({ drafts, doneChanges, resolvedDrafts, entities, staffMa
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
           background: '#fff', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
           width: 'min(1040px, 94vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column',
