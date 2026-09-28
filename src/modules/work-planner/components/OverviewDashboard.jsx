@@ -116,7 +116,7 @@ export default function OverviewDashboard({ onOpenTask }) {
       const bm = [];
       for (let from = 0; ; from += 1000) {
         const { data, error: e1 } = await supabase.from('bm_task_schedule')
-          .select('id, service, bm_task_name, bm_deadline, scheduled_for_date, scheduled_hours, entity_id, assignee_id, entities(name, entity_status)')
+          .select('id, service, bm_task_name, bm_deadline, scheduled_for_date, scheduled_hours, entity_id, assignee_id, entities(name, entity_status, company_number)')
           .eq('state', 'planned').is('excluded_at', null).not(col, 'is', null).lt(col, end).order(col).order('id').range(from, from + 999);
         if (e1) throw e1;
         bm.push(...(data || []));
@@ -338,7 +338,7 @@ export default function OverviewDashboard({ onOpenTask }) {
               </div>
               <div style={{ overflowY: 'auto', padding: '0 16px 12px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 84px', gap: 8, fontSize: 11.5, fontWeight: 600, color: '#94a3b8', padding: '4px 4px', borderBottom: '1px solid #e5e7eb' }}>
-                  <span /><span>Client</span><span>Task</span><span>Due</span><span>Planned</span><span>Hours</span><span />
+                  <span /><span>Client</span><span>{tile.bucket === 'quick' ? 'Task' : 'Company no.'}</span><span>Due</span><span>Planned</span><span>Hours</span><span />
                 </div>
                 {groups.map((g) => (<React.Fragment key={g.id}>
                 {g.label && (
@@ -352,7 +352,7 @@ export default function OverviewDashboard({ onOpenTask }) {
                     style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 84px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13, cursor: onOpenTask ? 'pointer' : 'default', borderRadius: 6 }}>
                     <span title={staffMap[j.assignee_id]?.name || 'Unassigned'}>{j.assignee_id ? <Avatar id={j.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[j.assignee_id]} /> : null}</span>
                     <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? (entityMap[j.entity_id]?.name || '') : j.entities?.name}</span>
-                    <span style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? j.title : shortTask(j.bm_task_name)}</span>
+                    <span style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? j.title : (j.entities?.company_number || '—')}</span>
                     <span style={{ fontSize: 12, color: '#475569' }}>{fmt(j.bm_deadline)}</span>
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>{j.scheduled_for_date ? fmt(j.scheduled_for_date) : '—'}</span>
                     <span style={{ fontSize: 12, color: '#475569', textAlign: 'right' }}>{j.scheduled_hours ? `${Number(j.scheduled_hours)}h` : ''}</span>
