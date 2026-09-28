@@ -39,9 +39,12 @@ const STATUS_VIEW_LABELS = {
   expired: 'Expired',
 };
 
-// The funnel runs left to right; the roll-ups and Rejected sit beneath it.
-const FUNNEL_STAGES = ['draft', 'awaiting_approval', 'approved', 'sent', 'accepted', 'committed'];
-const ROLLUP_STAGES = ['pipeline', 'pipeline_committed', 'rejected', 'expired'];
+// The funnel runs left to right, with the Pipeline total before Committed;
+// Pipeline + Committed, Rejected and Expired sit beneath it.
+const FUNNEL_STAGES = ['draft', 'awaiting_approval', 'approved', 'sent', 'accepted', 'pipeline', 'committed'];
+const ROLLUP_STAGES = ['pipeline_committed', 'rejected', 'expired'];
+// The two roll-up totals get a filled tile, like Total Pipeline on the Quotes list.
+const HEADLINE_STAGES = ['pipeline', 'pipeline_committed'];
 
 const TIME_FILTERS = [
   { label: 'All Time', value: 'all' },
@@ -515,9 +518,7 @@ export default function DashboardPage() {
     const isActive = statusView === viewKey;
     const d = statusCards[viewKey] || { volume: 0, value: 0 };
     const committed = viewKey === 'committed';
-    // Pipeline + Committed is the headline figure: a filled tile, like the
-    // Total Pipeline card on the Quotes list.
-    if (viewKey === 'pipeline_committed') {
+    if (HEADLINE_STAGES.includes(viewKey)) {
       return (
         <button
           type="button"
@@ -632,12 +633,12 @@ export default function DashboardPage() {
             conversion != null && <span className="text-xs text-gray-400">{conversion}% of sent quotes committed (all time)</span>
           } />
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-1">
+            <div className="grid grid-cols-3 md:grid-cols-7 gap-1">
               {FUNNEL_STAGES.map((k, i) => (
                 <StageTile key={k} viewKey={k} first={i === 0} last={i === FUNNEL_STAGES.length - 1} />
               ))}
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-1 mt-1">
+            <div className="grid grid-cols-3 md:grid-cols-7 gap-1 mt-1">
               {ROLLUP_STAGES.map((k, i) => (
                 <StageTile key={k} viewKey={k} first={i === 0} last={i === ROLLUP_STAGES.length - 1} />
               ))}
