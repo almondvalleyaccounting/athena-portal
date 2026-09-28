@@ -65,7 +65,7 @@ const groupOf = (c) => {
 export default function PayrollView() {
   const { profile } = useAuth();
   const navigate = useNavigate();
-  const { staffList, staffMap, staffColours, filters, entityList = [], entityMap = {} } = useWorkPlanner();
+  const { staffList, staffMap, staffColours, filters, setTeamFilter, entityList = [], entityMap = {} } = useWorkPlanner();
   const displayName = (c) => (c.entity_id && entityMap[c.entity_id]?.name) || c.name;
   const [sheet, setSheet] = useState(() => { try { return localStorage.getItem('payroll.sheet') || 'monthly'; } catch { return 'monthly'; } });
   const [periods, setPeriods] = useState([]);
@@ -327,7 +327,15 @@ export default function PayrollView() {
                   })}
                 </React.Fragment>
               ))}
-              {!loading && visible.length === 0 && <tr><td colSpan={16} style={{ padding: 20, color: '#94a3b8', fontSize: 13 }}>Nothing to show for this filter.</td></tr>}
+              {!loading && visible.length === 0 && (
+                <tr><td colSpan={16} style={{ padding: 20, fontSize: 13, color: '#475569', position: 'sticky', left: 0 }}>
+                  {clients.length === 0 ? 'No payroll clients on this sheet yet.'
+                    : who ? <>Showing only payrolls run or covered by {staffMap[who]?.name || 'the person picked'} in the Team filter, and there are none. <button onClick={() => setTeamFilter && setTeamFilter('')} style={{ ...BTN.secondary.sm, marginLeft: 6 }}>Show everyone</button></>
+                    : activeFilterKeys.length ? <>Every row is hidden by the column filters. <button onClick={() => setColFilters({})} style={{ ...BTN.secondary.sm, marginLeft: 6 }}>Clear filters</button></>
+                    : outstandingOnly ? <>Everything on this sheet is complete. <button onClick={() => setOutstandingOnly(false)} style={{ ...BTN.secondary.sm, marginLeft: 6 }}>Show all</button></>
+                    : search ? 'No client matches that search.' : 'Nothing to show.'}
+                </td></tr>
+              )}
             </tbody>
           </table>
           <div style={{ display: 'flex', gap: 14, padding: '8px 12px', fontSize: 11, color: '#94a3b8', flexWrap: 'wrap' }}>

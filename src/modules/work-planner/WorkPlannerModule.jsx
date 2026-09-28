@@ -778,6 +778,7 @@ export default function WorkPlannerModule() {
     staffList, entityList, staffMap, entityMap,
     profile,
     filters: { teamFilter, clientFilter, clientLetter, serviceFilter, statusFilter, sourceFilter },
+    setTeamFilter,
     highlightId,
     progressNotes, notesMap, addProgressNote,
     addQuickTask, updateQuickTask, reorderQuickTasks,
