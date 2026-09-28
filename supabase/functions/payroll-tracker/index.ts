@@ -7,11 +7,14 @@
 //
 // Actions:
 //   set_tick     { client_id, period_id, step, state: 'done' | 'na' | null }  null clears
-//   add_note     { client_id, period_id, note }
+//   add_note     { client_id, period_id, note, ongoing?: boolean, ends_on?: 'YYYY-MM-DD' | null }
+//                ongoing = shows in every period from this one on, until ends_on (null = open-ended)
 //   save_client  { id?, name, entity_id?, frequency, pay_day?, cutoff?, pay_type?, runner_id?,
 //                  runner_name?, cover_id?, batch?, na_steps?, standing_note?, active?, ceased_on?, sort_order? }
-//   delete_note  { id }
 //   retire_note  { id, retired: true | false }   a retired note is kept but hidden from the sheet
+//
+// Notes are never deleted (Bobby, 2026-09-28): retire instead. Every add,
+// retire and restore is written to payroll_note_log (sql/340).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
@@ -52,6 +55,10 @@ Deno.serve(async (req) => {
     const { data: meRow } = await db.from("staff_profiles").select("name, is_active").eq("id", me).maybeSingle();
     if (!meRow?.is_active) throw new BadRequest("Active staff only", 403);
     const action = String(p.action || "");
+    const log = async (noteId: string, what: string) => {
+      const { error } = await db.from("payroll_note_log").insert({ note_id: noteId, action: what, by_id: me, by_name: meRow.name, at: now });
+      if (error) throw new Error(error.message);
+    };
 
     switch (action) {
       case "set_tick": {
@@ -76,8 +83,18 @@ Deno.serve(async (req) => {
         const periodId = uuid(p.period_id, "period_id");
         const note = optText(p.note, 4000);
         if (!note) throw new BadRequest("note required");
-        const { data, error } = await db.from("payroll_period_notes").insert({ client_id: clientId, period_id: periodId, note, by_id: me, by_name: meRow.name, at: now }).select("id").single();
+        const row: Record<string, unknown> = { client_id: clientId, period_id: periodId, note, by_id: me, by_name: meRow.name, at: now, kind: "period" };
+        if (p.ongoing) {
+          const { data: per } = await db.from("payroll_periods").select("start_date").eq("id", periodId).maybeSingle();
+          if (!per) throw new BadRequest("Period not found", 404);
+          const endsOn = optText(p.ends_on, 10);
+          if (endsOn && !ISO.test(endsOn)) throw new BadRequest("ends_on must be YYYY-MM-DD");
+          if (endsOn && endsOn < per.start_date) throw new BadRequest("The end date is before this period starts");
+          row.kind = "ongoing"; row.starts_on = per.start_date; row.ends_on = endsOn;
+        }
+        const { data, error } = await db.from("payroll_period_notes").insert(row).select("id").single();
         if (error) throw new Error(error.message);
+        await log(data.id, "added");
         return json({ success: true, id: data.id });
       }
 
@@ -86,13 +103,7 @@ Deno.serve(async (req) => {
         const retired = p.retired !== false;
         const { error } = await db.from("payroll_period_notes").update(retired ? { retired_at: now, retired_by: me } : { retired_at: null, retired_by: null }).eq("id", id);
         if (error) throw new Error(error.message);
-        return json({ success: true });
-      }
-
-      case "delete_note": {
-        const id = uuid(p.id, "id");
-        const { error } = await db.from("payroll_period_notes").delete().eq("id", id);
-        if (error) throw new Error(error.message);
+        await log(id, retired ? "retired" : "restored");
         return json({ success: true });
       }
 

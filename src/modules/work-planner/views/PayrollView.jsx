@@ -31,6 +31,10 @@ const fmt = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toL
 const fmtTs = (ts) => (ts ? new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+// The notes that show in a period: its own, plus any "going forward" note
+// whose window overlaps it (sql/340).
+const notesForPeriod = (q, p) => q.or(`period_id.eq.${p.id},and(kind.eq.ongoing,starts_on.lte.${p.end_date},or(ends_on.is.null,ends_on.gte.${p.start_date}))`);
+
 async function callPayroll(payload) {
   const { data, error } = await supabase.functions.invoke('payroll-tracker', { body: payload });
   if (error || !data?.success) {
@@ -112,7 +116,7 @@ export default function PayrollView() {
       const [{ data: cs, error: e1 }, { data: ts, error: e2 }, { data: ns }] = await Promise.all([
         supabase.from('payroll_clients').select('*').in('frequency', wantFreq).order('sort_order').order('name').limit(1000),
         supabase.from('payroll_ticks').select('*').eq('period_id', period.id).limit(5000),
-        supabase.from('payroll_period_notes').select('client_id').eq('period_id', period.id).is('retired_at', null).limit(2000),
+        notesForPeriod(supabase.from('payroll_period_notes').select('client_id'), period).is('retired_at', null).limit(2000),
       ]);
       if (e1) throw e1; if (e2) throw e2;
       setClients(cs || []);
@@ -454,7 +458,11 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   }));
   const [notes, setNotes] = useState([]);
   const [note, setNote] = useState('');
+  const [ongoing, setOngoing] = useState(false);
+  const [endsOn, setEndsOn] = useState(''); // '' = leave it open
+  const [log, setLog] = useState({}); // note id -> [log rows]
   const [showRetired, setShowRetired] = useState(false);
+  const [showSettings, setShowSettings] = useState(!client);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [entityQ, setEntityQ] = useState('');
@@ -462,20 +470,31 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   // Unsaved work: the client form differs from what was opened, or a period
   // note is typed but not added. Closing then asks; the backdrop never closes.
   const [saved, setSaved] = useState(() => JSON.stringify(form));
-  const dirty = JSON.stringify(form) !== saved || note.trim().length > 0;
+  const formDirty = JSON.stringify(form) !== saved;
+  const dirty = formDirty || note.trim().length > 0;
   const [confirmClose, setConfirmClose] = useState(false);
   const requestClose = () => { if (dirty) setConfirmClose(true); else onClose(); };
 
-  useEffect(() => {
+  const reloadNotes = useCallback(async () => {
     if (!client || !period) return;
-    supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at').then(({ data }) => setNotes(data || []));
+    const { data } = await notesForPeriod(supabase.from('payroll_period_notes').select('*').eq('client_id', client.id), period).order('at', { ascending: false });
+    setNotes(data || []);
+    const ids = (data || []).map((n) => n.id);
+    if (!ids.length) { setLog({}); return; }
+    const { data: ls } = await supabase.from('payroll_note_log').select('*').in('note_id', ids).order('at');
+    const m = {}; (ls || []).forEach((l) => { (m[l.note_id] = m[l.note_id] || []).push(l); }); setLog(m);
   }, [client, period]);
-  const reloadNotes = async () => { const { data } = await supabase.from('payroll_period_notes').select('*').eq('client_id', client.id).eq('period_id', period.id).order('at'); setNotes(data || []); };
+  useEffect(() => { reloadNotes(); }, [reloadNotes]);
   const retire = async (n, retired) => {
     setBusy(true); setErr(null);
     try { await callPayroll({ action: 'retire_note', id: n.id, retired }); await reloadNotes(); await onSaved(); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
+  const pWord = period?.frequency === 'weekly' ? 'week' : 'month';
+  const scopeLabel = (n) => (n.kind === 'ongoing'
+    ? `Every ${pWord} from ${fmt(n.starts_on)} · ${n.ends_on ? `until ${new Date(`${n.ends_on}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'open-ended'}`
+    : `This ${pWord} only`);
+  const scopePill = (n) => ({ display: 'inline-block', padding: '0 6px', borderRadius: 8, fontSize: 10.5, fontWeight: 600, ...(n.kind === 'ongoing' ? { background: '#e0f2fe', color: '#075985' } : { background: '#f1f5f9', color: '#64748b' }) });
   const live = notes.filter((n) => !n.retired_at);
   const retired = notes.filter((n) => n.retired_at);
 
@@ -488,8 +507,12 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
   };
   const addNote = async () => {
     if (!note.trim() || !client || !period) return;
+    if (ongoing && endsOn && endsOn < period.start_date) { setErr('The end date is before this period starts.'); return; }
     setBusy(true); setErr(null);
-    try { await callPayroll({ action: 'add_note', client_id: client.id, period_id: period.id, note }); setNote(''); await reloadNotes(); await onSaved(); }
+    try {
+      await callPayroll({ action: 'add_note', client_id: client.id, period_id: period.id, note, ongoing, ends_on: ongoing ? (endsOn || null) : null });
+      setNote(''); setOngoing(false); setEndsOn(''); await reloadNotes(); await onSaved();
+    }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
   const inp = { padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: '100%', boxSizing: 'border-box', background: '#fff' };
@@ -507,6 +530,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
           </div>
           {linked && <button onClick={() => navigate(`/clients/${linked.id}`)} style={BTN.secondary.sm}>Open the client</button>}
           {dirty && !confirmClose && <span style={{ fontSize: 12, fontWeight: 600, color: '#9a3412', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 8, padding: '2px 8px' }}>Unsaved changes</span>}
+          {!isNew && formDirty && !confirmClose && <button onClick={save} disabled={busy || !form.entity_id} style={BTN.primary.sm}>{busy ? 'Saving…' : 'Save'}</button>}
           <button onClick={requestClose} style={BTN.secondary.sm}>Close</button>
         </div>
         {confirmClose && (
@@ -525,6 +549,64 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
             <textarea value={form.standing_note} onChange={(e) => set('standing_note', e.target.value)} rows={Math.min(8, Math.max(2, (form.standing_note || '').split(String.fromCharCode(10)).length + 1))} placeholder="Anything the runner must know every time: who sends the hours, when, how payslips go out…"
               style={{ width: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', resize: 'vertical', fontFamily: font, fontSize: 15, fontWeight: 500, lineHeight: 1.5, color: '#164e63', outline: 'none', padding: 0 }} />
           </div>
+          {client && period && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                Notes · {pWord === 'week' ? 'Week' : 'Month'} {period.number}, {period.tax_year} <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {live.length} live</span>
+                {retired.length > 0 && <button onClick={() => setShowRetired((v) => !v)} style={{ ...BTN.secondary.sm, padding: '0 7px', fontSize: 11, marginLeft: 'auto' }}>{showRetired ? 'Hide' : 'Show'} {retired.length} retired</button>}
+              </div>
+              <div style={{ border: '1px solid #cbd5e1', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, background: '#f8fafc' }}>
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={`Add a note for ${pWord} ${period.number}…`} style={{ ...inp, resize: 'vertical', fontSize: 13.5 }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote(); } }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 12.5, color: '#334155' }}>
+                  <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="radio" checked={!ongoing} onChange={() => setOngoing(false)} /> This {pWord} only</label>
+                  <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="radio" checked={ongoing} onChange={() => setOngoing(true)} /> Going forward</label>
+                  {ongoing && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, paddingLeft: 10, borderLeft: '1px solid #cbd5e1' }}>
+                      <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="radio" checked={!endsOn} onChange={() => setEndsOn('')} /> Leave it open</label>
+                      <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}><input type="radio" checked={!!endsOn} onChange={() => setEndsOn(endsOn || period.end_date)} /> Until</label>
+                      <input type="date" value={endsOn} min={period.start_date} onChange={(e) => setEndsOn(e.target.value)} style={{ ...inp, width: 140, padding: '3px 6px' }} />
+                    </span>
+                  )}
+                  <div style={{ flex: 1 }} />
+                  <button onClick={addNote} disabled={busy || !note.trim()} style={BTN.primary.sm}>Add note</button>
+                </div>
+              </div>
+              {live.length === 0 && <div style={{ fontSize: 12.5, color: '#94a3b8' }}>No live notes. Retire a note once it has been acted on so the sheet stays quiet.</div>}
+              {live.map((n) => (
+                <div key={n.id} style={{ fontSize: 12.5, padding: '6px 8px', borderRadius: 6, background: '#fffbeb', border: '1px solid #fde68a', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ color: '#94a3b8' }}>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {n.source === 'import' ? 'from the spreadsheet' : fmtTs(n.at)}</span>
+                    <span style={{ ...scopePill(n), marginLeft: 6 }}>{scopeLabel(n)}</span>
+                    <div style={{ whiteSpace: 'pre-wrap', color: '#0f172a' }}>{n.note}</div>
+                  </div>
+                  <button onClick={() => retire(n, true)} disabled={busy} title={n.kind === 'ongoing' ? 'Keep it on record, but stop showing it from now on' : 'Keep it on record, but take it off the sheet'} style={{ ...BTN.secondary.sm, padding: '1px 8px', fontSize: 11 }}>Retire</button>
+                </div>
+              ))}
+              {showRetired && retired.map((n) => (
+                <div key={n.id} style={{ fontSize: 12, padding: '4px 8px', color: '#94a3b8', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ ...scopePill(n), opacity: 0.7 }}>{scopeLabel(n)}</span>
+                    <div style={{ whiteSpace: 'pre-wrap', textDecoration: 'line-through' }}>{n.note}</div>
+                    <div style={{ fontSize: 11 }}>{(log[n.id] || []).map((l) => `${l.action} · ${l.by_name || 'someone'} · ${fmtTs(l.at)}`).join('  —  ') || `retired ${fmtTs(n.retired_at)}`}</div>
+                  </div>
+                  <button onClick={() => retire(n, false)} disabled={busy} style={{ ...BTN.secondary.sm, padding: '1px 8px', fontSize: 11 }}>Restore</button>
+                </div>
+              ))}
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, marginTop: 4, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>This period · {period.frequency === 'weekly' ? 'week' : 'month'} {period.number}, {period.tax_year}</div>
+              <div style={{ fontSize: 12.5, display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 10px' }}>
+                {STEPS.map((s) => { const t = ticks[`${client.id}|${s.id}`]; const na = (client.na_steps || []).includes(s.id); return (
+                  <React.Fragment key={s.id}>
+                    <span style={{ color: na ? '#94a3b8' : '#0f172a' }}>{s.label}</span>
+                    <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{na ? 'n/a for this client' : t ? `${t.state === 'done' ? 'Done' : 'n/a'} · ${t.by_name || '?'} · ${t.source === 'import' ? 'from the spreadsheet' : fmtTs(t.at)}` : 'not yet'}</span>
+                  </React.Fragment>); })}
+              </div>
+            </div>
+          )}
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+            {!isNew && <button onClick={() => setShowSettings((v) => !v)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontFamily: font, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>{showSettings ? '▾' : '▸'} Client settings <span style={{ fontWeight: 500, color: '#94a3b8' }}>· pay date, runner, steps that don't apply</span></button>}
+          </div>
+          {showSettings && (<>
           <div>
             <div style={lab}>Athena client (required)</div>
             {client?.name && (!linked || linked.name !== client.name) && <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 4 }}>On the spreadsheet as “{client.name}”</div>}
@@ -561,40 +643,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
             <button onClick={save} disabled={busy || !form.entity_id} title={form.entity_id ? '' : 'Pick the Athena client first'} style={BTN.primary.sm}>{busy ? 'Saving…' : isNew ? 'Add client' : 'Save'}</button>
           </div>
 
-          {client && period && (
-            <>
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>This period · {period.frequency === 'weekly' ? 'week' : 'month'} {period.number}, {period.tax_year}</div>
-              <div style={{ fontSize: 12.5, display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 10px' }}>
-                {STEPS.map((s) => { const t = ticks[`${client.id}|${s.id}`]; const na = (client.na_steps || []).includes(s.id); return (
-                  <React.Fragment key={s.id}>
-                    <span style={{ color: na ? '#94a3b8' : '#0f172a' }}>{s.label}</span>
-                    <span style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{na ? 'n/a for this client' : t ? `${t.state === 'done' ? 'Done' : 'n/a'} · ${t.by_name || '?'} · ${t.source === 'import' ? 'from the spreadsheet' : fmtTs(t.at)}` : 'not yet'}</span>
-                  </React.Fragment>); })}
-              </div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                Notes this period <span style={{ fontWeight: 500, color: '#94a3b8' }}>· {live.length} live</span>
-                {retired.length > 0 && <button onClick={() => setShowRetired((v) => !v)} style={{ ...BTN.secondary.sm, padding: '0 7px', fontSize: 11, marginLeft: 'auto' }}>{showRetired ? 'Hide' : 'Show'} {retired.length} retired</button>}
-              </div>
-              <div style={{ fontSize: 11.5, color: '#94a3b8' }}>Notes are for live updates. Retire a note once it has been acted on so the sheet stays quiet.</div>
-              {live.length === 0 && <div style={{ fontSize: 12.5, color: '#cbd5e1' }}>No live notes.</div>}
-              {live.map((n) => (
-                <div key={n.id} style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 6, background: '#fffbeb', border: '1px solid #fde68a', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}><span style={{ color: '#94a3b8' }}>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {fmtTs(n.at)}</span><div style={{ whiteSpace: 'pre-wrap' }}>{n.note}</div></div>
-                  <button onClick={() => retire(n, true)} disabled={busy} title="Keep it, but take it off the sheet" style={{ ...BTN.secondary.sm, padding: '1px 8px', fontSize: 11 }}>Retire</button>
-                </div>
-              ))}
-              {showRetired && retired.map((n) => (
-                <div key={n.id} style={{ fontSize: 12, padding: '4px 8px', color: '#94a3b8', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}><span>{n.by_name || (n.source === 'import' ? 'from the spreadsheet' : 'someone')} · {fmtTs(n.at)} · retired {fmtTs(n.retired_at)}</span><div style={{ whiteSpace: 'pre-wrap', textDecoration: 'line-through' }}>{n.note}</div></div>
-                  <button onClick={() => retire(n, false)} disabled={busy} style={{ ...BTN.secondary.sm, padding: '1px 8px', fontSize: 11 }}>Restore</button>
-                </div>
-              ))}
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note for this period…" style={inp} onKeyDown={(e) => { if (e.key === 'Enter') addNote(); }} />
-                <button onClick={addNote} disabled={busy || !note.trim()} style={BTN.secondary.sm}>Add</button>
-              </div>
-            </>
-          )}
+          </>)}
         </div>
       </div>
     </div>
