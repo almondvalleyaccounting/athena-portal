@@ -640,7 +640,7 @@ function ClientDrawer({ client, defaultFrequency, period, ticks, staffList, staf
                     style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontFamily: font, fontSize: 12.5, textAlign: 'left',
                       border: `1px solid ${na ? '#e2e8f0' : '#cbd5e1'}`, background: na ? '#f1f5f9' : '#fff', color: na ? '#94a3b8' : '#0f172a' }}>
                     <span style={{ width: 18, height: 18, flexShrink: 0, borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700,
-                      ...(na ? { background: '#e2e8f0', color: '#94a3b8' } : { background: '#dcfce7', color: '#166534' }) }}>{na ? '–' : i + 1}</span>
+                      ...(na ? { background: '#e2e8f0', color: '#94a3b8' } : { background: '#dcfce7', color: '#166534' }) }}>{i + 1}</span>
                     <span style={{ flex: 1, textDecoration: na ? 'line-through' : 'none' }}>{s.label}</span>
                     {na && <span style={{ fontSize: 10.5, fontWeight: 600 }}>n/a</span>}
                   </button>
