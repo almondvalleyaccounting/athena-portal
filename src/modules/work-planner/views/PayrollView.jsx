@@ -281,8 +281,8 @@ export default function PayrollView() {
                 <th style={{ ...thL, ...sticky1, zIndex: 4 }}>Client</th>
                 <th onClick={(e) => openFilter(e, 'pay_day', 'Pay date')} style={{ ...thL, ...sticky2, zIndex: 4, ...thF('pay_day') }}>Pay date<Funnel k="pay_day" /></th>
                 <th onClick={(e) => openFilter(e, 'cutoff', 'Cut-off')} style={{ ...th, minWidth: 56, ...thF('cutoff') }}>Cut-off<Funnel k="cutoff" /></th>
-                <th onClick={(e) => openFilter(e, 'runner', 'Runner')} style={{ ...th, minWidth: 70, ...thF('runner') }}>Runner<Funnel k="runner" /></th>
-                <th onClick={(e) => openFilter(e, 'cover', 'Cover')} style={{ ...th, minWidth: 56, ...thF('cover') }}>Cover<Funnel k="cover" /></th>
+                <th onClick={(e) => openFilter(e, 'runner', 'Runner')} style={{ ...th, textAlign: 'left', minWidth: 96, ...thF('runner') }}>Runner<Funnel k="runner" /></th>
+                <th onClick={(e) => openFilter(e, 'cover', 'Cover')} style={{ ...th, textAlign: 'left', minWidth: 90, ...thF('cover') }}>Cover<Funnel k="cover" /></th>
                 {STEPS.map((s) => <th key={s.id} onClick={(e) => openFilter(e, s.id, s.label)} style={{ ...th, maxWidth: 92, ...thF(s.id) }}>{s.label}<Funnel k={s.id} /></th>)}
                 {freq === 'monthly' && <th onClick={(e) => openFilter(e, 'journal', 'Journal posted')} style={{ ...th, maxWidth: 80, background: '#f0fdfa', color: '#0f766e', ...thF('journal') }}>Journal posted to QuickBooks (live)<Funnel k="journal" /></th>}
                 <th onClick={(e) => openFilter(e, 'note', 'Important notes')} style={{ ...thL, minWidth: 220, ...thF('note') }}>Important notes<Funnel k="note" /></th>
@@ -301,8 +301,8 @@ export default function PayrollView() {
                         <td style={{ ...td, ...sticky1, cursor: 'pointer', fontWeight: 500 }} onClick={() => setDrawer(c.id)} title={displayName(c)}>{displayName(c)}{c.entity_id ? '' : <span title="Not yet linked to a client record — open and pick the client" style={{ marginLeft: 6, color: '#f59e0b' }}>•</span>}</td>
                         <td style={{ ...td, ...sticky2 }}>{c.pay_day || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                         <td style={td}>{c.cutoff || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
-                        <td style={td}>{c.runner_id ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Avatar id={c.runner_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.runner_id]} />{runnerLabel(c)}</span> : runnerLabel(c)}</td>
-                        <td style={td}>{c.cover_id ? <Avatar id={c.cover_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.cover_id]} /> : ''}</td>
+                        <td style={{ ...td, textAlign: 'left' }}>{c.runner_id ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Avatar id={c.runner_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.runner_id]} />{runnerLabel(c)}</span> : runnerLabel(c)}</td>
+                        <td style={{ ...td, textAlign: 'left' }}>{c.cover_id ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Avatar id={c.cover_id} staffMap={staffMap} size={16} customColour={staffColours?.[c.cover_id]} />{(staffMap[c.cover_id]?.name || '').split(' ')[0]}</span> : ''}</td>
                         {STEPS.map((s) => {
                           const st = stateOf(c, s.id);
                           const t = tickOf(c, s.id);
