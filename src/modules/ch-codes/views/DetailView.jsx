@@ -9,7 +9,7 @@ import {
   getChCodeRequest, stageMeta, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
   reopenRequest, advanceStage, setComms, addNote, recordClientReply, setPersonEmail,
-  CALL_OUTCOMES, callOutcomeMeta, isEscalated, clearEscalation,
+  CALL_OUTCOMES, callOutcomeMeta, isEscalated, clearEscalation, affectedCompanies,
 } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -105,6 +105,26 @@ export default function DetailView() {
             ) : (req.entity?.name || '—')}
             {' · Owner: '}{req.owner?.name || 'unassigned'}
           </p>
+          {/* The code is the person's, so every company they direct or
+              control is waiting on it — not just the one the chase is on. */}
+          {(() => {
+            const others = affectedCompanies([req]).filter((c) => c.id !== req.entity_id);
+            if (!others.length) return null;
+            return (
+              <p style={{ margin: '4px 0 0', fontSize: 13.5, color: '#64748b' }}>
+                Also waiting on this code:{' '}
+                {others.map((c, i) => (
+                  <span key={c.id}>
+                    {i ? ', ' : ''}
+                    <span onClick={() => navigate(`/clients/${c.id}`)} title="Open this client's page"
+                      style={{ color: '#0e7fe0', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>
+                      {c.name}
+                    </span>
+                  </span>
+                ))}
+              </p>
+            );
+          })()}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ ...chipStyle(meta.tone), fontSize: 13 }}>{meta.short} · {meta.label}</span>

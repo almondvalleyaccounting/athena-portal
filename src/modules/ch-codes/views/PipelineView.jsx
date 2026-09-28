@@ -14,6 +14,7 @@ import {
   advanceStage, setComms, setEmailsSent, recordDecision, recordIdPoaReceived,
   recordCodeReceived, markInformDirect, markEnteredBm, submitRequest, rejectRequest,
   reopenRequest, setPersonEmail, queueEmail, queuedCountsByRequest, queuedKindsByRequest,
+  affectedCompanies,
 } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -241,7 +242,8 @@ export default function PipelineView() {
       if (filter === 'submitted' && r.stage !== 's6_submitted') return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!r.person?.name?.toLowerCase().includes(q) && !r.entity?.name?.toLowerCase().includes(q)) return false;
+        if (!r.person?.name?.toLowerCase().includes(q)
+          && !affectedCompanies([r]).some((c) => c.name?.toLowerCase().includes(q))) return false;
       }
       return true;
     });
@@ -482,7 +484,15 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
     const queued = group.rows.reduce((sum, row) => sum + (queuedCounts[row.id] || 0), 0);
     const chasing = stageMeta(rep.stage).chasing;
     const age = daysSince(rep.requested_at);
-    const entityLabel = group.rows.map((r) => r.entity?.name).filter(Boolean).join(', ') || '—';
+    // Every company held up by this person's missing code, not only the ones
+    // a request is anchored on — those extra ones are the point of the list.
+    const companies = affectedCompanies(group.rows);
+    const entityLabel = companies.length ? companies.map((c, i) => (
+      <span key={c.id} title={c.chased ? 'Chase is on this company' : 'Also needs this code — no chase on this company'}
+        style={c.chased ? undefined : { fontStyle: 'italic' }}>
+        {i ? ', ' : ''}{c.name}
+      </span>
+    )) : '—';
 
     const badges = (
       <>
@@ -493,7 +503,8 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
         {!stageMeta(rep.stage).terminal && (
           <PersonEmail person={first.person} requestId={first.id} actorId={actorId} onSaved={load} />
         )}
-        {group.rows.length > 1 && <span style={chipStyle('neutral')}>{group.rows.length} companies</span>}
+        {companies.length > 1 && <span style={chipStyle('neutral')}
+          title={`${companies.length} companies need this code`}>{companies.length} companies</span>}
       </>
     );
 

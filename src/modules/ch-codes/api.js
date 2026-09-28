@@ -174,12 +174,39 @@ export function daysSince(dateStr) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / dayMs);
 }
 
+// A personal code belongs to the PERSON, so every company where they're a
+// live director / PSC / LLP member is held up until we have it — not just the
+// company the chase happened to be seeded against. Embedded on the person so
+// the pipeline and detail page can list all of them.
+const PERSON_ROLES = `roles:entity_people(role, ended_on, entity:entities(id, name, company_number, entity_status))`;
+const CODE_ROLES = new Set(['director', 'shareholder', 'partner']);
+
+// Every current client company affected by this person not having a code,
+// chase anchors first. `requests` are the rows for ONE person (a tile group,
+// or a single request). `chased` marks the companies a request is anchored on.
+export function affectedCompanies(requests) {
+  const out = new Map();
+  for (const r of requests) {
+    if (r.entity?.id) out.set(r.entity.id, { id: r.entity.id, name: r.entity.name, chased: true });
+  }
+  for (const r of requests) {
+    for (const role of r.person?.roles || []) {
+      const e = role.entity;
+      if (!e?.id || out.has(e.id)) continue;
+      if (!CODE_ROLES.has(role.role) || role.ended_on || !e.company_number) continue;
+      if (['nlac', 'archived'].includes(e.entity_status)) continue;
+      out.set(e.id, { id: e.id, name: e.name, chased: false });
+    }
+  }
+  return [...out.values()];
+}
+
 export async function listChCodeRequests() {
   const { data, error } = await supabase
     .from('ch_code_requests')
     .select(`
       *,
-      person:people(id, name, email),
+      person:people(id, name, email, ${PERSON_ROLES}),
       entity:entities!ch_code_requests_entity_id_fkey(id, name),
       owner:staff_profiles!ch_code_requests_owner_id_fkey(id, name)
     `)
@@ -193,7 +220,7 @@ export async function getChCodeRequest(id) {
     supabase.from('ch_code_requests')
       .select(`
         *,
-        person:people(id, name, email),
+        person:people(id, name, email, ${PERSON_ROLES}),
         entity:entities!ch_code_requests_entity_id_fkey(id, name, billing_email, billing_line1, billing_postcode),
         owner:staff_profiles!ch_code_requests_owner_id_fkey(id, name)
       `)
