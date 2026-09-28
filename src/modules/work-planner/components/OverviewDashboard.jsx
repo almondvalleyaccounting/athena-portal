@@ -359,12 +359,12 @@ export default function OverviewDashboard({ onOpenTask }) {
                   </div>
                 )}
                 {g.items.map((j) => (
-                  <div key={j.id} onClick={() => onOpenTask && onOpenTask({ type: j.quick ? 'quick' : 'bm', id: j.id })} title="Open"
+                  <div key={j.id} onClick={() => { if (String(window.getSelection?.() || '')) return; if (onOpenTask) onOpenTask({ type: j.quick ? 'quick' : 'bm', id: j.id }); }} title="Open"
                     onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; }} onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
                     style={{ display: 'grid', gridTemplateColumns: '28px minmax(0, 1.4fr) minmax(0, 1.2fr) 90px 90px 50px 84px', gap: 8, alignItems: 'center', padding: '6px 4px', borderBottom: '1px solid #f1f5f9', fontSize: 13, cursor: onOpenTask ? 'pointer' : 'default', borderRadius: 6 }}>
                     <span title={staffMap[j.assignee_id]?.name || 'Unassigned'}>{j.assignee_id ? <Avatar id={j.assignee_id} staffMap={staffMap} size={20} customColour={staffColours?.[j.assignee_id]} /> : null}</span>
                     <span style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? (entityMap[j.entity_id]?.name || '') : j.entities?.name}</span>
-                    <span style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.quick ? j.title : refOf(j)}</span>
+                    <span onClick={(e) => e.stopPropagation()} title={j.quick ? undefined : 'Select to copy'} style={{ color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', userSelect: 'text', cursor: 'text', justifySelf: 'start', maxWidth: '100%' }}>{j.quick ? j.title : refOf(j)}</span>
                     <span style={{ fontSize: 12, color: '#475569' }}>{fmt(j.bm_deadline)}</span>
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>{j.scheduled_for_date ? fmt(j.scheduled_for_date) : '—'}</span>
                     <span style={{ fontSize: 12, color: '#475569', textAlign: 'right' }}>{j.scheduled_hours ? `${Number(j.scheduled_hours)}h` : ''}</span>
