@@ -44,7 +44,9 @@ export const TILE_TYPES = [
 // BM files MTD quarterly updates under Personal Tax; they're a different
 // filing from the annual return (Bobby, 2026-09-28), so the task name decides.
 const typeOf = (service, name) => (/MTD/i.test(name || '') ? 'mtd' : TILE_TYPES.find((t) => t.services?.includes(service))?.id || 'other');
-const STAGED = new Set(['accounts', 'ct', 'vat', 'sa', 'mtd']); // types whose BM job is several tasks
+// An MTD quarterly update is one BM task ("MTD Quarterly Filing Preparation …",
+// no sibling submission), so every MTD task counts as a filing.
+const STAGED = new Set(['accounts', 'ct', 'vat', 'sa']); // types whose BM job is several tasks
 const isFiling = (type, name) => !STAGED.has(type) || /Submission/i.test(name || '');
 const monthKey = (iso) => String(iso).slice(0, 7);
 const monthLabel = (key) => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
