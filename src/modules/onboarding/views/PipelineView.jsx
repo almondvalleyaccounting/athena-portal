@@ -1,22 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Clock, AlertTriangle, Hourglass, MessageSquare, CheckCircle2, RotateCcw, Archive } from 'lucide-react';
+import { UserPlus, MessageSquare, CheckCircle2, RotateCcw, Archive } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import DataTable from '../../../components/DataTable';
 import RowMenu from '../../../components/RowMenu';
-import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
+import { tones, pillStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
 import NotesThread, { fmtNoteTime } from '../components/NotesThread';
-import { listOnboardings, isOverdue, daysSince, ONBOARDING_STATUSES, setOnboardingStatus, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
+import { listOnboardings, setOnboardingStatus, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
-
-function statusMeta(value) {
-  return ONBOARDING_STATUSES.find((s) => s.value === value) || ONBOARDING_STATUSES[0];
-}
 
 function actionBtnStyle(tone) {
   const t = tones[tone] || tones.neutral;
@@ -27,15 +23,89 @@ function actionBtnStyle(tone) {
   };
 }
 
-function ProgressBar({ done, total }) {
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+// Short labels for the step groups, so each onboarding's progress reads as
+// one line of chips. An unknown group shows its own name.
+const GROUP_LABELS = {
+  Onboarding: 'O/B',
+  'Tax Calc': 'TaxCalc',
+  'Inform Direct': 'Inform Direct',
+  'VAT Registration': 'VAT reg',
+  'PAYE Registration': 'PAYE reg',
+  'HMRC Registration': 'HMRC reg',
+  'Companies House': 'CH',
+};
+
+function groupLabel(name) {
+  if (GROUP_LABELS[name]) return GROUP_LABELS[name];
+  // Additional directors' SA groups are "SA — <name>"
+  const m = /^SA — (.+)$/.exec(name || '');
+  if (m) return `SA · ${m[1].split(' ')[0]}`;
+  return name || 'Other';
+}
+
+// Steps grouped by group_name in template order. A group whose every step is
+// N/A isn't a service this client has, so it's left out.
+function groupSteps(steps) {
+  const byName = new Map();
+  for (const st of steps || []) {
+    const key = st.group_name || 'Other';
+    if (!byName.has(key)) byName.set(key, { name: key, sort: st.group_sort ?? 999, steps: [] });
+    byName.get(key).steps.push(st);
+  }
+  return [...byName.values()]
+    .map((g) => {
+      const applicable = g.steps.filter((s) => s.status !== 'na').sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+      return { ...g, applicable, done: applicable.filter((s) => s.status === 'complete').length };
+    })
+    .filter((g) => g.applicable.length > 0)
+    .sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name));
+}
+
+function GroupChip({ group, hovered, onHover }) {
+  const { done, applicable } = group;
+  const total = applicable.length;
+  const full = done === total;
+  const pct = Math.round((done / total) * 100);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 6, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden', minWidth: 80 }}>
-        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: pct === 100 ? tones.success.solid : '#F5C518' }} />
-      </div>
-      <span style={{ fontSize: 13, color: '#64748b', whiteSpace: 'nowrap' }}>{done}/{total}</span>
-    </div>
+    <span
+      style={{ position: 'relative', display: 'inline-flex' }}
+      onMouseEnter={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        onHover({ top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 292) });
+      }}
+      onMouseLeave={() => onHover(null)}
+    >
+      <span style={{
+        display: 'inline-flex', flexDirection: 'column', gap: 4, minWidth: 64,
+        padding: '5px 8px', borderRadius: 8, cursor: 'default',
+        background: full ? tones.success.bg : '#fff',
+        border: `1px solid ${full ? tones.success.border : '#e2e8f0'}`,
+      }}>
+        <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12.5, whiteSpace: 'nowrap' }}>
+          <span style={{ fontWeight: 600, color: full ? tones.success.fg : '#0f172a' }}>{groupLabel(group.name)}</span>
+          <span style={{ color: full ? tones.success.fg : '#64748b' }}>{done}/{total}</span>
+        </span>
+        <span style={{ height: 4, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+          <span style={{ display: 'block', width: `${pct}%`, height: '100%', background: full ? tones.success.solid : '#F5C518' }} />
+        </span>
+      </span>
+      {hovered && (
+        <div style={{
+          position: 'fixed', top: hovered.top, left: hovered.left, zIndex: 50,
+          width: 280, background: '#0f172a', color: '#fff', fontSize: 13, lineHeight: 1.45,
+          padding: '9px 11px', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
+          whiteSpace: 'normal', fontWeight: 400,
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>{group.name} — {done} of {total} done</div>
+          {applicable.map((st) => (
+            <div key={st.id} style={{ display: 'flex', gap: 6, color: st.status === 'complete' ? '#fff' : '#94a3b8' }}>
+              <span style={{ width: 12, flexShrink: 0 }}>{st.status === 'complete' ? '✓' : '○'}</span>
+              <span>{st.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -48,9 +118,9 @@ export default function PipelineView() {
   const [filter, setFilter] = useState('open'); // open | complete | archived | all
   const [search, setSearch] = useState('');
   const [busyId, setBusyId] = useState(null);
-  // { id, top, left } — the issues chip's reason, pinned to the viewport so the
-  // table's clipped cells and rounded frame don't cut it off.
-  const [hoverIssue, setHoverIssue] = useState(null);
+  // { key, top, left } — a group chip's step list, pinned to the viewport so
+  // the table's clipped cells and rounded frame don't cut it off.
+  const [hoverGroup, setHoverGroup] = useState(null);
   const [openNotes, setOpenNotes] = useState(null); // onboarding id whose comments are expanded
   const [sort, setSort] = useState(null); // null = as loaded (newest first)
   const [page, setPage] = useState(1);
@@ -140,28 +210,20 @@ export default function PipelineView() {
     setBusyId(null);
   }
 
-  const summarise = (r) => {
-    const steps = r.steps || [];
-    const applicable = steps.filter((s) => s.status !== 'na');
-    const done = applicable.filter((s) => s.status === 'complete').length;
-    const waitingClient = steps.filter((s) => s.status === 'waiting_client').length;
-    const waitingExternal = steps.filter((s) => s.status === 'waiting_external').length;
-    const overdue = steps.filter(isOverdue).length;
-    return { done, total: applicable.length, waitingClient, waitingExternal, overdue };
+  const progress = (r) => {
+    const applicable = (r.steps || []).filter((st) => st.status !== 'na');
+    return applicable.length ? applicable.filter((st) => st.status === 'complete').length / applicable.length : 0;
   };
 
   const columns = [
     {
-      key: 'client', label: 'Client', wrap: true,
+      key: 'client', label: 'Client', width: '24%', wrap: true,
       sortValue: (r) => r.entity?.name || null,
       render: (r) => {
         const latest = (r.notes || [])[0];
         return (
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
-            <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 2 }}>
-              {r.template?.name || '—'} · {r.owner?.name ? `Owner: ${r.owner.name}` : 'No owner'}
-            </div>
             {latest && (
               <div
                 title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
@@ -178,96 +240,23 @@ ${latest.body}`}
       },
     },
     {
-      key: 'status', label: 'Status', width: 120, wrap: true,
-      sortValue: (r) => statusMeta(r.status).label,
-      render: (r) => {
-        const meta = statusMeta(r.status);
-        if (r.status !== 'issues') return <span style={chipStyle(meta.tone)}>{meta.label}</span>;
-        return (
-          <span
-            style={{ display: 'inline-block' }}
-            onMouseEnter={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              setHoverIssue({ id: r.id, top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 272) });
-            }}
-            onMouseLeave={() => setHoverIssue((h) => (h?.id === r.id ? null : h))}
-          >
-            <span style={{ ...chipStyle(meta.tone), cursor: 'help' }}>{meta.label}</span>
-            {hoverIssue?.id === r.id && (
-              <div style={{
-                position: 'fixed', top: hoverIssue.top, left: hoverIssue.left, zIndex: 50,
-                width: 260, background: '#0f172a', color: '#fff', fontSize: 13, lineHeight: 1.45,
-                padding: '9px 11px', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
-                whiteSpace: 'normal', fontWeight: 400,
-              }}>
-                {r.issue_note || 'No reason recorded yet — open the client to add one.'}
-              </div>
-            )}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'progress', label: 'Progress', width: '17%',
-      sortValue: (r) => { const s = summarise(r); return s.total > 0 ? s.done / s.total : 0; },
-      render: (r) => { const s = summarise(r); return <ProgressBar done={s.done} total={s.total} />; },
-    },
-    {
-      key: 'flags', label: 'Waiting on', width: '20%', wrap: true, sortable: false,
-      render: (r) => {
-        const s = summarise(r);
-        return (
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {s.waitingClient > 0 && (
-              <span style={{ ...chipStyle('warning'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Hourglass size={10} /> {s.waitingClient} on client
-              </span>
-            )}
-            {s.waitingExternal > 0 && (
-              <span style={{ ...chipStyle('accent'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Clock size={10} /> {s.waitingExternal} on HMRC/3rd party
-              </span>
-            )}
-            {s.overdue > 0 && (
-              <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <AlertTriangle size={10} /> {s.overdue} overdue
-              </span>
-            )}
-            {r.escalation_status && r.escalation_status !== 'none' && (
-              <span style={chipStyle(r.escalation_status === 'paused' ? 'neutral' : 'danger')}>
-                {r.escalation_status.replace(/_/g, ' ')}
-              </span>
-            )}
-            {(r.handovers || []).some((h) => h.due && !h.done_at && new Date(h.due) <= new Date()) && (
-              <span style={chipStyle('warning')}>handover due</span>
-            )}
-            {r.checkin_due && !r.checkin_sent_at && new Date(r.checkin_due) <= new Date() && (
-              <span style={chipStyle('info')}>check-in due</span>
-            )}
-            {r.client_replied_at && (
-              <span
-                style={chipStyle('success')}
-                title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — chasing held until it's processed`}
-              >
-                replied 📩
-              </span>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: 'age', label: 'Age', width: 100, align: 'right', wrap: true, firstDir: 'desc',
-      sortValue: (r) => daysSince(r.started_at),
-      render: (r) => {
-        const age = daysSince(r.started_at);
-        return (
-          <div style={{ fontSize: 13, color: '#64748b', textAlign: 'right' }}>
-            {age != null ? `${age}d in` : ''}
-            {r.target_date ? <div>due {new Date(r.target_date).toLocaleDateString('en-GB')}</div> : null}
-          </div>
-        );
-      },
+      key: 'progress', label: 'Progress', wrap: true,
+      sortValue: progress,
+      render: (r) => (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {groupSteps(r.steps).map((g) => {
+            const key = `${r.id}|${g.name}`;
+            return (
+              <GroupChip
+                key={g.name}
+                group={g}
+                hovered={hoverGroup?.key === key ? hoverGroup : null}
+                onHover={(pos) => setHoverGroup(pos ? { key, ...pos } : (h) => (h?.key === key ? null : h))}
+              />
+            );
+          })}
+        </div>
+      ),
     },
     {
       key: 'actions', label: '', width: 190, align: 'right', sortable: false,

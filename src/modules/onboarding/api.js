@@ -186,7 +186,7 @@ export async function listOnboardings() {
       template:onboarding_templates(id, code, name),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
-      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, milestone, auto_completed_at),
+      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, group_sort, sort, milestone, auto_completed_at),
       handovers:onboarding_handovers(area, due, done_at),
       notes:onboarding_activity(id, kind, body, created_at, author:staff_profiles!onboarding_activity_created_by_fkey(id, name))
     `)
