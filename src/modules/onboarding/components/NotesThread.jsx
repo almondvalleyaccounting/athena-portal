@@ -57,13 +57,17 @@ export default function NotesThread({ onboardingId, notes, onAdded, maxHeight = 
       </div>
       {error && <div style={{ color: tones.danger.fg, fontSize: 13, marginBottom: 8 }}>{error}</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight, overflowY: 'auto' }}>
-        {sorted.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No notes yet.</div>}
+        {sorted.length === 0 && <div style={{ fontSize: 13.5, color: '#64748b' }}>No notes yet.</div>}
         {sorted.map((n) => (
-          <div key={n.id} style={{ fontSize: 13.5 }}>
-            <div style={{ color: '#94a3b8', marginBottom: 2 }}>
-              {n.author?.name || 'Athena'} · {fmtNoteTime(n.created_at)}
+          <div key={n.id} style={{
+            fontSize: 14, background: '#fff', border: '1px solid #e2e8f0',
+            borderLeft: '3px solid #0e7fe0', borderRadius: 8, padding: '9px 12px',
+          }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 4, fontSize: 13 }}>
+              <span style={{ fontWeight: 600, color: '#0f172a' }}>{n.author?.name || 'Athena'}</span>
+              <span style={{ color: '#64748b' }}>{fmtNoteTime(n.created_at)}</span>
             </div>
-            <div style={{ color: '#334155', whiteSpace: 'pre-wrap' }}>{n.body}</div>
+            <div style={{ color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{n.body}</div>
           </div>
         ))}
       </div>

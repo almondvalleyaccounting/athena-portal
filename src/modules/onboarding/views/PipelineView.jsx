@@ -8,7 +8,7 @@ import { tones, pillStyle, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
-import NotesThread, { fmtNoteTime } from '../components/NotesThread';
+import NotesThread from '../components/NotesThread';
 import { listOnboardings, setOnboardingStatus, setOnboardingPriority, priorityMeta, ONBOARDING_PRIORITIES, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -227,7 +227,6 @@ export default function PipelineView() {
       key: 'client', label: 'Client', width: '24%', wrap: true,
       sortValue: (r) => r.entity?.name || null,
       render: (r) => {
-        const latest = (r.notes || [])[0];
         return (
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
@@ -239,17 +238,6 @@ export default function PipelineView() {
               )}
               {r.priority === 'low' && <span style={chipStyle('neutral')}>Low</span>}
             </div>
-            {latest && (
-              <div
-                title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
-
-${latest.body}`}
-                style={{ fontSize: 13, color: '#475569', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              >
-                <MessageSquare size={10} style={{ verticalAlign: -1, marginRight: 4, color: '#94a3b8' }} />
-                {latest.body}
-              </div>
-            )}
           </div>
         );
       },
