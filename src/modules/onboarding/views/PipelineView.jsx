@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, MessageSquare, CheckCircle2, RotateCcw, Archive } from 'lucide-react';
+import { UserPlus, MessageSquare, CheckCircle2, RotateCcw, Archive, Flag } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import DataTable from '../../../components/DataTable';
 import RowMenu from '../../../components/RowMenu';
-import { tones, pillStyle } from '../../../lib/tokens';
+import { tones, pillStyle, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
 import NotesThread, { fmtNoteTime } from '../components/NotesThread';
-import { listOnboardings, setOnboardingStatus, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
+import { listOnboardings, setOnboardingStatus, setOnboardingPriority, priorityMeta, ONBOARDING_PRIORITIES, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
@@ -109,6 +109,9 @@ function GroupChip({ group, hovered, onHover }) {
   );
 }
 
+// High priority always on top, whatever the column sort.
+const pinByPriority = (r) => priorityMeta(r.priority).rank;
+
 export default function PipelineView() {
   const navigate = useNavigate();
   const { profile } = useAuth();
@@ -193,6 +196,10 @@ export default function PipelineView() {
       } else if (action === 'reopen') {
         await setOnboardingStatus(r.id, 'active', { actorId: profile?.id, prevStatus: r.status });
         patch = { status: 'active', completed_at: null };
+      } else if (action.startsWith('priority:')) {
+        const priority = action.slice('priority:'.length);
+        await setOnboardingPriority(r.id, priority, { actorId: profile?.id, prevPriority: r.priority });
+        patch = { priority };
       } else if (action === 'archive') {
         await setOnboardingArchived(r.id, true, { actorId: profile?.id });
         patch = { archived_at: new Date().toISOString() };
@@ -223,7 +230,15 @@ export default function PipelineView() {
         const latest = (r.notes || [])[0];
         return (
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>{r.entity?.name || '—'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
+              {r.entity?.name || '—'}
+              {r.priority === 'high' && (
+                <span style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Flag size={10} /> High
+                </span>
+              )}
+              {r.priority === 'low' && <span style={chipStyle('neutral')}>Low</span>}
+            </div>
             {latest && (
               <div
                 title={`${latest.author?.name || 'Athena'} · ${fmtNoteTime(latest.created_at)}
@@ -276,6 +291,9 @@ ${latest.body}`}
           r.status === 'complete'
             ? { label: 'Reopen…', icon: RotateCcw, onClick: act('reopen') }
             : openCount > 0 && { label: `Mark complete… (${openCount} step${openCount === 1 ? '' : 's'} open)`, icon: CheckCircle2, onClick: act('complete') },
+          ...ONBOARDING_PRIORITIES.filter((p) => p.value !== (r.priority || 'normal')).map((p) => ({
+            label: `${p.label} priority`, icon: Flag, onClick: act(`priority:${p.value}`),
+          })),
           { label: 'Archive', icon: Archive, onClick: act('archive'), danger: true },
         ].filter(Boolean);
         return (
@@ -368,6 +386,7 @@ ${latest.body}`}
           rowHref={(r) => `/onboarding/${r.id}`}
           onOpen={(href) => navigate(href)}
           rowStyle={(r) => (busyId === r.id ? { opacity: 0.55 } : undefined)}
+          pinFirst={pinByPriority}
           sort={sort}
           onSort={(next) => { setSort(next); setPage(1); }}
           page={page}

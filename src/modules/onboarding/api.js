@@ -43,6 +43,17 @@ export const ONBOARDING_STATUSES = [
   { value: 'cancelled', label: 'Cancelled', tone: 'neutral' },
 ];
 
+// High always sits at the top of the list (rank is the list's pin order).
+export const ONBOARDING_PRIORITIES = [
+  { value: 'high', label: 'High', tone: 'danger', rank: 0 },
+  { value: 'normal', label: 'Normal', tone: 'neutral', rank: 1 },
+  { value: 'low', label: 'Low', tone: 'neutral', rank: 2 },
+];
+
+export function priorityMeta(value) {
+  return ONBOARDING_PRIORITIES.find((p) => p.value === value) || ONBOARDING_PRIORITIES[1];
+}
+
 // Editable service selection — gates conditional step groups, handover areas
 // (the per-area "task owner") and the 3-month check-in tiles. Keys match
 // onboarding_template_steps.service_condition.
@@ -674,6 +685,13 @@ export async function setOnboardingStatus(id, status, { actorId, prevStatus } = 
 
 // Archive / restore — filed away from the working List and Board without
 // changing status (a completed client stays completed once archived).
+export async function setOnboardingPriority(id, priority, { actorId, prevPriority } = {}) {
+  await updateOnboarding(id, { priority }, {
+    actorId,
+    logBody: `Priority: ${priorityMeta(prevPriority).label} → ${priorityMeta(priority).label}`,
+  });
+}
+
 export async function setOnboardingArchived(id, archived, { actorId } = {}) {
   await updateOnboarding(id, { archived_at: archived ? new Date().toISOString() : null }, {
     actorId,

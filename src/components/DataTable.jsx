@@ -47,6 +47,9 @@ export function tablePageSize(defaultSize = 50) {
               browser for every table
   renderExpanded: (row) => node | null — detail shown full-width under a
               row (expand in place); the caller decides which rows are open
+  pinFirst:   (row) => number — a rank applied over any column sort, lower
+              first (e.g. high-priority rows always on top); ties keep the
+              column order
 
   Clicks on a button, link, input, select or label inside a row act on that
   control and do not open the row.
@@ -71,7 +74,7 @@ export default function DataTable({
   columns, rows, rowKey = (r) => r.id, rowHref, onOpen, onRowClick, rowStyle, rowTitle,
   sort: sortProp, onSort: onSortProp, defaultSort = null,
   page: pageProp, onPage: onPageProp, pageSize: pageSizeProp = 50,
-  footer, selection, renderExpanded, empty = 'Nothing to show.',
+  footer, selection, renderExpanded, pinFirst, empty = 'Nothing to show.',
 }) {
   const [sortState, setSortState] = useState(defaultSort);
   const [pageState, setPageState] = useState(1);
@@ -82,7 +85,10 @@ export default function DataTable({
   const page = pageProp !== undefined ? pageProp : pageState;
   const onPage = onPageProp || setPageState;
 
-  const sorted = useMemo(() => sortRows(rows, columns, sort), [rows, columns, sort]);
+  const sorted = useMemo(() => {
+    const byColumn = sortRows(rows, columns, sort);
+    return pinFirst ? [...byColumn].sort((a, b) => pinFirst(a) - pinFirst(b)) : byColumn;
+  }, [rows, columns, sort, pinFirst]);
 
   // Uncontrolled paging: a filter that changes the rows goes back to page 1.
   // Keyed on a cheap signature, not the array, so a caller that rebuilds the

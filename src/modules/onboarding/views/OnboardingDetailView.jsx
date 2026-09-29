@@ -15,7 +15,7 @@ import DateField from '../components/DateField';
 import NotesThread from '../components/NotesThread';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addDirectorSa,
-  isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus,
+  isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus, ONBOARDING_PRIORITIES, setOnboardingPriority,
   outstandingSteps, autoCompletedSteps,
 } from '../api';
 
@@ -136,6 +136,15 @@ export default function OnboardingDetailView() {
     } catch (e) { setError(e.message); load(); }
   }
 
+  async function handlePriority(priority) {
+    const prev = ob.priority;
+    setOb((o) => ({ ...o, priority }));
+    try {
+      await setOnboardingPriority(ob.id, priority, { actorId: profile?.id, prevPriority: prev });
+      load();
+    } catch (e) { setError(e.message); load(); }
+  }
+
   async function handleObField(patch) {
     setOb((o) => ({ ...o, ...patch }));
     try { await updateOnboarding(ob.id, patch); } catch (e) { setError(e.message); load(); }
@@ -180,6 +189,10 @@ export default function OnboardingDetailView() {
             <label style={{ fontSize: 13, color: '#64748b' }}>Status</label>
             <select style={selectStyle} value={ob.status} onChange={(e) => handleObStatus(e.target.value)}>
               {ONBOARDING_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <label style={{ fontSize: 13, color: '#64748b' }}>Priority</label>
+            <select style={selectStyle} value={ob.priority || 'normal'} onChange={(e) => handlePriority(e.target.value)}>
+              {ONBOARDING_PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
             <label style={{ fontSize: 13, color: '#64748b' }}>Owner</label>
             <select style={selectStyle} value={ob.owner_id || ''} onChange={(e) => handleObField({ owner_id: e.target.value || null })}>
