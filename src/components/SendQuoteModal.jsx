@@ -22,6 +22,85 @@ const parseEmails = (raw) => {
     });
 };
 
+const gbp = (n) => `£${(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+// What the client receives for a single quote. The message box holds only the
+// greeting — send-quote-email adds the table, the Direct Debit, the accept
+// button and the sign-off — so without this the dialog looks like it is about
+// to send an empty email. Mirrors renderEmailHtml in send-quote-email; change
+// both together.
+function SingleQuotePreview({ quote, lineItems, message, senderName }) {
+  const monthlyGross = Number(quote.monthly_gross) || 0;
+  const monthlyNet = round2((Number(quote.annual_total) || 0) / 12);
+  const monthlyVat = round2(monthlyGross - monthlyNet);
+  const annualGross = round2(monthlyGross * 12);
+  const items = lineItems || [];
+  const recurring = items.filter(l => l.is_recurring && Number(l.annual_amount) !== 0)
+    .map(l => ({ label: l.description || 'Service', monthly: round2((Number(l.annual_amount) || 0) / 12) }));
+  const oneOff = items.filter(l => !l.is_recurring && Number(l.annual_amount) !== 0);
+  const gap = round2(monthlyNet - recurring.reduce((t, l) => t + l.monthly, 0));
+  if (Math.abs(gap) >= 0.01 && recurring.length) recurring.push({ label: 'Adjustment', monthly: gap });
+  const validUntil = quote.valid_until
+    ? new Date(quote.valid_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+  const paras = String(message || '').trim().split(/\n{2,}/).filter(Boolean);
+  const cell = 'px-3 py-1.5 border-b border-gray-100';
+
+  return (
+    <div className="border border-gray-200 rounded-lg bg-gray-50 p-3 text-[13px] text-gray-800 space-y-3">
+      <div className="text-[11px] font-semibold tracking-wider text-ocean-700 border-b-2 border-ocean-700 pb-1">
+        ALMOND VALLEY ACCOUNTING
+      </div>
+      {paras.map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>)}
+      <table className="w-full bg-white border border-gray-200 border-collapse">
+        <thead>
+          <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
+            <th className={`${cell} text-left font-semibold`}>Service</th>
+            <th className={`${cell} text-right font-semibold`}>Per month</th>
+          </tr>
+        </thead>
+        <tbody>
+          {recurring.map((l, i) => (
+            <tr key={i}><td className={cell}>{l.label}</td><td className={`${cell} text-right whitespace-nowrap`}>{gbp(l.monthly)}</td></tr>
+          ))}
+          <tr className="font-semibold"><td className={cell}>Monthly fee (excl. VAT)</td><td className={`${cell} text-right`}>{gbp(monthlyNet)}</td></tr>
+          <tr className="text-gray-500"><td className={cell}>VAT at 20%</td><td className={`${cell} text-right`}>{gbp(monthlyVat)}</td></tr>
+          <tr className="bg-ocean-700 text-white font-semibold"><td className="px-3 py-1.5">Monthly Direct Debit</td><td className="px-3 py-1.5 text-right">{gbp(monthlyGross)}</td></tr>
+        </tbody>
+      </table>
+      <p className="text-[11px] text-gray-500 -mt-1">
+        12 equal monthly payments: 12 &times; {gbp(monthlyGross)} = {gbp(annualGross)} a year including VAT. Nothing extra is added for paying monthly.
+      </p>
+      {oneOff.length > 0 && (
+        <table className="w-full bg-white border border-gray-200 border-collapse">
+          <thead>
+            <tr className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
+              <th className={`${cell} text-left font-semibold`}>One-off</th>
+              <th className={`${cell} text-right font-semibold`}>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {oneOff.map((l, i) => (
+              <tr key={i}><td className={cell}>{l.description || 'One-off fee'}</td><td className={`${cell} text-right whitespace-nowrap`}>{gbp(l.annual_amount)} + VAT</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="text-center">
+        <span className="inline-block bg-ocean-700 text-white font-semibold rounded-md px-4 py-2">Review and accept your quote</span>
+        <p className="text-[11px] text-gray-400 mt-1">{validUntil ? `This quote is valid until ${validUntil}.` : 'The link works for a limited time.'}</p>
+      </div>
+      <p>The full quote, with what each service covers, is attached. If you have any questions, just reply to this email.</p>
+      <div>
+        <p>Kind regards,</p>
+        {senderName && <p className="font-semibold">{senderName}</p>}
+        <p className="text-gray-500 text-xs">Almond Valley Accounting</p>
+      </div>
+    </div>
+  );
+}
+
 // Modal for composing and sending a quote to a client via email.
 // Generates PDF client-side, sends via Supabase Edge Function.
 export default function SendQuoteModal({ quote, lineItems, profile, onSent, onClose, pdfGenerator, groupId, entityIds }) {
@@ -170,7 +249,7 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 max-h-[calc(100vh-48px)] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl p-5 max-h-[calc(100vh-48px)] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-sm font-bold text-ocean-700">Send Quote to Client</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
@@ -258,14 +337,22 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Message</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  {groupId ? 'Message' : <>Opening message <span className="text-gray-400">(the fees, accept button and sign-off are added below it)</span></>}
+                </label>
                 <textarea
                   value={message}
                   onChange={e => setMessage(e.target.value)}
-                  rows={8}
+                  rows={groupId ? 8 : 4}
                   className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono text-xs"
                 />
               </div>
+              {!groupId && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">What the client will receive</label>
+                  <SingleQuotePreview quote={quote} lineItems={lineItems} message={message} senderName={profile?.name} />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 mt-4">
