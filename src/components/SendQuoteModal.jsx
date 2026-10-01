@@ -30,7 +30,9 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // button and the sign-off — so without this the dialog looks like it is about
 // to send an empty email. Mirrors renderEmailHtml in send-quote-email; change
 // both together.
-function SingleQuotePreview({ quote, lineItems, message, senderName }) {
+export const DEFAULT_CLOSING = 'The full quote, with what each service covers, is attached. If you have any questions, just reply to this email.';
+
+function SingleQuotePreview({ quote, lineItems, message, closing, senderName }) {
   const monthlyGross = Number(quote.monthly_gross) || 0;
   const monthlyNet = round2((Number(quote.annual_total) || 0) / 12);
   const monthlyVat = round2(monthlyGross - monthlyNet);
@@ -91,7 +93,7 @@ function SingleQuotePreview({ quote, lineItems, message, senderName }) {
         <span className="inline-block bg-ocean-700 text-white font-semibold rounded-md px-4 py-2">Review and accept your quote</span>
         <p className="text-[11px] text-gray-400 mt-1">{validUntil ? `This quote is valid until ${validUntil}.` : 'The link works for a limited time.'}</p>
       </div>
-      <p>The full quote, with what each service covers, is attached. If you have any questions, just reply to this email.</p>
+      {String(closing || '').trim().split(/\n{2,}/).filter(Boolean).map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>)}
       <div>
         <p>Kind regards,</p>
         {senderName && <p className="font-semibold">{senderName}</p>}
@@ -143,6 +145,26 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
     return () => { live = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quote.entity_id, groupId]);
+  // The closing paragraph and who signs it. Sign-off is limited to the people
+  // who may quote fees (can_view_client_fees); send-quote-email checks the
+  // same thing, so the list here is only a convenience.
+  const [closing, setClosing] = useState(DEFAULT_CLOSING);
+  const [signers, setSigners] = useState([]);
+  const [signOffId, setSignOffId] = useState(profile?.id || '');
+  useEffect(() => {
+    if (groupId) return;
+    let live = true;
+    supabase.from('staff_profiles')
+      .select('id, name')
+      .eq('is_active', true)
+      .eq('can_view_client_fees', true)
+      .order('name')
+      .then(({ data }) => { if (live) setSigners(data || []); });
+    return () => { live = false; };
+  }, [groupId]);
+  const signerName = signOffId === profile?.id
+    ? profile?.name
+    : (signers.find(s => s.id === signOffId)?.name || profile?.name);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
@@ -174,10 +196,15 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
     e => !toList.some(t => t.toLowerCase() === e.toLowerCase())
   );
 
-  const handleSend = async () => {
-    if (!toList.length) { setError('Enter at least one recipient email.'); return; }
-    setSending(true);
+  // A test is the exact email, sent only to the person at the keyboard. The
+  // server enforces that and leaves the quote's status alone.
+  const [testing, setTesting] = useState(false);
+  const [testSentTo, setTestSentTo] = useState('');
+  const handleSend = async (test = false) => {
+    if (!test && !toList.length) { setError('Enter at least one recipient email.'); return; }
+    (test ? setTesting : setSending)(true);
     setError('');
+    setTestSentTo('');
 
     try {
       // Generate PDF as base64 — use custom generator if provided (e.g. group PDF)
@@ -212,6 +239,9 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
             cc: ccList,
             subject,
             message,
+            closing,
+            sign_off_id: signOffId || undefined,
+            test_send: test || undefined,
             pdfBase64,
             filename: `${quote.quote_ref}.pdf`,
             include_accept_link: true,
@@ -239,12 +269,16 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
         console.warn('[send-quote-email] partial success:', data.warning, data);
       }
 
-      setSent(true);
-      if (onSent) onSent();
+      if (test) {
+        setTestSentTo(data?.sent_to || 'you');
+      } else {
+        setSent(true);
+        if (onSent) onSent();
+      }
     } catch (e) {
       setError(e.message || 'Failed to send email');
     }
-    setSending(false);
+    (test ? setTesting : setSending)(false);
   };
 
   return (
@@ -348,20 +382,56 @@ export default function SendQuoteModal({ quote, lineItems, profile, onSent, onCl
                 />
               </div>
               {!groupId && (
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">What the client will receive</label>
-                  <SingleQuotePreview quote={quote} lineItems={lineItems} message={message} senderName={profile?.name} />
-                </div>
+                <>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">
+                      Closing <span className="text-gray-400">(after the accept button, before the sign-off)</span>
+                    </label>
+                    <textarea
+                      value={closing}
+                      onChange={e => setClosing(e.target.value)}
+                      rows={3}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Signed by</label>
+                    <select
+                      value={signOffId}
+                      onChange={e => setSignOffId(e.target.value)}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
+                    >
+                      {profile?.id && <option value={profile.id}>Me{profile?.name ? ` (${profile.name})` : ''}</option>}
+                      {signers.filter(s => s.id !== profile?.id).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">What the client will receive</label>
+                    <SingleQuotePreview quote={quote} lineItems={lineItems} message={message} closing={closing} senderName={signerName} />
+                  </div>
+                </>
               )}
             </div>
 
             <div className="flex gap-2 mt-4">
-              <Btn onClick={handleSend} disabled={sending || !toList.length} className="flex-1">
+              <Btn onClick={() => handleSend(false)} disabled={sending || testing || !toList.length} className="flex-1">
                 {sending ? 'Sending...' : 'Send Quote'}
               </Btn>
+              {!groupId && (
+                <Btn onClick={() => handleSend(true)} disabled={sending || testing} variant="secondary">
+                  {testing ? 'Sending test...' : 'Send a test to me'}
+                </Btn>
+              )}
               <Btn onClick={onClose} variant="ghost">Cancel</Btn>
             </div>
 
+            {testSentTo && (
+              <p className="text-xs text-green-700 mt-2">
+                Test sent to {testSentTo}. The quote is unchanged and the accept button in the test does nothing.
+              </p>
+            )}
             <p className="text-[11px] text-gray-400 mt-2">
               The quote PDF will be generated and attached automatically.
             </p>

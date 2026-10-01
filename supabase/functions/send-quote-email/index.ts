@@ -18,6 +18,14 @@
 //     pdfBase64 | pdf_base64   : string (base64)    optional (attached if present)
 //     filename                 : string             optional (defaults to quote_ref)
 //     include_accept_link      : boolean            optional (default true)
+//     closing                  : string             optional (single quote: the
+//                                paragraph above the sign-off; default below)
+//     sign_off_id              : string (uuid)      optional (single quote: who
+//                                signs it — the caller, or an active staff
+//                                member with can_view_client_fees; default caller)
+//     test_send                : boolean            optional (single quote: send
+//                                the exact email to the CALLER only — no CC,
+//                                no BCC, a dead accept button, quote untouched)
 //   }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -116,6 +124,10 @@ function jsonResponse(data: unknown, status = 200) {
 // come from the line items; if they don't add up to the quote's net (a
 // rounding or a manual adjustment) an "Adjustment" row makes the table
 // reconcile rather than leaving the client to find the gap.
+function defaultClosing(hasPdf: boolean): string {
+  return `${hasPdf ? "The full quote, with what each service covers, is attached. " : ""}If you have any questions, just reply to this email.`;
+}
+
 function renderEmailHtml(opts: {
   messageText: string;
   quote: Record<string, unknown>;
@@ -123,8 +135,9 @@ function renderEmailHtml(opts: {
   acceptUrl: string | null;
   senderName: string | null;
   hasPdf: boolean;
+  closingText: string | null;
 }): string {
-  const { messageText, quote, lineItems, acceptUrl, senderName, hasPdf } = opts;
+  const { messageText, quote, lineItems, acceptUrl, senderName, hasPdf, closingText } = opts;
 
   const validUntil = formatDateGB(quote.valid_until as string);
   const monthlyGross = Number(quote.monthly_gross) || 0;
@@ -179,7 +192,7 @@ function renderEmailHtml(opts: {
       <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">${validUntil ? `This quote is valid until ${escapeHtml(validUntil)}.` : `The link works for ${ACCEPT_TOKEN_TTL_DAYS} days.`}</p>
     </td></tr>` : "";
 
-  const close = `${hasPdf ? "The full quote, with what each service covers, is attached. " : ""}If you have any questions, just reply to this email.`;
+  const close = closingText ?? defaultClosing(hasPdf);
 
   return `<!doctype html>
 <html>
@@ -194,7 +207,7 @@ function renderEmailHtml(opts: {
           <tr><td style="padding:24px 28px 4px;">${message}</td></tr>
           <tr><td style="padding:0 28px;">${servicesTable}${oneOffTable}</td></tr>
           ${acceptBlock}
-          <tr><td style="padding:18px 28px 4px;">${para(close)}</td></tr>
+          ${close.trim() ? `<tr><td style="padding:18px 28px 4px;">${close.trim().split(/\n{2,}/).filter(Boolean).map(para).join("")}</td></tr>` : ""}
           <tr><td style="padding:0 28px 24px;">
             <p style="margin:0;font-size:15px;color:#1f2937;">Kind regards,</p>
             ${senderName ? `<p style="margin:0;font-size:15px;color:#1f2937;font-weight:600;">${escapeHtml(senderName)}</p>` : ""}
@@ -402,6 +415,9 @@ Deno.serve(async (req) => {
       (body.pdf_base64 as string | undefined) ||
       null;
     const explicitFilename = body.filename as string | undefined;
+    // A test goes to the caller and nobody else, whatever the To box says,
+    // and changes nothing on the quote — so it is safe on a live quote.
+    const testSend = body.test_send === true;
     const includeAcceptLink =
       body.include_accept_link === undefined
         ? true
@@ -421,6 +437,9 @@ Deno.serve(async (req) => {
     // accept link covers EVERY member quote in one click.
     const groupId = (body.group_id as string) || null;
     if (groupId) {
+      if (testSend) {
+        return jsonResponse({ success: false, error: "A test send is for a single quote" }, 400);
+      }
       if (!to || !subject) {
         return jsonResponse({ success: false, error: "At least one recipient and a subject are required" }, 400);
       }
@@ -536,7 +555,7 @@ Deno.serve(async (req) => {
         400,
       );
     }
-    if (!to || !subject) {
+    if ((!to && !testSend) || !subject) {
       return jsonResponse(
         { success: false, error: "At least one recipient and a subject are required" },
         400,
@@ -589,7 +608,10 @@ Deno.serve(async (req) => {
     // 6. Accept link — bind the recipient email into the token so it can be
     //    recorded verbatim on acceptance (non-repudiation, phase 1).
     let acceptUrl: string | null = null;
-    if (includeAcceptLink) {
+    if (includeAcceptLink && testSend) {
+      // Show the button, but never mint a token that could accept the quote.
+      acceptUrl = "#";
+    } else if (includeAcceptLink) {
       const token = await signAcceptToken({
         quoteId: quote.id,
         recipientEmail: to,
@@ -597,31 +619,49 @@ Deno.serve(async (req) => {
       acceptUrl = `${PORTAL_PUBLIC_URL}/accept-quote?token=${encodeURIComponent(token)}`;
     }
 
-    // 7. Build HTML
+    // 7. Who signs it and how it closes. The sign-off is chosen in the send
+    //    dialog, but only from people who may quote fees — anyone else's id
+    //    falls back to the caller rather than putting a stranger's name on it.
+    const closingText = typeof body.closing === "string" ? body.closing : null;
+    let senderName: string | null = (callerProfile.name as string | null) || null;
+    const signOffId = typeof body.sign_off_id === "string" ? body.sign_off_id : null;
+    if (signOffId && signOffId !== callerProfile.id) {
+      const { data: signer } = await serviceClient
+        .from("staff_profiles")
+        .select("name")
+        .eq("id", signOffId)
+        .eq("is_active", true)
+        .eq("can_view_client_fees", true)
+        .maybeSingle();
+      if (signer?.name) senderName = signer.name as string;
+    }
+
+    // 8. Build HTML
     const html = renderEmailHtml({
       messageText, quote, lineItems, acceptUrl,
-      senderName: (callerProfile.name as string | null) || null,
+      senderName,
       hasPdf: !!pdfBase64,
+      closingText,
     });
 
-    // 8. Build Resend payload
+    // 9. Build Resend payload
     const filename = (explicitFilename || `${quote.quote_ref || "quote"}.pdf`)
       .replace(/[^a-zA-Z0-9._-]/g, "_");
     const resendPayload: Record<string, unknown> = {
       from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
-      to: toList,
-      subject,
+      to: testSend ? [callerProfile.email as string] : toList,
+      subject: testSend ? `[TEST] ${subject}` : subject,
       html,
     };
-    if (cc.length) resendPayload.cc = cc;
-    if (QUOTE_BCC_EMAIL) resendPayload.bcc = [QUOTE_BCC_EMAIL];
+    if (!testSend && cc.length) resendPayload.cc = cc;
+    if (!testSend && QUOTE_BCC_EMAIL) resendPayload.bcc = [QUOTE_BCC_EMAIL];
     if (pdfBase64) {
       resendPayload.attachments = [
         { filename: filename.endsWith(".pdf") ? filename : `${filename}.pdf`, content: pdfBase64 },
       ];
     }
 
-    // 9. Send via Resend
+    // 10. Send via Resend
     const resendResp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -661,7 +701,15 @@ Deno.serve(async (req) => {
     const resendId = (resendJson?.id as string) || null;
     const sentAt = new Date().toISOString();
 
-    // 10. Update quote row
+    if (testSend) {
+      await serviceClient.from("audit_log").insert({
+        user_id: caller.id, action: "sent_test_to_self", entity_type: "quote", entity_id: quote.id,
+        detail: { recipient: callerProfile.email, subject, resend_id: resendId, signed_by: senderName },
+      });
+      return jsonResponse({ success: true, test: true, sent_to: callerProfile.email, resend_id: resendId });
+    }
+
+    // 11. Update quote row
     const { error: updateErr } = await serviceClient
       .from("quotes")
       .update({ status: "sent", sent_at: sentAt })
@@ -695,7 +743,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 11. Audit log success
+    // 12. Audit log success
     await serviceClient.from("audit_log").insert({
       user_id: caller.id,
       action: "sent_to_client",
@@ -710,6 +758,7 @@ Deno.serve(async (req) => {
         resend_id: resendId,
         had_pdf: Boolean(pdfBase64),
         had_accept_link: Boolean(acceptUrl),
+        signed_by: senderName,
       },
     });
 
