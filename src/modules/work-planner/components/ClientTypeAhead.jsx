@@ -10,7 +10,7 @@ function firstChar(name) {
 
 // steady: the dropdown keeps one height while you type, so a modal it sits in
 // doesn't scroll about as the results narrow (Bobby, 2026-09-28, Blocks).
-export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf, steady = false, placeholder }) {
+export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf, steady = false, placeholder, clearable = false }) {
   // "+ Add" is only offered when the caller actually handed us a way to create
   // a client. Most call sites (filters, settings) don't — and the row used to
   // render for them anyway, so clicking it threw into an empty catch and looked
@@ -78,8 +78,28 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
         value={open ? query : selected ? selected.name : ''}
         onFocus={() => { setOpen(true); setQuery(''); setLetter(null); }}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        style={inputStyle}
+        style={clearable && hasValue ? { ...inputStyle, paddingRight: 24 } : inputStyle}
       />
+      {/* clearable: an x to drop the client (a quick task with none is Admin). */}
+      {clearable && hasValue && (
+        <button
+          type="button"
+          title="Clear client"
+          aria-label="Clear client"
+          onMouseDown={(ev) => ev.preventDefault()}
+          onClick={() => { onChange(''); setQuery(''); }}
+          style={{
+            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+            width: 18, height: 18, padding: 0, border: 'none', borderRadius: 9,
+            background: 'transparent', color: '#94a3b8', cursor: 'pointer',
+            fontSize: 14, lineHeight: '18px', fontFamily: "'Outfit', sans-serif",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#0f172a'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+        >
+          &times;
+        </button>
+      )}
       {open && (
         <div
           style={{

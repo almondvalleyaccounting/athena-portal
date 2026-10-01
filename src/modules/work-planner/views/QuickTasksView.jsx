@@ -102,6 +102,7 @@ export default function QuickTasksView({ compact, onAction }) {
           onAddNew={addEntity}
           size="small"
           placeholder="Client (optional)"
+          clearable
         />
         <select style={selectStyle} value={service} onChange={(e) => setService(e.target.value)}>
           <option value="">Service</option>

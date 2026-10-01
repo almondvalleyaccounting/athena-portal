@@ -86,6 +86,8 @@ export default function QuickTaskModal({ task, staffList, entityList, progressNo
               value={form.entity_id}
               onChange={(id) => set('entity_id', id)}
               onAddNew={onAddEntity}
+              placeholder="Admin (no client)"
+              clearable
             />
           </div>
           <div style={{ flex: 1, marginBottom: 10 }}>
