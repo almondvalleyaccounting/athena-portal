@@ -10,7 +10,7 @@ function firstChar(name) {
 
 // steady: the dropdown keeps one height while you type, so a modal it sits in
 // doesn't scroll about as the results narrow (Bobby, 2026-09-28, Blocks).
-export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf, steady = false }) {
+export default function ClientTypeAhead({ entityList, value, onChange, onAddNew, size = 'normal', metaOf, steady = false, placeholder }) {
   // "+ Add" is only offered when the caller actually handed us a way to create
   // a client. Most call sites (filters, settings) don't — and the row used to
   // render for them anyway, so clicking it threw into an empty catch and looked
@@ -74,7 +74,7 @@ export default function ClientTypeAhead({ entityList, value, onChange, onAddNew,
   return (
     <div ref={ref} style={{ position: 'relative', display: isSmall ? 'inline-block' : 'block' }}>
       <input
-        placeholder={isSmall ? 'Client...' : 'Search clients...'}
+        placeholder={placeholder || (isSmall ? 'Client...' : 'Search clients...')}
         value={open ? query : selected ? selected.name : ''}
         onFocus={() => { setOpen(true); setQuery(''); setLetter(null); }}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}

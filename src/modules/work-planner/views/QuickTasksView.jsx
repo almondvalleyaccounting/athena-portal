@@ -28,7 +28,8 @@ export default function QuickTasksView({ compact, onAction }) {
 
   const now = today();
 
-  const canAdd = title.trim() && clientId && service && assigneeId;
+  // Client is optional: a task with none is internal admin work, shown as "Admin".
+  const canAdd = title.trim() && service && assigneeId;
 
   async function handleAdd() {
     if (!canAdd) return;
@@ -100,6 +101,7 @@ export default function QuickTasksView({ compact, onAction }) {
           onChange={setClientId}
           onAddNew={addEntity}
           size="small"
+          placeholder="Client (optional)"
         />
         <select style={selectStyle} value={service} onChange={(e) => setService(e.target.value)}>
           <option value="">Service</option>
@@ -179,6 +181,7 @@ export default function QuickTasksView({ compact, onAction }) {
                   display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap',
                 }}>
                   {task.entity_id && <span onClick={(e) => { e.stopPropagation(); window.location.href = `/clients/${task.entity_id}`; }} style={{ cursor: 'pointer', color: '#0e7fe0', textDecoration: 'none' }} onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'} onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}>{clientName(task.entity_id, entityMap)}</span>}
+                  {!task.entity_id && <span style={{ color: '#64748b', fontWeight: 500 }}>Admin</span>}
                   <span style={{ color: '#94a3b8' }}>{task.service}</span>
                   <DueBadge date={task.due_date} />
                   {isPlanned && (
