@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Lock, Plus, Trash2, Pin, PinOff, Check, ChevronDown, ChevronRight,
   Search, ExternalLink, NotebookPen, Archive, RotateCcw, UserPlus, Inbox, X, CornerDownLeft,
-  Users,
+  Users, FileText,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { Card, SectionTitle, Button, Input, Textarea, Select, Pill, EmptyState, FONT, SERIF } from '../components/ui';
@@ -163,10 +163,12 @@ export default function PrepView() {
   };
 
   // Pull a colleague's point into my own notes so it joins the 1-2-1 agenda.
-  // Attribution is kept in the text — I can reword it from there.
+  // Attribution goes in the headline, their words in the detail — I can reword
+  // either from there.
   const adoptContribution = (c) => add({
     kind: c.kind,
-    body: `${c.contributor?.name || 'A colleague'}: ${c.body}`,
+    body: `Feedback from ${c.contributor?.name || 'a colleague'}`,
+    detail: c.body,
   });
 
   const answerRequest = async (request, kind, body, visibility) => {
@@ -190,7 +192,14 @@ export default function PrepView() {
   const open = notes.filter((n) => n.status === 'open');
   const parked = notes.filter((n) => n.status === 'parked');
   const discussed = notes.filter((n) => n.status === 'discussed');
-  const adoptedBodies = useMemo(() => new Set(notes.map((n) => n.body)), [notes]);
+  // A contribution already pulled into my notes drops out of "From colleagues",
+  // or it shows twice. Older adoptions put "Name: words" in the body; newer
+  // ones put the words in the detail — match either.
+  const isAdopted = useCallback((c) => {
+    const legacy = `${c.contributor?.name || 'A colleague'}: ${c.body}`;
+    return notes.some((n) => n.body === legacy || n.detail === c.body);
+  }, [notes]);
+  const pendingContributions = contributions.filter((c) => !isAdopted(c));
 
   return (
     <div style={{ padding: '32px 32px 80px', margin: '0 auto' }}>
@@ -257,11 +266,10 @@ export default function PrepView() {
         <RequestStrip requests={requests} onCancel={cancelRequest} />
       )}
 
-      {contributions.length > 0 && (
+      {pendingContributions.length > 0 && (
         <ContributionsPanel
-          contributions={contributions}
+          contributions={pendingContributions}
           subjectName={subject?.name || ''}
-          adoptedBodies={adoptedBodies}
           onAdopt={adoptContribution}
           onDelete={dropContribution}
         />
@@ -433,7 +441,7 @@ function RequestStrip({ requests, onCancel }) {
   );
 }
 
-function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt, onDelete }) {
+function ContributionsPanel({ contributions, subjectName, onAdopt, onDelete }) {
   return (
     <Card style={{ marginBottom: 24, borderColor: '#e0e7ff' }}>
       <div style={{ fontFamily: SERIF, fontSize: 17, color: '#0f172a', marginBottom: 4 }}>
@@ -445,7 +453,6 @@ function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {contributions.map((c) => {
-          const adopted = adoptedBodies.has(`${c.contributor?.name || 'A colleague'}: ${c.body}`);
           const kind = PREP_KINDS.find((k) => k.key === c.kind);
           return (
             <div key={c.id} style={{ border: '1px solid #f1f5f9', borderRadius: 10, padding: '10px 12px', background: '#fbfcfe' }}>
@@ -463,15 +470,14 @@ function ContributionsPanel({ contributions, subjectName, adoptedBodies, onAdopt
               <div style={{ fontFamily: FONT, fontSize: 14, color: '#1e293b', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{c.body}</div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginTop: 8 }}>
                 <button
-                  onClick={() => !adopted && onAdopt(c)}
-                  disabled={adopted}
+                  onClick={() => onAdopt(c)}
                   style={{
                     fontFamily: FONT, fontSize: 13, fontWeight: 600,
                     background: 'none', border: 'none', padding: '2px 6px',
-                    color: adopted ? '#94a3b8' : '#0e7fe0', cursor: adopted ? 'default' : 'pointer',
+                    color: '#0e7fe0', cursor: 'pointer',
                   }}
                 >
-                  {adopted ? '✓ in my notes' : <><CornerDownLeft size={11} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />Add to my notes</>}
+                  <CornerDownLeft size={11} style={{ marginRight: 4, verticalAlign: 'text-bottom' }} />Add to my notes
                 </button>
                 <IconBtn title="Clear out of my prep — the author keeps their copy" onClick={() => onDelete(c.id)}><Trash2 size={12} /></IconBtn>
               </div>
@@ -790,38 +796,48 @@ function NoteRow({ note, accent = '#0e7fe0', onPatch, onDelete }) {
         </div>
       ) : (
         <>
-          <div
-            onClick={() => !done && startEdit()}
-            style={{
-              fontFamily: FONT, fontSize: 14, color: '#0f172a', lineHeight: 1.5,
-              whiteSpace: 'pre-wrap', cursor: done ? 'default' : 'text',
-              textDecoration: done ? 'line-through' : 'none',
-              fontWeight: hasDetail ? 600 : 400,
-            }}
-          >{note.body}</div>
-          {hasDetail && (
-            <button
-              onClick={() => setOpen((v) => !v)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4,
-                fontFamily: FONT, fontSize: 12.5, fontWeight: 600, color: '#64748b',
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              }}
-            >
-              {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              {open ? 'Hide details' : 'Details'}
-            </button>
-          )}
-          {hasDetail && open && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <div
               onClick={() => !done && startEdit()}
               style={{
-                fontFamily: FONT, fontSize: 13.5, color: '#334155', lineHeight: 1.55,
-                whiteSpace: 'pre-wrap', marginTop: 6, padding: '8px 10px',
-                background: '#f8fafc', borderLeft: '3px solid #e2e8f0', borderRadius: 6,
-                cursor: done ? 'default' : 'text',
+                flex: 1, minWidth: 0,
+                fontFamily: FONT, fontSize: 14, color: '#0f172a', lineHeight: 1.5,
+                whiteSpace: 'pre-wrap', cursor: done ? 'default' : 'text',
+                textDecoration: done ? 'line-through' : 'none',
+                fontWeight: hasDetail ? 600 : 400,
               }}
-            >{note.detail}</div>
+            >{note.body}</div>
+            {hasDetail && (
+              <button
+                onClick={() => setOpen((v) => !v)}
+                title={open ? 'Close the detailed notes' : 'Read the detailed notes'}
+                style={{
+                  flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontFamily: FONT, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  padding: '3px 10px', borderRadius: 999,
+                  border: '1px solid ' + (open ? accent : '#e2e8f0'),
+                  background: open ? accent : '#f8fafc',
+                  color: open ? '#fff' : '#475569',
+                }}
+              >
+                <FileText size={11} />
+                {open ? 'Close' : 'Notes'}
+              </button>
+            )}
+          </div>
+          {hasDetail && open && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #e2e8f0' }}>
+              <div style={{ fontFamily: FONT, fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: '#94a3b8', marginBottom: 4 }}>
+                Detailed notes
+              </div>
+              <div
+                onClick={() => !done && startEdit()}
+                style={{
+                  fontFamily: FONT, fontSize: 13.5, color: '#334155', lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap', cursor: done ? 'default' : 'text',
+                }}
+              >{note.detail}</div>
+            </div>
           )}
         </>
       )}
