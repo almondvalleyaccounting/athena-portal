@@ -275,7 +275,7 @@ export default function PrepView() {
             kind={k}
             notes={open.filter((n) => n.kind === k.key)}
             subjectName={subjectName}
-            onAdd={(body) => add({ kind: k.key, body })}
+            onAdd={(body, detail) => add({ kind: k.key, body, detail })}
             onPatch={patch}
             onDelete={remove}
             loading={loadingNotes}
@@ -639,13 +639,17 @@ function InboxItem({ request, highlight, onAnswer, onDecline }) {
 
 function NoteColumn({ kind, notes, subjectName, onAdd, onPatch, onDelete, loading }) {
   const [text, setText] = useState('');
+  const [detail, setDetail] = useState('');
+  const [withDetail, setWithDetail] = useState(false);
   const accent = kind.key === 'work' ? '#0e7fe0' : '#7c3aed';
   const tint = kind.key === 'work' ? '#eff6ff' : '#f5f3ff';
 
   const submit = () => {
     if (!text.trim()) return;
-    onAdd(text.trim());
+    onAdd(text.trim(), detail.trim() || null);
     setText('');
+    setDetail('');
+    setWithDetail(false);
   };
 
   return (
@@ -659,11 +663,28 @@ function NoteColumn({ kind, notes, subjectName, onAdd, onPatch, onDelete, loadin
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={`Note about ${subjectName}…  (⌘/Ctrl + Enter to save)`}
-        style={{ minHeight: 62, fontSize: 14 }}
+        placeholder={withDetail
+          ? `Headline, e.g. "Payroll errors"`
+          : `Note about ${subjectName}…  (⌘/Ctrl + Enter to save)`}
+        style={{ minHeight: withDetail ? 40 : 62, fontSize: 14 }}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
       />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+      {withDetail && (
+        <Textarea
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+          placeholder="Detailed notes — examples, dates, clients. Hidden until the note is opened."
+          style={{ minHeight: 90, fontSize: 14, marginTop: 8 }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
+        />
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <button
+          onClick={() => { setWithDetail((v) => !v); if (withDetail) setDetail(''); }}
+          style={{ fontFamily: FONT, fontSize: 13, fontWeight: 600, background: 'none', border: 'none', padding: '2px 0', color: '#64748b', cursor: 'pointer' }}
+        >
+          {withDetail ? 'Remove details' : '+ Add details'}
+        </button>
         <Button variant="accent" onClick={submit} disabled={!text.trim()}>
           <Plus size={13} style={{ marginRight: 5, verticalAlign: 'text-bottom' }} />Add
         </Button>
@@ -684,16 +705,49 @@ function NoteColumn({ kind, notes, subjectName, onAdd, onPatch, onDelete, loadin
   );
 }
 
+// The headline is what shows. Detail sits behind a click so one long note
+// (examples, dates, clients) doesn't bury every other point in the column.
 function NoteRow({ note, accent = '#0e7fe0', onPatch, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(note.body);
+  const [detail, setDetail] = useState(note.detail || '');
+  const [open, setOpen] = useState(false);
   const done = note.status === 'discussed';
+  const hasDetail = !!(note.detail && note.detail.trim());
+
+  const startEdit = () => {
+    setBody(note.body);
+    setDetail(note.detail || '');
+    setEditing(true);
+  };
+
+  const cancel = () => {
+    setBody(note.body);
+    setDetail(note.detail || '');
+    setEditing(false);
+  };
 
   const save = () => {
-    const next = body.trim();
+    const nextBody = body.trim();
+    const nextDetail = detail.trim() || null;
     setEditing(false);
-    if (next && next !== note.body) onPatch(note.id, { body: next });
-    else setBody(note.body);
+    if (!nextBody) { cancel(); return; }
+    const p = {};
+    if (nextBody !== note.body) p.body = nextBody;
+    if (nextDetail !== (note.detail || null)) p.detail = nextDetail;
+    if (Object.keys(p).length) onPatch(note.id, p);
+  };
+
+  // Leaving one box for the other mustn't save-and-close; only leaving the
+  // editor altogether does.
+  const onEditorBlur = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    save();
+  };
+
+  const keys = (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save();
+    if (e.key === 'Escape') cancel();
   };
 
   return (
@@ -717,23 +771,59 @@ function NoteRow({ note, accent = '#0e7fe0', onPatch, onDelete }) {
       )}
 
       {editing ? (
-        <Textarea
-          value={body}
-          autoFocus
-          onChange={(e) => setBody(e.target.value)}
-          onBlur={save}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save(); if (e.key === 'Escape') { setBody(note.body); setEditing(false); } }}
-          style={{ minHeight: 56, fontSize: 14 }}
-        />
+        <div onBlur={onEditorBlur}>
+          <Textarea
+            value={body}
+            autoFocus
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={keys}
+            placeholder="Headline"
+            style={{ minHeight: 40, fontSize: 14 }}
+          />
+          <Textarea
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            onKeyDown={keys}
+            placeholder="Detailed notes (optional) — hidden until the note is opened"
+            style={{ minHeight: 90, fontSize: 14, marginTop: 6 }}
+          />
+        </div>
       ) : (
-        <div
-          onClick={() => !done && setEditing(true)}
-          style={{
-            fontFamily: FONT, fontSize: 14, color: '#0f172a', lineHeight: 1.5,
-            whiteSpace: 'pre-wrap', cursor: done ? 'default' : 'text',
-            textDecoration: done ? 'line-through' : 'none',
-          }}
-        >{note.body}</div>
+        <>
+          <div
+            onClick={() => !done && startEdit()}
+            style={{
+              fontFamily: FONT, fontSize: 14, color: '#0f172a', lineHeight: 1.5,
+              whiteSpace: 'pre-wrap', cursor: done ? 'default' : 'text',
+              textDecoration: done ? 'line-through' : 'none',
+              fontWeight: hasDetail ? 600 : 400,
+            }}
+          >{note.body}</div>
+          {hasDetail && (
+            <button
+              onClick={() => setOpen((v) => !v)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4,
+                fontFamily: FONT, fontSize: 12.5, fontWeight: 600, color: '#64748b',
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              }}
+            >
+              {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              {open ? 'Hide details' : 'Details'}
+            </button>
+          )}
+          {hasDetail && open && (
+            <div
+              onClick={() => !done && startEdit()}
+              style={{
+                fontFamily: FONT, fontSize: 13.5, color: '#334155', lineHeight: 1.55,
+                whiteSpace: 'pre-wrap', marginTop: 6, padding: '8px 10px',
+                background: '#f8fafc', borderLeft: '3px solid #e2e8f0', borderRadius: 6,
+                cursor: done ? 'default' : 'text',
+              }}
+            >{note.detail}</div>
+          )}
+        </>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>

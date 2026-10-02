@@ -401,6 +401,9 @@ export default function OneToOnesView() {
                       {kind?.label || n.kind}
                     </Pill>
                     <span style={{ fontFamily: FONT, fontSize: 14, color: '#0f172a', marginLeft: 8, whiteSpace: 'pre-wrap' }}>{n.body}</span>
+                    {n.detail && (
+                      <span style={{ fontFamily: FONT, fontSize: 12.5, color: '#94a3b8', marginLeft: 6 }}>+ details in prep</span>
+                    )}
                     {n.link_label && (
                       <span style={{ fontFamily: FONT, fontSize: 12.5, color: '#94a3b8', display: 'block', marginTop: 2 }}>
                         re: {n.link_label}
