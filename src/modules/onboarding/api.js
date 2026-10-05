@@ -199,7 +199,7 @@ export async function listOnboardings() {
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
       steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, group_sort, sort, milestone, auto_completed_at),
       handovers:onboarding_handovers(area, due, done_at),
-      notes:onboarding_activity(id, kind, body, created_at, author:staff_profiles!onboarding_activity_created_by_fkey(id, name))
+      notes:onboarding_activity(id, kind, body, group_name, created_at, author:staff_profiles!onboarding_activity_created_by_fkey(id, name))
     `)
     .eq('notes.kind', 'note')
     .order('created_at', { ascending: false })
@@ -993,9 +993,9 @@ export async function removePortalInvite(inviteId) {
   if (error) throw error;
 }
 
-export async function addNote(onboardingId, body, { actorId, stepId } = {}) {
+export async function addNote(onboardingId, body, { actorId, stepId, groupName } = {}) {
   const { error } = await supabase.from('onboarding_activity').insert({
-    onboarding_id: onboardingId, step_id: stepId || null,
+    onboarding_id: onboardingId, step_id: stepId || null, group_name: groupName || null,
     kind: 'note', body, created_by: actorId || null,
   });
   if (error) throw error;

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, UserPlus } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, UserPlus, MessageSquare } from 'lucide-react';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
@@ -45,6 +45,7 @@ export default function OnboardingDetailView() {
   const [staff, setStaff] = useState([]);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState({});
+  const [groupNotesOpen, setGroupNotesOpen] = useState({});
   const [taskFilter, setTaskFilter] = useState('all'); // all | client | staff
 
   const load = useCallback(() => {
@@ -264,16 +265,35 @@ export default function OnboardingDetailView() {
             const groupDone = allSteps.filter((s) => s.status === 'complete').length;
             const groupApplicable = allSteps.filter((s) => s.status !== 'na').length;
             const allNa = groupApplicable === 0;
+            const groupNotes = notes.filter((n) => n.group_name === groupName);
+            const notesOpen = groupNotesOpen[groupName];
             return (
               <div key={groupName} style={{ ...card, padding: '14px 18px', opacity: allNa ? 0.6 : 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
                     {groupName}
                   </div>
-                  <div style={{ fontSize: 13, color: '#94a3b8' }}>
-                    {allNa ? 'not applicable' : `${groupDone}/${groupApplicable}`}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button
+                      onClick={() => setGroupNotesOpen((x) => ({ ...x, [groupName]: !x[groupName] }))}
+                      title={`${groupName} notes`}
+                      style={{
+                        ...chipStyle(groupNotes.length ? 'info' : 'neutral'), cursor: 'pointer',
+                        display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none',
+                      }}
+                    >
+                      <MessageSquare size={10} /> {groupNotes.length ? `${groupNotes.length} note${groupNotes.length === 1 ? '' : 's'}` : 'Add note'}
+                    </button>
+                    <div style={{ fontSize: 13, color: '#94a3b8' }}>
+                      {allNa ? 'not applicable' : `${groupDone}/${groupApplicable}`}
+                    </div>
                   </div>
                 </div>
+                {notesOpen && (
+                  <div style={{ borderTop: '1px solid #f1f5f9', padding: '10px 0 12px' }}>
+                    <NotesThread onboardingId={ob.id} notes={groupNotes} groupName={groupName} onAdded={load} maxHeight={240} autoFocus />
+                  </div>
+                )}
                 {steps.map((step) => {
                   const meta = stepStatusMeta(step.status);
                   const overdue = isOverdue(step);

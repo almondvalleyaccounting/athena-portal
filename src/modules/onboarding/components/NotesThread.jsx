@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Send } from 'lucide-react';
 import { Btn } from '../../../components/ui';
-import { tones } from '../../../lib/tokens';
+import { tones, chipStyle } from '../../../lib/tokens';
 import { useAuth } from '../../../shell/AppShell';
 import { addNote } from '../api';
 
@@ -19,8 +19,13 @@ export function fmtNoteTime(iso) {
   The onboarding's note thread — onboarding_activity rows of kind 'note'.
   One thread, two doors: the pipeline row's comments and the detail screen's
   Notes panel both read and write it. Newest first.
+
+  groupName scopes the thread to one task group (SA, VAT, PAYE …): new notes
+  are tagged with it. The caller passes only that group's notes. Without it the
+  thread is onboarding-wide and shows every note, group notes chipped with
+  their group.
 */
-export default function NotesThread({ onboardingId, notes, onAdded, maxHeight = 360, autoFocus = false }) {
+export default function NotesThread({ onboardingId, notes, onAdded, maxHeight = 360, autoFocus = false, groupName = null }) {
   const { profile } = useAuth();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -33,7 +38,7 @@ export default function NotesThread({ onboardingId, notes, onAdded, maxHeight = 
     if (!body) return;
     setSaving(true); setError(null);
     try {
-      await addNote(onboardingId, body, { actorId: profile?.id });
+      await addNote(onboardingId, body, { actorId: profile?.id, groupName });
       setText('');
       onAdded?.();
     } catch (e) { setError(e.message); }
@@ -48,7 +53,7 @@ export default function NotesThread({ onboardingId, notes, onAdded, maxHeight = 
           autoFocus={autoFocus}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
-          placeholder="Add a note…  (Ctrl+Enter to post)"
+          placeholder={groupName ? `Add a ${groupName} note…  (Ctrl+Enter to post)` : 'Add a note…  (Ctrl+Enter to post)'}
           style={{ ...inputStyle, flex: 1, minHeight: 40, resize: 'vertical', boxSizing: 'border-box' }}
         />
         <Btn onClick={submit} disabled={saving || !text.trim()} className="self-start">
@@ -66,6 +71,7 @@ export default function NotesThread({ onboardingId, notes, onAdded, maxHeight = 
             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 4, fontSize: 13 }}>
               <span style={{ fontWeight: 600, color: '#0f172a' }}>{n.author?.name || 'Athena'}</span>
               <span style={{ color: '#64748b' }}>{fmtNoteTime(n.created_at)}</span>
+              {!groupName && n.group_name && <span style={{ ...chipStyle('info'), marginLeft: 'auto' }}>{n.group_name}</span>}
             </div>
             <div style={{ color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{n.body}</div>
           </div>
