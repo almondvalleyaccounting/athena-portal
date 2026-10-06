@@ -37,7 +37,6 @@ import BillingAddNewPage from './modules/billing/BillingAddNewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import FeeEngineGapsPage from './modules/billing/FeeEngineGapsPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
-import JobReviewModule from './modules/job-review/JobReviewModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
 import BugReportPage from './modules/bugs/BugReportPage';
@@ -150,8 +149,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/clients/:id" element={<ClientDetailView />} />
           {/* Setup must come before /planner/* wildcard so it matches first. */}
           <Route path="/planner/setup/*" element={<SetupModule />} />
-          {/* Job Review lives under Work — must precede the /planner/* wildcard. */}
-          <Route path="/planner/review/*" element={<JobReviewModule />} />
+          {/* Job Review retired for Progress update (sql/349) — must precede the /planner/* wildcard. */}
+          <Route path="/planner/review/*" element={<Navigate to="/planner/priority" replace />} />
           {/* Workflows, formerly Plan the Job (sql/304) — must precede the /planner/* wildcard. */}
           <Route path="/planner/plan/*" element={<PlanJobModule />} />
           {/* Admin Task List — must precede the /planner/* wildcard. */}
@@ -161,8 +160,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               path working for anyone who bookmarked it. */}
           <Route path="/planner/drift" element={<Navigate to="/planner/bookkeeping-health" replace />} />
           <Route path="/planner/*" element={<WorkPlannerModule />} />
-          <Route path="/review" element={<Navigate to="/planner/review" replace />} />
-          <Route path="/review/*" element={<Navigate to="/planner/review" replace />} />
+          <Route path="/review" element={<Navigate to="/planner/priority" replace />} />
+          <Route path="/review/*" element={<Navigate to="/planner/priority" replace />} />
           <Route path="/timesheets/*" element={<TimesheetModule />} />
           <Route path="/billing" element={<BillingPage />} />
           {/* The Issues Log merged into Triage (sql/293); old links land on its list. */}

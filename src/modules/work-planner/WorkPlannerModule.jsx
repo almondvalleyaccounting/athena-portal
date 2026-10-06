@@ -48,6 +48,7 @@ import EmailModal from './components/EmailModal';
 import HolidayModal from './components/HolidayModal';
 import JobSelectorModal from './components/JobSelectorModal';
 import TeamView from './views/TeamView';
+import PriorityView from './views/PriorityView';
 import StageBoardView from './views/StageBoardView';
 import { BTN } from '../../lib/buttonStyles';
 
@@ -74,6 +75,7 @@ const TASK_PLANNER_TABS = [
   { id: 'quick',    label: 'Quick Tasks', path: '/planner/quick' },
   { id: 'sched',    label: 'Blocks',      path: '/planner/scheduled' },
   { id: 'calendar', label: 'Planner',     path: '/planner/calendar' },
+  { id: 'priority', label: 'Priority',    path: '/planner/priority' },
   { id: 'kanban',   label: 'Stage board', path: '/planner/kanban' },
   { id: 'completed', label: 'Completed',  path: '/planner/completed' },
   { id: 'payroll',  label: 'Payroll',     path: '/planner/payroll' },
@@ -980,6 +982,9 @@ export default function WorkPlannerModule() {
               onOpenTask={setTaskModal}
               refreshTick={refreshTick}
             />
+          )}
+          {activeTab === 'priority' && (
+            <PriorityView onOpenTask={setTaskModal} refreshTick={refreshTick} />
           )}
           {activeTab === 'kanban' && (
             <StageBoardView onOpenTask={setTaskModal} />

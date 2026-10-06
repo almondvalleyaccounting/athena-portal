@@ -39,6 +39,13 @@
 //                 timesheet_entries row against the job (source 'completed').
 //   skip          { milestone_id }   not needed on this job
 //   reopen        { milestone_id }   back to pending
+//   priority_board    { template?, staff_id? }                the Priority board (sql/349): columns, order, queue dates
+//   priority_reorder  { template, staff_id, keys[], apply? }  a column's new order ("entity|period_end"); writes the dates
+//   priority_apply    { template, staff_id }                  write the queue's dates for a column as it stands
+//   priority_set_hours { template, staff_id, weekly_hours }   hours a week on this work; rewrites the dates
+//   progress_update   { template, entity_id, period_end, confidence, reason_code?, escalate?, note?, review_date? }
+//   progress_history  { template, entity_id, period_end }
+//   progress_due      { staff_id? | all? }                    jobs whose update is due (default: mine)
 //
 // Returns { success, plan, milestones } for single-plan actions.
 
@@ -46,6 +53,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { computeChain, type StageRule, type JobContext } from "../_shared/workflow.ts";
 import { renderForMilestone, sendForMilestone, renderGeneric, sendGeneric, loadPrefs, cleanPrefs } from "../_shared/job-comms.ts";
+import { runQueue, daysOffMap } from "../_shared/priority.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -465,8 +473,321 @@ Deno.serve(async (req) => {
     return { plan: await loadPlan(planId), milestones: ms };
   }
 
+  // ── Priority board and progress updates (sql/349) ─────────────────────────
+  // One column per preparer, the jobs with a filing in the six months the
+  // Overview counts (this month and the next five). The column order drives
+  // a capacity queue (_shared/priority.ts) that dates each job's internal
+  // review; "applying" a column pins those dates on the workflows, creating
+  // a draft workflow for a job that has none.
+  const PRIORITY_TEMPLATES = ["annual_accounts", "self_assessment"];
+  const BM_RANK: Record<string, number> = {
+    "No Latest Action": 0, "No Progress": 0, "Records Requested": 1, "Part Records Received": 2,
+    "Records Received": 3, "In Progress": 4, "Queries Requested": 5, "Queries Received": 6,
+    "To Review": 7, "Reviewed": 8, "To Send to Client to Approve": 9, "Awaiting Approval": 10,
+  };
+  const jobKey = (e: string, pe: string) => `${e}|${pe}`;
+  const todayISO = () => new Date().toISOString().slice(0, 10);
+
+  function priorityTemplate(v: unknown): string {
+    const k = v ? String(v) : "annual_accounts";
+    if (!PRIORITY_TEMPLATES.includes(k)) throw new BadRequest("template must be annual_accounts or self_assessment");
+    return k;
+  }
+
+  async function prioritySettings() {
+    const { data } = await db.from("job_plan_settings").select("priority_buffer_wd, progress_stale_days, progress_window_days").maybeSingle();
+    return { buffer_wd: data?.priority_buffer_wd ?? 10, stale_days: data?.progress_stale_days ?? 14, window_days: data?.progress_window_days ?? 42 };
+  }
+
+  /** Every column of the board, or one person's. Dates are computed, not written. */
+  async function buildBoard(templateKey: string, onlyStaff?: string | null) {
+    const settings = await prioritySettings();
+    const today = todayISO();
+    const d = new Date(`${today}T12:00:00Z`);
+    const windowEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 6, 1)).toISOString().slice(0, 10);
+    const view = templateKey === "self_assessment" ? "v_sa_jobs" : "v_accounts_jobs";
+    const t = await template(templateKey);
+
+    const jobs: Record<string, any>[] = [];
+    for (let from = 0; ; from += 1000) {
+      let q = db.from(view).select("*").not("ch_deadline", "is", null).lt("ch_deadline", windowEnd).order("entity_id").order("period_end").range(from, from + 999);
+      if (onlyStaff) q = q.eq("preparer_id", onlyStaff);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      jobs.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    const entityIds = [...new Set(jobs.map((j) => j.entity_id))];
+
+    // Plans of this template (v_accounts_jobs joins plans of any template).
+    const plans = new Map<string, Record<string, any>>();
+    const milestones = new Map<string, Record<string, any>>(); // `${plan}|${stage}`
+    const ranks = new Map<string, Record<string, any>>();
+    const lastUpdate = new Map<string, Record<string, any>>();
+    const prepHoursBm = new Map<string, number>();
+    for (let i = 0; i < entityIds.length; i += 150) {
+      const ids = entityIds.slice(i, i + 150);
+      const [pl, rk, up] = await Promise.all([
+        db.from("job_plans").select("id, entity_id, period_end, status").eq("template_id", t.id).in("entity_id", ids),
+        db.from("job_priority").select("entity_id, period_end, staff_id, rank").eq("template_key", templateKey).in("entity_id", ids),
+        db.from("job_progress_updates").select("entity_id, period_end, confidence, reason_code, escalate, note, author_id, created_at").eq("template_key", templateKey).in("entity_id", ids).order("created_at", { ascending: false }),
+      ]);
+      for (const r of [pl, rk, up]) if (r.error) throw new Error(r.error.message);
+      for (const x of pl.data || []) plans.set(jobKey(x.entity_id, x.period_end), x);
+      for (const x of rk.data || []) ranks.set(jobKey(x.entity_id, x.period_end), x);
+      for (const x of up.data || []) { const k = jobKey(x.entity_id, x.period_end); if (!lastUpdate.has(k)) lastUpdate.set(k, x); }
+    }
+    const planIds = [...plans.values()].map((x) => x.id);
+    for (let i = 0; i < planIds.length; i += 150) {
+      const { data, error } = await db.from("job_milestones").select("plan_id, stage_key, status, due_date, hours, pinned_by")
+        .in("plan_id", planIds.slice(i, i + 150)).in("stage_key", ["prepare", "internal_review"]);
+      if (error) throw new Error(error.message);
+      for (const m of data || []) milestones.set(`${m.plan_id}|${m.stage_key}`, m);
+    }
+    const prepIds = jobs.map((j) => j.prep_job_id).filter(Boolean);
+    for (let i = 0; i < prepIds.length; i += 150) {
+      const { data } = await db.from("bm_task_schedule").select("id, scheduled_hours").in("id", prepIds.slice(i, i + 150));
+      for (const r of data || []) prepHoursBm.set(r.id, Number(r.scheduled_hours) || 0);
+    }
+
+    // People: whoever prepares a job in the window (or the one asked for).
+    const staffIds = [...new Set(jobs.map((j) => j.preparer_id).filter(Boolean))] as string[];
+    if (onlyStaff && !staffIds.includes(onlyStaff)) staffIds.push(onlyStaff);
+    const [st, cap, hol] = await Promise.all([
+      staffIds.length ? db.from("staff_profiles").select("id, name, weekly_capacity_hours, working_days, is_active").in("id", staffIds) : Promise.resolve({ data: [], error: null }),
+      staffIds.length ? db.from("priority_capacity").select("staff_id, weekly_hours").eq("template_key", templateKey).in("staff_id", staffIds) : Promise.resolve({ data: [], error: null }),
+      staffIds.length ? db.from("staff_holidays").select("staff_id, date_from, date_to, half_day").in("staff_id", staffIds).gte("date_to", today) : Promise.resolve({ data: [], error: null }),
+    ]);
+    for (const r of [st, cap, hol]) if (r.error) throw new Error(r.error.message);
+
+    const staleBefore = shiftISO(today, -settings.stale_days);
+    const windowTo = shiftISO(today, settings.window_days);
+    const columns = [];
+    for (const s of (st.data || []) as Record<string, any>[]) {
+      const mine = jobs.filter((j) => j.preparer_id === s.id).map((j) => {
+        const k = jobKey(j.entity_id, j.period_end);
+        const plan = plans.get(k) || null;
+        const prep = plan ? milestones.get(`${plan.id}|prepare`) : null;
+        const rev = plan ? milestones.get(`${plan.id}|internal_review`) : null;
+        const rank = BM_RANK[j.bm_status as string] ?? -1;
+        return {
+          key: k, entity_id: j.entity_id, client: j.client, period_end: j.period_end, template_key: templateKey,
+          ch_deadline: j.ch_deadline, ct_deadline: j.ct_deadline ?? null, bm_status: j.bm_status ?? null,
+          prep_job_id: j.prep_job_id ?? null, ch_job_id: j.ch_job_id ?? null,
+          plan_id: plan?.id ?? null, plan_status: plan?.status ?? null,
+          prep_hours: Number(prep?.hours ?? prepHoursBm.get(j.prep_job_id) ?? 5) || 5,
+          prep_done: ["done", "skipped"].includes(prep?.status) || rank >= 7,
+          review_done: ["done", "skipped"].includes(rev?.status) || rank >= 8,
+          review_saved: rev && rev.status === "pending" ? rev.due_date : null,
+          review_pinned: !!rev?.pinned_by,
+          rank: ranks.get(k)?.rank ?? null,
+          last_update: lastUpdate.get(k) || null,
+        };
+      });
+      // Ranked jobs in their order; an unranked one goes in ahead of the first
+      // ranked job with a later statutory date, so new work lands where its
+      // deadline says rather than at the bottom.
+      const ranked = mine.filter((j) => j.rank != null).sort((a, b) => a.rank! - b.rank!);
+      const unranked = mine.filter((j) => j.rank == null).sort((a, b) => String(a.ch_deadline).localeCompare(String(b.ch_deadline)) || String(a.client).localeCompare(String(b.client)));
+      const ordered = [...ranked];
+      for (const u of unranked) {
+        const at = ordered.findIndex((o) => String(o.ch_deadline) > String(u.ch_deadline));
+        if (at < 0) ordered.push(u); else ordered.splice(at, 0, u);
+      }
+      const capRow = (cap.data || []).find((c: Record<string, any>) => c.staff_id === s.id);
+      const defaultHours = Math.round((Number(s.weekly_capacity_hours) || 0) / 2 * 4) / 4;
+      const weekly = capRow ? Number(capRow.weekly_hours) : defaultHours;
+      const slots = runQueue(ordered.map((j) => ({ key: j.key, prepHours: j.prep_hours, prepDone: j.prep_done, reviewDone: j.review_done, statutory: j.ch_deadline })), {
+        today, weeklyHours: weekly, workingDays: s.working_days,
+        daysOff: daysOffMap(((hol.data || []) as Array<Record<string, any>>).filter((h) => h.staff_id === s.id) as any), bufferWd: settings.buffer_wd,
+      });
+      const bySlot = new Map(slots.map((x) => [x.key, x]));
+      const tiles = ordered.map((j, i) => {
+        const slot = bySlot.get(j.key)!;
+        const when = j.review_saved || slot.review_date;
+        const updateDue = !j.review_done && !!when && when <= windowTo && (!j.last_update || String(j.last_update.created_at).slice(0, 10) < staleBefore);
+        // Out of date = the queue now says something materially different
+        // (more than three days). The queue starts from today, so without a
+        // tolerance every saved date would be "out" by a day each morning.
+        // Prepared work keeps a saved date that is still ahead of us.
+        const keepPrepared = j.prep_done && !!j.review_saved && j.review_saved >= today;
+        const drift = slot.review_date && j.review_saved ? Math.abs(Date.parse(slot.review_date) - Date.parse(j.review_saved)) / 86400000 : null;
+        const outOfDate = !j.review_done && !keepPrepared && !!slot.review_date && (drift === null || drift > 3);
+        return { ...j, position: i + 1, review_computed: slot.review_date, limit: slot.limit, capped: slot.capped, overdue: slot.overdue, prep_from: slot.prep_from, prep_to: slot.prep_to, update_due: updateDue, out_of_date: outOfDate };
+      });
+      columns.push({ staff_id: s.id, name: s.name, is_active: s.is_active, weekly_hours: weekly, default_hours: defaultHours, hours_set: !!capRow, working_days: s.working_days, jobs: tiles });
+    }
+    columns.sort((a, b) => b.jobs.length - a.jobs.length || String(a.name).localeCompare(String(b.name)));
+    return { settings, today, window_end: windowEnd, template: templateKey, columns };
+  }
+
+  /** Pin each job's Internal review to the queue's date. A job with no
+   *  workflow gets a draft first. Returns how many dates moved. */
+  async function applyColumn(templateKey: string, staffId: string) {
+    const board = await buildBoard(templateKey, staffId);
+    const col = board.columns.find((c) => c.staff_id === staffId);
+    if (!col) return { moved: 0, created: 0, failed: [] as string[] };
+    const todo = col.jobs.filter((j) => j.out_of_date && j.review_computed);
+    let moved = 0, created = 0;
+    const failed: string[] = [];
+    const one = async (j: Record<string, any>) => {
+      try {
+        const job = await accountsJob(j.entity_id, j.period_end, templateKey);
+        let planId = j.plan_id as string | null;
+        let plan: Record<string, any>;
+        if (!planId) {
+          const out = await propose(j.entity_id, j.period_end, null, null, false, templateKey);
+          plan = out.plan; planId = plan.id; created++;
+        } else plan = await loadPlan(planId);
+        const { data: rev } = await db.from("job_milestones").select("id, status, kind").eq("plan_id", planId).eq("stage_key", "internal_review").maybeSingle();
+        if (!rev || rev.status !== "pending") return;
+        const { error } = await db.from("job_milestones").update({
+          due_date: j.review_computed, planned_date: rev.kind === "work" ? j.review_computed : null,
+          pinned_by: me, pinned_at: now, updated_at: now,
+        }).eq("id", rev.id);
+        if (error) throw new Error(error.message);
+        await rebuild(plan, job); // preparation and the client step follow the review
+        moved++;
+      } catch (e) { failed.push(`${j.client}: ${(e as Error).message}`); }
+    };
+    for (let i = 0; i < todo.length; i += 6) await Promise.all(todo.slice(i, i + 6).map(one));
+    return { moved, created, failed };
+  }
+
+  async function writeRanks(templateKey: string, staffId: string, keys: string[]) {
+    const rows = keys.map((k, i) => {
+      const [entity_id, period_end] = k.split("|");
+      return { template_key: templateKey, entity_id: uuid(entity_id, "entity_id"), period_end: isoDate(period_end, "period_end"), staff_id: staffId, rank: (i + 1) * 10, updated_by: me, updated_at: now };
+    });
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await db.from("job_priority").upsert(rows.slice(i, i + 500), { onConflict: "template_key,entity_id,period_end" });
+      if (error) throw new Error(error.message);
+    }
+  }
+
   try {
     switch (p.action) {
+      case "priority_board": {
+        const out = await buildBoard(priorityTemplate(p.template), p.staff_id ? uuid(p.staff_id, "staff_id") : null);
+        return json({ success: true, ...out });
+      }
+
+      // The column in its new order (every job key "entity|period_end"),
+      // then the dates written. apply=false only saves the order.
+      case "priority_reorder": {
+        const tKey = priorityTemplate(p.template);
+        const staffId = uuid(p.staff_id, "staff_id");
+        const keys: string[] = Array.isArray(p.keys) ? p.keys.map(String) : [];
+        if (!keys.length) throw new BadRequest("keys required");
+        if (keys.length > 400) throw new BadRequest("At most 400 jobs in a column");
+        await writeRanks(tKey, staffId, keys);
+        const applied = p.apply === false ? null : await applyColumn(tKey, staffId);
+        const board = await buildBoard(tKey, staffId);
+        return json({ success: true, applied, column: board.columns.find((c) => c.staff_id === staffId) || null });
+      }
+
+      case "priority_apply": {
+        const tKey = priorityTemplate(p.template);
+        const staffId = uuid(p.staff_id, "staff_id");
+        const applied = await applyColumn(tKey, staffId);
+        const board = await buildBoard(tKey, staffId);
+        return json({ success: true, applied, column: board.columns.find((c) => c.staff_id === staffId) || null });
+      }
+
+      case "priority_set_hours": {
+        const tKey = priorityTemplate(p.template);
+        const staffId = uuid(p.staff_id, "staff_id");
+        const hours = Number(p.weekly_hours);
+        if (!Number.isFinite(hours) || hours < 0 || hours > 80) throw new BadRequest("Hours a week must be between 0 and 80");
+        const { error } = await db.from("priority_capacity").upsert({ staff_id: staffId, template_key: tKey, weekly_hours: hours, updated_by: me, updated_at: now }, { onConflict: "staff_id,template_key" });
+        if (error) throw new Error(error.message);
+        const applied = p.apply === false ? null : await applyColumn(tKey, staffId);
+        const board = await buildBoard(tKey, staffId);
+        return json({ success: true, applied, column: board.columns.find((c) => c.staff_id === staffId) || null });
+      }
+
+      // Jobs needing a progress update, for one person (default: me) or all.
+      case "progress_due": {
+        const who = p.all === true ? null : (p.staff_id ? uuid(p.staff_id, "staff_id") : me);
+        const out: Record<string, any>[] = [];
+        for (const tKey of PRIORITY_TEMPLATES) {
+          const board = await buildBoard(tKey, who);
+          for (const c of board.columns) for (const j of c.jobs) if (j.update_due) out.push({ ...j, staff_id: c.staff_id, staff_name: c.name });
+        }
+        out.sort((a, b) => String(a.review_saved || a.review_computed).localeCompare(String(b.review_saved || b.review_computed)));
+        return json({ success: true, jobs: out });
+      }
+
+      case "progress_history": {
+        const tKey = priorityTemplate(p.template);
+        const { data, error } = await db.from("job_progress_updates").select("*").eq("template_key", tKey)
+          .eq("entity_id", uuid(p.entity_id, "entity_id")).eq("period_end", isoDate(p.period_end, "period_end")).order("created_at", { ascending: false }).limit(50);
+        if (error) throw new Error(error.message);
+        return json({ success: true, updates: data || [] });
+      }
+
+      // Progress update (replaces Job Review). A new date re-ranks the job in
+      // its preparer's column, ahead of the first job the queue dates later,
+      // and the column is re-applied: the order stays the one source of dates.
+      case "progress_update": {
+        const tKey = priorityTemplate(p.template);
+        const entityId = uuid(p.entity_id, "entity_id");
+        const periodEnd = isoDate(p.period_end, "period_end");
+        const confidence = String(p.confidence || "");
+        if (!["green", "amber", "red"].includes(confidence)) throw new BadRequest("Pick green, amber or red");
+        const reason = p.reason_code ? String(p.reason_code) : null;
+        if (reason) {
+          const { data: r } = await db.from("job_review_reason").select("code").eq("code", reason).eq("active", true).maybeSingle();
+          if (!r) throw new BadRequest("Unknown reason");
+        }
+        const note = p.note ? String(p.note).slice(0, 4000) : null;
+        if (confidence !== "green" && !reason && !note) throw new BadRequest("Say what's in the way — a reason or a note");
+        const requested = p.review_date ? isoDate(p.review_date, "review_date") : null;
+        const job = await accountsJob(entityId, periodEnd, tKey);
+        const staffId = (job.preparer_id as string | null) ?? null;
+
+        const before = staffId ? (await buildBoard(tKey, staffId)).columns.find((c) => c.staff_id === staffId) : null;
+        const mineBefore = before?.jobs.find((j) => j.key === jobKey(entityId, periodEnd)) || null;
+        let after: string | null = mineBefore?.review_saved ?? null;
+        let applied = null;
+        if (requested) {
+          if (!before || !mineBefore) throw new BadRequest("This job isn't on the Priority board (no preparer, or no filing in the next six months), so its date can't be moved from here");
+          if (mineBefore.limit && requested > mineBefore.limit) throw new BadRequest(`That's past the latest safe date (${mineBefore.limit}: the statutory date less the buffer)`);
+          const others = before.jobs.filter((j) => j.key !== mineBefore.key);
+          const at = others.findIndex((j) => !j.review_done && String(j.review_saved || j.review_computed) > requested);
+          const keys = others.map((j) => j.key);
+          keys.splice(at < 0 ? keys.length : at, 0, mineBefore.key);
+          await writeRanks(tKey, staffId!, keys);
+          applied = await applyColumn(tKey, staffId!);
+          const col = (await buildBoard(tKey, staffId)).columns.find((c) => c.staff_id === staffId);
+          after = col?.jobs.find((j) => j.key === mineBefore.key)?.review_saved ?? null;
+        }
+        const { data: plan } = await db.from("job_plans").select("id").eq("entity_id", entityId).eq("period_end", periodEnd).eq("template_id", (await template(tKey)).id).maybeSingle();
+        const { data: row, error } = await db.from("job_progress_updates").insert({
+          template_key: tKey, entity_id: entityId, period_end: periodEnd, plan_id: plan?.id ?? null, author_id: me,
+          confidence, reason_code: reason, escalate: p.escalate === true, note,
+          review_date_before: mineBefore?.review_saved ?? null, review_date_requested: requested, review_date_after: after,
+        }).select("*").single();
+        if (error) throw new Error(error.message);
+
+        let escalated = 0;
+        if (p.escalate === true) {
+          const { data: managers } = await db.from("staff_profiles").select("id").eq("is_active", true).eq("can_manage_portal", true).neq("id", me);
+          const { data: author } = await db.from("staff_profiles").select("name").eq("id", me).maybeSingle();
+          const { data: ent } = await db.from("entities").select("name").eq("id", entityId).maybeSingle();
+          for (const m of managers || []) {
+            const { error: nErr } = await db.from("notifications").insert({
+              recipient_id: m.id, kind: "progress_escalation",
+              title: `Escalated: ${ent?.name || "a job"} (${tKey === "self_assessment" ? "self assessment" : "accounts"})`,
+              body: `${String(author?.name || "A colleague").split(" ")[0]}: ${[reason, note].filter(Boolean).join(" — ") || "needs help"}`,
+              link_path: `/planner/priority?template=${tKey}&job=${entityId}|${periodEnd}`, source_key: `progress:${row.id}:${m.id}`,
+            });
+            if (!nErr) escalated++;
+          }
+        }
+        return json({ success: true, update: row, applied, review_date: after, escalated });
+      }
+
       case "propose": {
         const out = await propose(
           uuid(p.entity_id, "entity_id"), isoDate(p.period_end, "period_end"),

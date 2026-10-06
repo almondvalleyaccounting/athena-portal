@@ -7,6 +7,7 @@ import { kindOf, cadenceLabel } from '../lib/blocksApi';
 import { formatISO } from '../lib/helpers';
 import { MinutesModal, shortTask } from './PlannerBits';
 import EmailModal from './EmailModal';
+import ProgressUpdateModal from './ProgressUpdateModal';
 import { BTN } from '../../../lib/buttonStyles';
 
 // One task modal for every kind of task (Bobby, 2026-09-26): a plan stage,
@@ -18,6 +19,7 @@ const font = "'Outfit', sans-serif";
 const fmt = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const fmtTs = (ts) => new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const TYPE_LABEL = { ms: 'Plan stage', bm: 'BrightManager job', quick: 'Quick task', block: 'Block' };
+const workflowPath = (j) => `/planner/plan/${j.entity_id}/${j.period_end}${j.template_key === 'self_assessment' ? '?template=self_assessment' : ''}`;
 const RISK = { urgent: 'Urgent', at_risk: 'At risk', waiting_on_client: 'Waiting on client', slipped: 'Slipped' };
 
 function DueEdit({ value, onSave, onCancel }) {
@@ -55,7 +57,11 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
   const [error, setError] = useState(null);
   const [ask, setAsk] = useState(null);
   const [email, setEmail] = useState(false);
-  const [workflow, setWorkflow] = useState(null); // { entity_id, period_end } when a BM job belongs to a committed workflow
+  // The accounts / self assessment job a BM task belongs to (sql/304, 322):
+  // { entity_id, period_end, template_key, plan_id, client, review_date }.
+  // Drives Create / Manage workflow and Progress update (sql/349).
+  const [job, setJob] = useState(null);
+  const [progress, setProgress] = useState(false);
   const [editDue, setEditDue] = useState(null); // ISO string while the due date is being edited
   const [reassign, setReassign] = useState(task.reassign ? { to: '', mode: 'one_off', note: '' } : null); // { to, mode, note } while the reassign panel is open
   const { type, id, occurrence_date: occ } = task;
@@ -64,16 +70,29 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
     setError(null);
     try {
       if (type === 'ms') {
-        const { data, error: e } = await supabase.from('job_milestones').select('*, job_plans(id, entity_id, period_end, status, risk, risk_reason, ch_deadline, entities(name))').eq('id', id).maybeSingle();
+        const { data, error: e } = await supabase.from('job_milestones').select('*, job_plans(id, entity_id, period_end, status, risk, risk_reason, ch_deadline, entities(name), workflow_templates(key))').eq('id', id).maybeSingle();
         if (e) throw e; setDetail(data);
+        const jp = data?.job_plans;
+        if (jp) {
+          const { data: rev } = await supabase.from('job_milestones').select('due_date, status').eq('plan_id', jp.id).eq('stage_key', 'internal_review').maybeSingle();
+          setJob({ entity_id: jp.entity_id, period_end: jp.period_end, template_key: jp.workflow_templates?.key || 'annual_accounts', plan_id: jp.id, client: jp.entities?.name, review_date: rev?.status === 'pending' ? rev.due_date : null });
+        }
       } else if (type === 'bm') {
         const { data, error: e } = await supabase.from('bm_task_schedule_with_progress').select('id, bm_task_id, bm_task_name, service, entity_id, assignee_id, bm_assignee_name, scheduled_for_date, scheduled_hours, logged_hours, remaining_hours, state, status, bm_deadline, bm_target_date, bm_status, bm_latest_action_date, manually_overridden_at').eq('id', id).maybeSingle();
         if (e) throw e;
         // The override columns (sql/330, 331) live on the base table, not the progress view.
         const { data: ov } = await supabase.from('bm_task_schedule').select('deadline_override, assignee_override_id, assignee_override_kind').eq('id', id).maybeSingle();
         setDetail({ ...data, ...(ov || {}) });
-        const { data: wf } = await supabase.from('job_plans').select('entity_id, period_end').eq('status', 'committed').or(`prep_job_id.eq.${id},ch_job_id.eq.${id},ct_job_id.eq.${id}`).limit(1).maybeSingle();
-        setWorkflow(wf || null);
+        let found = null;
+        for (const [view, tKey] of [['v_accounts_jobs', 'annual_accounts'], ['v_sa_jobs', 'self_assessment']]) {
+          const { data: j } = await supabase.from(view).select('entity_id, period_end, plan_id, client').or(`prep_job_id.eq.${id},ch_job_id.eq.${id},ct_job_id.eq.${id}`).limit(1).maybeSingle();
+          if (j) { found = { ...j, template_key: tKey }; break; }
+        }
+        if (found?.plan_id) {
+          const { data: rev } = await supabase.from('job_milestones').select('due_date, status').eq('plan_id', found.plan_id).eq('stage_key', 'internal_review').maybeSingle();
+          found.review_date = rev?.status === 'pending' ? rev.due_date : null;
+        }
+        setJob(found);
       } else if (type === 'quick') {
         const local = quickTasks.find((q) => q.id === id);
         if (local) setDetail(local);
@@ -160,7 +179,8 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
     );
     actions = (
       <>
-        <button onClick={() => navigate(`/planner/plan/${p.entity_id}/${p.period_end}`)} style={BTN.secondary.sm}>Open the workflow</button>
+        <button onClick={() => navigate(workflowPath(job || p))} style={BTN.secondary.sm}>Manage workflow</button>
+        {job && <button onClick={() => setProgress(true)} style={BTN.secondary.sm}>Progress update</button>}
         {pending && <button onClick={() => setAsk({ title: detail.label, subtitle: entityName, defaultMins: detail.hours ? Math.round(Number(detail.hours) * 60) : null, run: (m) => act({ action: 'mark_done', milestone_id: id, minutes: m }) })} style={BTN.primary.sm}>Done…</button>}
         {pending && <button onClick={() => { if (window.confirm(`Skip "${detail.label}" on this job?`)) act({ action: 'skip', milestone_id: id }).catch((e) => setError(e.message)); }} style={BTN.secondary.sm}>Not required</button>}
         {pending && detail.due_date !== todayISO && <button onClick={() => act({ action: 'move_milestone', milestone_id: id, due_date: todayISO }).catch((e) => setError(e.message))} style={BTN.secondary.sm}>Move to today</button>}
@@ -187,7 +207,8 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
     actions = (
       <>
         {entityId && <button onClick={() => navigate(`/clients/${entityId}`)} style={BTN.secondary.sm}>Open the client</button>}
-        {workflow && <button onClick={() => navigate(`/planner/plan/${workflow.entity_id}/${workflow.period_end}`)} style={BTN.secondary.sm}>Open the workflow</button>}
+        {job && <button onClick={() => navigate(workflowPath(job))} title={job.plan_id ? "Open this job's workflow" : 'Propose the standard chain for this job, ready to adjust and commit'} style={BTN.secondary.sm}>{job.plan_id ? 'Manage workflow' : 'Create workflow'}</button>}
+        {job && <button onClick={() => setProgress(true)} style={BTN.secondary.sm}>Progress update</button>}
         <button onClick={() => setAsk({ title: shortTask(detail.bm_task_name), subtitle: entityName, cta: 'Mark complete', defaultMins: detail.remaining_hours != null ? Math.round(Number(detail.remaining_hours) * 60) : null, note: 'The minutes go to your timesheet. The job then sits on your "Update in BrightManager" list on Overview until the next import confirms it.', run: (m) => act({ action: 'complete_bm_job', schedule_id: id, minutes: m }) })} style={BTN.primary.sm}>Mark complete…</button>
         {detail.scheduled_for_date !== todayISO && <button onClick={async () => { try { await rescheduleTask(id, todayISO); await changed(); } catch (e) { setError(e.message); } }} style={BTN.secondary.sm}>Move to today</button>}
         <button onClick={() => setReassign((r) => (r ? null : { to: '', mode: 'one_off', note: '' }))} style={reassign ? { ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' } : BTN.secondary.sm}>Reassign…</button>
@@ -325,6 +346,10 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         )}
       </div>
       {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
+      {progress && job && (
+        <ProgressUpdateModal job={{ ...job, client: job.client || entityName }} staffMap={staffMap}
+          onClose={() => setProgress(false)} onSaved={() => { onChanged && onChanged(); load(); }} />
+      )}
       {email && <EmailModal ctx={{ entity_id: entityId, entity_name: entityName, task_label: label, task: { type, id, occurrence_date: occ || null } }} staffList={staffList} profile={profile} onClose={() => setEmail(false)} onSent={load} />}
     </div>
   );

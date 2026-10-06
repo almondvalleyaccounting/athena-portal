@@ -103,7 +103,7 @@ export const MODULES = [
         label: 'Planner',
         route: '/planner',
         inDevelopment: true,
-        matchPaths: ['/planner', '/planner/day', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/kanban', '/planner/completed'],
+        matchPaths: ['/planner', '/planner/day', '/planner/quick', '/planner/scheduled', '/planner/calendar', '/planner/priority', '/planner/kanban', '/planner/completed'],
       },
       {
         id: 'wp-ready',
@@ -140,13 +140,9 @@ export const MODULES = [
         inDevelopment: true,
         matchPaths: ['/planner/allocations', '/planner/capacity'],
       },
-      {
-        id: 'wp-job-review',
-        label: 'Job Review',
-        route: '/planner/review',
-        inDevelopment: true,
-        matchPaths: ['/planner/review', '/planner/review/team'],
-      },
+      // Job Review retired 2026-10-06: Progress update on a job (task modal,
+      // Priority board, Overview) replaces it (sql/349). /planner/review
+      // redirects to Priority; the job_review_* tables keep the history.
       {
         id: 'wp-timesheets',
         label: 'Timesheets',
