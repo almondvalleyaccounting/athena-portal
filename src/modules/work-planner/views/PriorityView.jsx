@@ -6,7 +6,8 @@ import { useWorkPlanner } from '../WorkPlannerModule';
 import ProgressUpdateModal, { CONFIDENCE } from '../components/ProgressUpdateModal';
 import { BTN } from '../../../lib/buttonStyles';
 
-// Priority (Bobby, 2026-10-06; sql/349). One column per preparer, one tile per
+// Priority (Bobby, 2026-10-06; sql/349). One column per submitter (the owner of
+// the job's Submission task, who does the review; else the preparer), one tile per
 // job with a filing in the six months the Overview counts. Drag a tile up or
 // down to set the order the person works their column; the capacity queue in
 // the job-plan function then dates each job's internal review — the job's
@@ -157,7 +158,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
     const keys = col.jobs.map((j) => j.key);
     const from = keys.indexOf(a.id);
     let to = String(over.id).startsWith('end:') ? (over.id === `end:${col.staff_id}` ? keys.length : -1) : keys.indexOf(over.id);
-    if (to < 0) { setNotice({ text: 'A job stays in its preparer\'s column. To move it to someone else, open it and use Reassign.', failed: [] }); return; }
+    if (to < 0) { setNotice({ text: 'A job stays in its submitter\'s column. To move it, reassign its Submission task.', failed: [] }); return; }
     keys.splice(from, 1);
     if (to > from) to -= 1;
     keys.splice(to, 0, a.id);

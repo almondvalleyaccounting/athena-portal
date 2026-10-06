@@ -511,7 +511,6 @@ Deno.serve(async (req) => {
     const jobs: Record<string, any>[] = [];
     for (let from = 0; ; from += 1000) {
       let q = db.from(view).select("*").not("ch_deadline", "is", null).lt("ch_deadline", windowEnd).order("entity_id").order("period_end").range(from, from + 999);
-      if (onlyStaff) q = q.eq("preparer_id", onlyStaff);
       const { data, error } = await q;
       if (error) throw new Error(error.message);
       jobs.push(...(data || []));
@@ -544,14 +543,25 @@ Deno.serve(async (req) => {
       if (error) throw new Error(error.message);
       for (const m of data || []) milestones.set(`${m.plan_id}|${m.stage_key}`, m);
     }
-    const prepIds = jobs.map((j) => j.prep_job_id).filter(Boolean);
-    for (let i = 0; i < prepIds.length; i += 150) {
-      const { data } = await db.from("bm_task_schedule").select("id, scheduled_hours").in("id", prepIds.slice(i, i + 150));
-      for (const r of data || []) prepHoursBm.set(r.id, Number(r.scheduled_hours) || 0);
+    // The column is the Submission task's owner (Bobby, 2026-10-06: "my
+    // reviews will be with the submitter"), else the preparer when a job has
+    // no Submission task. 31 of 110 accounts jobs had different people on
+    // the two tasks, e.g. the bookkeeper holding Preparation.
+    const submitter = new Map<string, string>();
+    const bmIds = [...new Set(jobs.flatMap((j) => [j.prep_job_id, j.ch_job_id]).filter(Boolean))] as string[];
+    for (let i = 0; i < bmIds.length; i += 150) {
+      const { data, error } = await db.from("bm_task_schedule").select("id, scheduled_hours, assignee_id").in("id", bmIds.slice(i, i + 150));
+      if (error) throw new Error(error.message);
+      for (const r of data || []) {
+        prepHoursBm.set(r.id, Number(r.scheduled_hours) || 0);
+        if (r.assignee_id) submitter.set(r.id, r.assignee_id);
+      }
     }
+    for (const j of jobs) j.board_owner = (j.ch_job_id && submitter.get(j.ch_job_id)) || j.preparer_id || null;
+    if (onlyStaff) jobs.splice(0, jobs.length, ...jobs.filter((j) => j.board_owner === onlyStaff));
 
     // People: whoever prepares a job in the window (or the one asked for).
-    const staffIds = [...new Set(jobs.map((j) => j.preparer_id).filter(Boolean))] as string[];
+    const staffIds = [...new Set(jobs.map((j) => j.board_owner).filter(Boolean))] as string[];
     if (onlyStaff && !staffIds.includes(onlyStaff)) staffIds.push(onlyStaff);
     const [st, cap, hol] = await Promise.all([
       staffIds.length ? db.from("staff_profiles").select("id, name, weekly_capacity_hours, working_days, is_active").in("id", staffIds) : Promise.resolve({ data: [], error: null }),
@@ -564,7 +574,7 @@ Deno.serve(async (req) => {
     const windowTo = shiftISO(today, settings.window_days);
     const columns = [];
     for (const s of (st.data || []) as Record<string, any>[]) {
-      const mine = jobs.filter((j) => j.preparer_id === s.id).map((j) => {
+      const mine = jobs.filter((j) => j.board_owner === s.id).map((j) => {
         const k = jobKey(j.entity_id, j.period_end);
         const plan = plans.get(k) || null;
         const prep = plan ? milestones.get(`${plan.id}|prepare`) : null;
@@ -744,14 +754,19 @@ Deno.serve(async (req) => {
         if (confidence !== "green" && !reason && !note) throw new BadRequest("Say what's in the way — a reason or a note");
         const requested = p.review_date ? isoDate(p.review_date, "review_date") : null;
         const job = await accountsJob(entityId, periodEnd, tKey);
-        const staffId = (job.preparer_id as string | null) ?? null;
+        // Same column rule as buildBoard: the Submission task's owner, else the preparer.
+        let staffId = (job.preparer_id as string | null) ?? null;
+        if (job.ch_job_id) {
+          const { data: ch } = await db.from("bm_task_schedule").select("assignee_id").eq("id", job.ch_job_id as string).maybeSingle();
+          if (ch?.assignee_id) staffId = ch.assignee_id;
+        }
 
         const before = staffId ? (await buildBoard(tKey, staffId)).columns.find((c) => c.staff_id === staffId) : null;
         const mineBefore = before?.jobs.find((j) => j.key === jobKey(entityId, periodEnd)) || null;
         let after: string | null = mineBefore?.review_saved ?? null;
         let applied = null;
         if (requested) {
-          if (!before || !mineBefore) throw new BadRequest("This job isn't on the Priority board (no preparer, or no filing in the next six months), so its date can't be moved from here");
+          if (!before || !mineBefore) throw new BadRequest("This job isn't on the Priority board (no one on its Submission or Preparation task, or no filing in the next six months), so its date can't be moved from here");
           if (mineBefore.limit && requested > mineBefore.limit) throw new BadRequest(`That's past the latest safe date (${mineBefore.limit}: the statutory date less the buffer)`);
           const others = before.jobs.filter((j) => j.key !== mineBefore.key);
           const at = others.findIndex((j) => !j.review_done && String(j.review_saved || j.review_computed) > requested);
