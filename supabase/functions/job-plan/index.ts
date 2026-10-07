@@ -587,7 +587,38 @@ Deno.serve(async (req) => {
         const { error } = await db.from("entities").update(reason ? { deprioritise_reason: reason, deprioritised_at: now } : { deprioritise_reason: null, deprioritised_at: null }).eq("id", entityId);
         if (error) throw new Error(error.message);
         await db.from("entity_priority_log").insert({ entity_id: entityId, action: reason ? "deprioritise" : "reprioritise", reason, user_id: me });
-        return json({ success: true });
+
+        // Triage (Bobby, 2026-10-07): deprioritising opens a case on the Triage
+        // Board — one open case per client at any time, so an existing open
+        // case gets a note instead. Putting the client back resolves a case
+        // this opened; a case opened some other way just gets the note.
+        const { data: openCases } = await db.from("triage_cases").select("id, source").eq("entity_id", entityId).eq("status", "open").order("created_at");
+        const existing = (openCases || [])[0] || null;
+        let triage: string | null = null;
+        if (reason) {
+          if (existing) {
+            await db.from("triage_case_notes").insert({ case_id: existing.id, author_id: me, body: `Deprioritised on the Priority board: ${reason}` });
+            triage = "noted";
+          } else {
+            const strike = /struck off/i.test(reason);
+            const { error: tErr } = await db.from("triage_cases").insert({
+              entity_id: entityId, category: strike ? "strike_off" : "on_hold", stage: strike ? "not_started" : "on_hold", status: "open",
+              source: "deprioritised", title: `Deprioritised: ${reason}`,
+              description: `Taken out of the work queues (Priority board, Ready Now, Job Selector) because: ${reason}.`,
+              next_action: "Find out what's needed, then put the client back in the queue or close them off",
+              created_by: me,
+            });
+            if (tErr) throw new Error(tErr.message);
+            triage = "opened";
+          }
+        } else if (existing) {
+          if (existing.source === "deprioritised") {
+            await db.from("triage_cases").update({ status: "resolved", stage: "completed", resolved_at: now, resolved_by: me }).eq("id", existing.id);
+            triage = "resolved";
+          } else triage = "noted";
+          await db.from("triage_case_notes").insert({ case_id: existing.id, author_id: me, body: "Put back in the queue on the Priority board" });
+        }
+        return json({ success: true, triage });
       }
 
       // ── Directors' other income (sql/351) ────────────────────────────────

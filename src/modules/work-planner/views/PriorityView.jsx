@@ -267,7 +267,13 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
   const [depriOther, setDepriOther] = useState('');
   const deprioritise = async (j, reason) => {
     setError(null);
-    try { await callJobPlan({ action: 'set_deprioritised', entity_id: j.entity_id, reason }); setDepri(null); setDepriReason(''); setDepriOther(''); await load(); }
+    try {
+      const res = await callJobPlan({ action: 'set_deprioritised', entity_id: j.entity_id, reason });
+      setDepri(null); setDepriReason(''); setDepriOther('');
+      const t = { opened: 'a case is open on the Triage Board', noted: 'noted on its open Triage Board case', resolved: 'its Triage Board case is resolved' }[res.triage];
+      setNotice({ text: `${j.client} ${reason ? 'deprioritised' : 'is back in the queue'}${t ? ` — ${t}` : ''}.`, failed: [] });
+      await load();
+    }
     catch (e) { setError(e.message || String(e)); }
   };
   const activeJob = active ? board?.columns.flatMap((c) => c.jobs).find((j) => j.key === active) : null;
@@ -366,7 +372,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
         <div onClick={() => setDepri(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.3)', zIndex: 115, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 420, maxWidth: '96vw', padding: 18, fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>Deprioritise {depri.client}</div>
-            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>The client leaves the queue here, in Ready Now and in the Job Selector until it's put back. Its jobs keep their statutory deadlines.</div>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>The client leaves the queue here, in Ready Now and in the Job Selector until it's put back, and a case opens on the Triage Board (or a note goes on the one already open). Its jobs keep their statutory deadlines.</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
               {DEPRI_REASONS.map((r) => (
                 <label key={r} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, cursor: 'pointer' }}>
