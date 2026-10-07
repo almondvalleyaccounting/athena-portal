@@ -325,7 +325,7 @@ export default function BillingPage() {
       const qty = Number(l.qty) > 0 ? Number(l.qty) : 1;
       const rate = Number(l.unit_price) || (qty ? net / qty : net);
       return {
-        service: l.service || '', description: l.description || '',
+        service: l.service || '', description: l.description || '', hours: '',
         qty: net ? fmtNum(qty, 4) : '', rate: net ? fmtNum(rate, 4) : '',
         net: net ? String(net) : '', vat: net ? vat.toFixed(2) : '', gross: net ? (net + vat).toFixed(2) : '',
         vatManual: false, touch: ['qty', 'rate'],
@@ -416,8 +416,10 @@ export default function BillingPage() {
         // doesn't agree with what was approved here.
         const q = parseFloat(l.qty), r = parseFloat(l.rate);
         const split = Number.isFinite(q) && q > 0 && Number.isFinite(r) && Math.abs(q * r - net) < 0.005;
+        const h = parseFloat(l.hours);
         return {
           service: l.service, description: l.description.trim() || null,
+          hours: Number.isFinite(h) && h >= 0 ? h : null,
           qty: split ? q : 1, rate: split ? r : net,
           net, vat, gross,
         };
@@ -621,6 +623,7 @@ export default function BillingPage() {
     const ls = Array.isArray(item.lines) && item.lines.length
       ? item.lines.map((l) => ({
           service: l.service || '', description: l.description || '',
+          hours: l.hours != null ? fmtNum(l.hours, 2) : '',
           ...splitOf(l.qty, l.rate, l.net),
           net: l.net != null ? String(l.net) : '', vat: l.vat != null ? String(l.vat) : '',
           gross: l.gross != null ? String(l.gross) : '', vatManual: isManualVat(l.net, l.vat),
@@ -628,6 +631,7 @@ export default function BillingPage() {
         }))
       : [{
           service: item.service || '', description: item.description || '',
+          hours: '',
           ...splitOf(null, null, item.net_amount),
           net: String(item.net_amount || ''), vat: String(item.vat_amount || ''),
           gross: String(item.gross_amount || ''), vatManual: isManualVat(item.net_amount, item.vat_amount),
@@ -828,6 +832,7 @@ export default function BillingPage() {
       {/* Line items header */}
       <div style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:4,paddingRight:2}}>
         <span style={formLabel}>Service *</span><span style={formLabel}>Description</span>
+        <span style={formLabel} title="Athena only: never sent to QuickBooks or shown on the invoice">Actual hrs</span>
         <span style={formLabel}>Qty</span><span style={formLabel}>Rate (£)</span>
         <span style={formLabel}>Amount (£) *</span><span style={formLabel}>VAT (£)</span><span style={formLabel}>Gross (£)</span><span/>
       </div>
@@ -852,6 +857,9 @@ export default function BillingPage() {
             rows={2}
             style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4,color:l.descAuto?'#475569':undefined}}
           />
+          {/* Internal record of time actually spent. Not part of Qty × Rate, and
+              the push builds QBO lines from named fields, so it never leaves Athena. */}
+          <CalcInput value={l.hours} onChange={(v)=>changeLineField(idx,'hours',v)} dp={2} placeholder="—" style={{...numInput,background:'#fffbeb'}}/>
           <CalcInput value={l.qty} onChange={(v)=>changeLineCalc(idx,'qty',v)} dp={4} placeholder="1" style={numInput}/>
           <CalcInput value={l.rate} onChange={(v)=>changeLineCalc(idx,'rate',v)} dp={4} placeholder="0.00" style={numInput}/>
           <CalcInput value={l.net} onChange={(v)=>changeLineCalc(idx,'net',v)} dp={2} placeholder="0.00" style={numInput}/>
@@ -868,6 +876,7 @@ export default function BillingPage() {
         <span style={{fontSize:12,color:'#94a3b8'}}>
           Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
           {' '}Not sure of the figure yet? Put <b>0</b> in Amount — it saves as a £0.00 placeholder and can&apos;t be approved until it&apos;s priced.
+          {' '}<b>Actual hrs</b> is for us: it stays in Athena and never reaches QuickBooks or the invoice.
         </span>
       </div>
 
@@ -1454,6 +1463,7 @@ function BillLines({ lines, fmt }) {
     <div style={{ borderTop: '1px solid #f1f5f9', background: '#fafafa', padding: '8px 18px 10px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: DETAIL_COLS, gap: 10, padding: '2px 0 4px', fontSize: 11, fontWeight: 700, color: '#94a3b8', borderBottom: '1px solid #eef2f7' }}>
         <span>Service</span><span>Description</span>
+        <span style={{ textAlign: 'right' }} title="Athena only: not on the invoice">Actual hrs</span>
         <span style={{ textAlign: 'right' }}>Qty</span><span style={{ textAlign: 'right' }}>Rate</span>
         <span style={{ textAlign: 'right' }}>Net</span><span style={{ textAlign: 'right' }}>VAT</span><span style={{ textAlign: 'right' }}>Gross</span>
       </div>
@@ -1462,6 +1472,7 @@ function BillLines({ lines, fmt }) {
           <span style={{ fontWeight: 500, color: '#0f172a' }}>{l.service || '—'}</span>
           {/* pre-line so multi-line descriptions read as they were typed. */}
           <span style={{ color: '#475569', whiteSpace: 'pre-line' }}>{l.description || <span style={{ fontStyle: 'italic', color: '#cbd5e1' }}>No description</span>}</span>
+          <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#b45309' }}>{l.hours != null ? fmtNum(l.hours, 2) : '—'}</span>
           <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmtNum(l.qty ?? 1, 4) || '1'}</span>
           <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmt(l.rate != null ? l.rate : l.net)}</span>
           <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#64748b' }}>{fmt(l.net)}</span>
@@ -1647,16 +1658,16 @@ const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
 // Wider service column than the rest of the row needs: the product names run
 // to "Business Accounts and Corporation Tax Combined" (sql/186), and a picker
 // you can't read the end of is a picker you can choose wrongly from.
-const LINE_COLS = '1.6fr 1.6fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
+const LINE_COLS = '1.6fr 1.6fr 0.55fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
 // Bills per page in the list.
 const LIST_PAGE_SIZE = 50;
-const DETAIL_COLS = '1.5fr 1.9fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
+const DETAIL_COLS = '1.5fr 1.9fr 0.5fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
 // A fresh, empty editor line.
 // descAuto: the description was pulled through from the QuickBooks product and
 // hasn't been touched since, so changing the service may replace it. Stored and
 // copied-in lines leave it unset — that text is somebody's own wording.
-function blankLine() { return { service: '', description: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, descAuto: false, touch: [] }; }
+function blankLine() { return { service: '', description: '', hours: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, descAuto: false, touch: [] }; }
 
 // Has someone actually put a figure on this bill? £0.00 is a legitimate way to
 // raise one ("bill this, amount to be decided") — it just can't be approved or
