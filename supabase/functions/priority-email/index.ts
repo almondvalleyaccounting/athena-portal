@@ -8,7 +8,8 @@
 //   1. Can't make its safe date — the queue clamps these; talk to the manager.
 //   2. Due for internal review in the next `window_days`, in board order.
 //   3. Coming up — the next `upcoming_count` jobs in the column.
-// Accounts and self assessment, each with its own column order.
+// Accounts only (Bobby, 2026-10-07): self assessment will get its own email
+// later, not triggered yet, so EMAIL_TEMPLATES leaves it out.
 //
 // It is a briefing, not a questionnaire: no reply is expected and nobody is
 // chased. Each job has one link, "Report a delay or I'm stuck", which opens
@@ -24,11 +25,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendEmail } from "../_shared/resend.ts";
-import { buildBoard, PRIORITY_TEMPLATES } from "../_shared/priority-board.ts";
+import { buildBoard } from "../_shared/priority-board.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const EMAIL_TEMPLATES = ["annual_accounts"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Row = Record<string, any>;
@@ -83,7 +85,7 @@ Deno.serve(async (req) => {
   // Everyone's columns, both kinds of work.
   const people = new Map<string, { name: string; sections: Section[] }>();
   let today = "";
-  for (const tKey of PRIORITY_TEMPLATES) {
+  for (const tKey of EMAIL_TEMPLATES) {
     let board;
     try { board = await buildBoard(db, tKey, onlyStaff); }
     catch (e) { return json({ success: false, error: `${tKey}: ${(e as Error).message}` }, 500); }
@@ -156,7 +158,7 @@ Deno.serve(async (req) => {
         <div style="font-size:13px;font-weight:700;color:#475569;">Coming up next</div>
         ${table(s.upcoming, s.template, true)}</td></tr>` : ""}`).join("");
     const inner = `
-      <tr><td style="font-size:19px;font-weight:700;color:#1E4560;padding-bottom:2px;">Your priorities this week</td></tr>
+      <tr><td style="font-size:19px;font-weight:700;color:#1E4560;padding-bottom:2px;">Priorities</td></tr>
       <tr><td style="font-size:13px;color:#64748b;">${esc(fmtY(today))}${testRecipient ? ` · <b style="color:#b45309;">TEST — this is ${esc(p.name)}'s email</b>` : ""}</td></tr>
       <tr><td style="font-size:13.5px;color:#334155;padding-top:12px;line-height:1.55;">
         Hi ${esc(first)}, here's what's needed from you and when, from the Priority board. The internal review date is when each job should be ready for review.
@@ -172,7 +174,7 @@ Deno.serve(async (req) => {
         <table role="presentation" width="680" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:28px;">${inner}</table>
       </td></tr></table></body></html>`;
     const text = [
-      `YOUR PRIORITIES THIS WEEK — ${fmtY(today)}${testRecipient ? ` (TEST: ${p.name}'s email)` : ""}`,
+      `PRIORITIES — ${fmtY(today)}${testRecipient ? ` (TEST: ${p.name}'s email)` : ""}`,
       `Hi ${first}, here's what's needed from you and when. No need to reply. If anything is going to be late, or you're stuck, use the link beside it and the manager is told straight away.`,
       ...p.sections.map((s) => [
         `\n${LABEL[s.template].name.toUpperCase()}`,
@@ -182,7 +184,7 @@ Deno.serve(async (req) => {
       ].filter(Boolean).join("\n\n")),
       ``, `Priority board: ${athena}/planner/priority`,
     ].join("\n");
-    const subject = `${testRecipient ? `[Test: ${first}] ` : ""}Your priorities this week — ${fmt(today)}`;
+    const subject = `${testRecipient ? `[Test: ${first}] ` : ""}Priorities — ${fmt(today)}`;
     const r = await sendEmail({ to, subject, html, text });
     results.push({ staff_id: id, name: p.name, ok: r.ok, resend_id: r.id, error: r.error });
   }
