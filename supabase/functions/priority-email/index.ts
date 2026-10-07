@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     const until = addDays(today, windowDays);
     for (const col of board.columns) {
       if (!col.is_active) continue;
-      const open = col.jobs.filter((j: Row) => !j.review_done);
+      const open = col.jobs.filter((j: Row) => !j.review_done && !j.deprioritised);
       const when = (j: Row) => j.review_saved || j.review_computed;
       const problems = open.filter((j: Row) => j.capped || j.overdue);
       const rest = open.filter((j: Row) => !(j.capped || j.overdue));

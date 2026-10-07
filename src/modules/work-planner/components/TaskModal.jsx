@@ -8,6 +8,7 @@ import { formatISO } from '../lib/helpers';
 import { MinutesModal, shortTask } from './PlannerBits';
 import EmailModal from './EmailModal';
 import ProgressUpdateModal from './ProgressUpdateModal';
+import IncomeItemsModal from './IncomeItemsModal';
 import { BTN } from '../../../lib/buttonStyles';
 
 // One task modal for every kind of task (Bobby, 2026-09-26): a plan stage,
@@ -62,6 +63,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
   // Drives Create / Manage workflow and Progress update (sql/349).
   const [job, setJob] = useState(null);
   const [progress, setProgress] = useState(false);
+  const [income, setIncome] = useState(false); // directors' other income (sql/351)
   const [editDue, setEditDue] = useState(null); // ISO string while the due date is being edited
   const [reassign, setReassign] = useState(task.reassign ? { to: '', mode: 'one_off', note: '' } : null); // { to, mode, note } while the reassign panel is open
   const { type, id, occurrence_date: occ } = task;
@@ -209,6 +211,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         {entityId && <button onClick={() => navigate(`/clients/${entityId}`)} style={BTN.secondary.sm}>Open the client</button>}
         {job && <button onClick={() => navigate(workflowPath(job))} title={job.plan_id ? "Open this job's workflow" : 'Propose the standard chain for this job, ready to adjust and commit'} style={BTN.secondary.sm}>{job.plan_id ? 'Manage workflow' : 'Create workflow'}</button>}
         {job && <button onClick={() => setProgress(true)} style={BTN.secondary.sm}>Progress update</button>}
+        {job?.template_key === 'self_assessment' && <button onClick={() => setIncome(true)} title="Other income items asked for on the company's request, ticked as they arrive" style={BTN.secondary.sm}>Other income…</button>}
         <button onClick={() => setAsk({ title: shortTask(detail.bm_task_name), subtitle: entityName, cta: 'Mark complete', defaultMins: detail.remaining_hours != null ? Math.round(Number(detail.remaining_hours) * 60) : null, note: 'The minutes go to your timesheet. The job then sits on your "Update in BrightManager" list on Overview until the next import confirms it.', run: (m) => act({ action: 'complete_bm_job', schedule_id: id, minutes: m }) })} style={BTN.primary.sm}>Mark complete…</button>
         {detail.scheduled_for_date !== todayISO && <button onClick={async () => { try { await rescheduleTask(id, todayISO); await changed(); } catch (e) { setError(e.message); } }} style={BTN.secondary.sm}>Move to today</button>}
         <button onClick={() => setReassign((r) => (r ? null : { to: '', mode: 'one_off', note: '' }))} style={reassign ? { ...BTN.secondary.sm, background: '#dbeafe', borderColor: '#0e7fe0', color: '#0e7fe0' } : BTN.secondary.sm}>Reassign…</button>
@@ -346,6 +349,7 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
         )}
       </div>
       {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
+      {income && job && <IncomeItemsModal job={{ ...job, client: job.client || entityName }} staffMap={staffMap} onClose={() => setIncome(false)} onChanged={() => onChanged && onChanged()} />}
       {progress && job && (
         <ProgressUpdateModal job={{ ...job, client: job.client || entityName }} staffMap={staffMap}
           onClose={() => setProgress(false)} onSaved={() => { onChanged && onChanged(); load(); }} />

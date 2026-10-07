@@ -16,6 +16,10 @@ export interface QueueJob {
   prepDone: boolean;     // preparation finished: nothing left to queue
   reviewDone: boolean;   // past internal review: off the queue entirely
   statutory: string | null;
+  /** Not before this date (accounts: year end + 3 months). Null = no floor. */
+  floor?: string | null;
+  /** Aim to be done by this date (accounts: year end + 6 months). */
+  target?: string | null;
 }
 
 export interface QueueOpts {
@@ -35,6 +39,7 @@ export interface QueueSlot {
   limit: string | null;      // statutory less the buffer
   capped: boolean;           // the queue would have put it past the limit
   overdue: boolean;          // the limit is already behind us
+  behind_target: boolean;    // after the target date but inside the limit
 }
 
 export const REVIEW_GAP_DAYS = 7;
@@ -55,7 +60,7 @@ export function runQueue(jobs: QueueJob[], o: QueueOpts): QueueSlot[] {
   for (const j of jobs) {
     const limit = j.statutory ? minusWorkingDays(parseISO(j.statutory), o.bufferWd) : null;
     const base = { key: j.key, limit: limit ? toISO(limit) : null, overdue: !!limit && limit < today };
-    if (j.reviewDone) { out.push({ ...base, review_date: null, prep_from: null, prep_to: null, capped: false }); continue; }
+    if (j.reviewDone) { out.push({ ...base, review_date: null, prep_from: null, prep_to: null, capped: false, behind_target: false }); continue; }
 
     let review: Date | null = null;
     let from: Date | null = null, to: Date | null = null;
@@ -74,9 +79,14 @@ export function runQueue(jobs: QueueJob[], o: QueueOpts): QueueSlot[] {
       review = roll(addDays(to, REVIEW_GAP_DAYS), WEEKDAYS, 1);
     }
 
+    // The target window (Bobby, 2026-10-07): not before the floor — the
+    // capacity is still used at the job's place in the queue, so an early job
+    // simply waits — and flagged when it lands after the target date.
+    if (review && j.floor) { const f = roll(parseISO(j.floor), WEEKDAYS, 1); if (review < f) review = f; }
     let capped = false;
     if (limit && (!review || review > limit)) { review = limit; capped = true; }
-    out.push({ ...base, review_date: review ? toISO(review) : null, prep_from: from ? toISO(from) : null, prep_to: to ? toISO(to) : null, capped });
+    const behind = !capped && !!review && !!j.target && review > parseISO(j.target);
+    out.push({ ...base, review_date: review ? toISO(review) : null, prep_from: from ? toISO(from) : null, prep_to: to ? toISO(to) : null, capped, behind_target: behind });
   }
   return out;
 }

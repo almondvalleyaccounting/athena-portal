@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { callJobPlan } from '../plan/planQueries';
 import { BTN } from '../../../lib/buttonStyles';
+import DirectorTags, { useDirectors, pickedWithDirectors } from './DirectorTags';
 
 // The client chaser in two screens (Bobby, 2026-09-26). First the draft:
 // what to ask for (select all / none per section), whether to include the
@@ -29,7 +30,9 @@ export default function SendStageModal({ milestone, myEmail, onClose, onSent }) 
   const [note, setNote] = useState(null);
   const p = milestone.job_plans;
 
-  const picked = (pk = picker) => (pk || []).filter((i) => i.ticked).map((i) => (i.key ? { key: i.key } : { text: i.label }));
+  // Personal items carry the directors they're for (sql/351).
+  const directors = useDirectors(p?.entity_id);
+  const picked = (pk = picker) => pickedWithDirectors(pk, directors);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,10 +118,13 @@ export default function SendStageModal({ milestone, myEmail, onClose, onSent }) 
                       <button onClick={() => setGroup(g, false)} style={{ ...BTN.secondary.sm, padding: '1px 7px', fontSize: 11.5 }}>None</button>
                     </div>
                     {picker.map((i, idx) => i.grp === g && (
-                      <label key={i.key || `c${idx}`} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, padding: '2px 0', cursor: 'pointer' }}>
+                      <React.Fragment key={i.key || `c${idx}`}>
+                      <label style={{ display: 'flex', gap: 6, alignItems: 'flex-start', fontSize: 12.5, padding: '2px 0', cursor: 'pointer' }}>
                         <input type="checkbox" checked={i.ticked} onChange={(e) => setPicker((pk) => pk.map((x, n) => (n === idx ? { ...x, ticked: e.target.checked } : x)))} style={{ marginTop: 3 }} />
                         <span>{i.label}{i.remembered && <span style={{ color: '#94a3b8' }}> · last year</span>}</span>
                       </label>
+                      <DirectorTags item={i} directors={directors} onChange={(ids) => setPicker((pk) => pk.map((x, n) => (n === idx ? { ...x, for: ids } : x)))} />
+                      </React.Fragment>
                     ))}
                   </div>
                 ))}

@@ -49,7 +49,9 @@ function buildMime(to: string, subject: string, text: string, fromEmail: string,
   ].join("\r\n");
 }
 
-export interface PickedItem { key?: string | null; text?: string | null }
+// `for`: the directors (their own individual client ids) a personal item is
+// for (sql/351). Each becomes an sa_income_items row on their next return.
+export interface PickedItem { key?: string | null; text?: string | null; for?: string[] }
 export interface PickerItem { key: string | null; label: string; grp: string; ticked: boolean; remembered: boolean }
 export interface Rendered {
   kind: string;
@@ -233,6 +235,7 @@ export async function renderForMilestone(
 // same log on the client page.
 
 async function rememberItems(db: SupabaseClient, entityId: string, picked: PickedItem[], periodEnd: string | null, actorId: string | null, now: string) {
+  await recordDirectorItems(db, entityId, picked, actorId, now);
   const keys = picked.filter((p) => p.key).map((p) => p.key as string);
   const customs = picked.filter((p) => !p.key && p.text && p.text.trim()).map((p) => p.text!.trim());
   await db.from("client_records_items").update({ active: false }).eq("entity_id", entityId);
@@ -248,6 +251,41 @@ async function rememberItems(db: SupabaseClient, entityId: string, picked: Picke
       customs.map((t) => ({ entity_id: entityId, item_key: null, custom_text: t, active: true, last_period_end: periodEnd, last_requested_at: now, requested_by: actorId })),
     );
   }
+}
+
+/** Personal items tagged to directors (sql/351): one sa_income_items row per
+ *  director per item, on that director's next open self assessment. An item
+ *  asked for again is re-stamped, not duplicated; one already received stays
+ *  received. */
+export async function recordDirectorItems(db: SupabaseClient, companyId: string, picked: PickedItem[], actorId: string | null, now: string) {
+  const tagged = picked.filter((p) => Array.isArray(p.for) && p.for.length);
+  if (!tagged.length) return 0;
+  const today = now.slice(0, 10);
+  const nextJob = new Map<string, string | null>();
+  let n = 0;
+  for (const it of tagged) {
+    for (const who of it.for!) {
+      if (!nextJob.has(who)) {
+        const { data } = await db.from("v_sa_jobs").select("period_end").eq("entity_id", who).gte("ch_deadline", today).order("ch_deadline").limit(1).maybeSingle();
+        nextJob.set(who, data?.period_end ?? null);
+      }
+      const pe = nextJob.get(who);
+      if (!pe) continue;
+      if (it.key) {
+        const { error } = await db.from("sa_income_items").upsert(
+          { entity_id: who, period_end: pe, company_entity_id: companyId, item_key: it.key, requested_at: now, requested_by: actorId, created_by: actorId },
+          { onConflict: "entity_id,period_end,item_key", ignoreDuplicates: false },
+        );
+        if (!error) n++;
+      } else if (it.text && it.text.trim()) {
+        const { data: dup } = await db.from("sa_income_items").select("id").eq("entity_id", who).eq("period_end", pe).eq("custom_text", it.text.trim()).limit(1);
+        if (dup?.length) await db.from("sa_income_items").update({ requested_at: now, requested_by: actorId }).eq("id", dup[0].id);
+        else await db.from("sa_income_items").insert({ entity_id: who, period_end: pe, company_entity_id: companyId, custom_text: it.text.trim(), requested_at: now, requested_by: actorId, created_by: actorId });
+        n++;
+      }
+    }
+  }
+  return n;
 }
 
 const GENERIC_RECORDS = "Hi {{greeting}},\n\n{{opener}}Could you send over the following when you get a chance?\n\n{{items}}\n\nUpload them to the portal or just reply to this email, whichever is easier.\n\n{{signoff}}";

@@ -5,6 +5,7 @@ import { callJobPlan } from '../plan/planQueries';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import ProgressUpdateModal, { CONFIDENCE } from '../components/ProgressUpdateModal';
 import EmailModal from '../components/EmailModal';
+import IncomeItemsModal from '../components/IncomeItemsModal';
 import { ContextMenu, MinutesModal } from '../components/PlannerBits';
 import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
@@ -29,8 +30,11 @@ const fmtY = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).to
 const first = (n) => String(n || '').split(' ')[0] || 'Someone';
 
 function Tile({ job, colour, dragging, onOpen, onMenu, report }) {
-  const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: job.key, disabled: job.review_done });
-  const { setNodeRef: dropRef, isOver } = useDroppable({ id: job.key });
+  // Only the queue is dragged: a director's return rides with its company and
+  // a deprioritised client sits out until it's put back (sql/351, 2026-10-07).
+  const fixed = job.review_done || job.deprioritised || job.group === 'director';
+  const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: job.key, disabled: fixed });
+  const { setNodeRef: dropRef, isOver } = useDroppable({ id: job.key, disabled: fixed });
   const conf = job.last_update ? CONFIDENCE[job.last_update.confidence] : null;
   const shown = job.review_saved || job.review_computed;
   const red = job.capped || job.overdue;
@@ -38,12 +42,13 @@ function Tile({ job, colour, dragging, onOpen, onMenu, report }) {
     <div ref={dropRef} style={{ borderTop: isOver && !dragging ? '3px solid #0e7fe0' : '3px solid transparent' }}>
       <div ref={dragRef} {...attributes} {...listeners} onClick={() => onOpen(job)} onContextMenu={(e) => onMenu(e, job)}
         style={{
-          background: job.review_done ? '#f8fafc' : '#fff', opacity: dragging ? 0.35 : job.review_done ? 0.6 : 1,
-          border: `1px solid ${red ? '#fca5a5' : '#e5e7eb'}`, borderLeft: `4px solid ${red ? '#dc2626' : colour || '#94a3b8'}`,
-          borderRadius: 7, padding: '6px 8px', cursor: job.review_done ? 'pointer' : 'grab', fontSize: 12.5, userSelect: 'none',
+          background: job.review_done || job.deprioritised ? '#f8fafc' : '#fff', opacity: dragging ? 0.35 : job.review_done || job.deprioritised ? 0.6 : 1,
+          border: `1px solid ${red ? '#fca5a5' : '#e5e7eb'}`, borderLeft: `4px solid ${job.deprioritised ? '#cbd5e1' : red ? '#dc2626' : colour || '#94a3b8'}`,
+          borderStyle: job.group === 'director' && !job.deprioritised ? 'dashed' : 'solid',
+          borderRadius: 7, padding: '6px 8px', cursor: fixed ? 'pointer' : 'grab', fontSize: 12.5, userSelect: 'none',
         }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', minWidth: 18 }}>{job.review_done ? '✓' : job.position}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', minWidth: 18 }}>{job.review_done ? '✓' : job.position ?? '↳'}</span>
           <span title={job.client} style={{ flex: 1, minWidth: 0, fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.client}</span>
           {conf && <span title={`Last update ${fmtY(job.last_update.created_at)}: ${conf.label}`} style={{ width: 9, height: 9, borderRadius: 5, background: conf.dot, flex: 'none' }} />}
         </div>
@@ -56,20 +61,27 @@ function Tile({ job, colour, dragging, onOpen, onMenu, report }) {
                 <span style={{ color: '#94a3b8' }}>· {job.template_key === 'self_assessment' ? 'HMRC' : 'CH'} {fmtY(job.ch_deadline)}</span>
               </>}
         </div>
-        {!job.review_done && (
+        {job.deprioritised && <div style={{ marginTop: 3, fontSize: 11.5, color: '#64748b' }}>Deprioritised{job.deprioritise_reason ? ` · ${job.deprioritise_reason}` : ''}</div>}
+        {job.follows && !job.deprioritised && <div title="A director's return rides with their company's internal review" style={{ marginTop: 3, fontSize: 11.5, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Follows {job.follows.company}</div>}
+        {!job.review_done && !job.deprioritised && (
           <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+            {job.expedite && <span title="Expedited: placed just below anything within a month of its deadline, and no earlier-review floor" style={chip('#dcfce7', '#166534')}>Expedited</span>}
+            {job.behind_target && <span title="After the target window (year end + 6 months) but still inside the safe date" style={chip('#fef3c7', '#92400e')}>Behind target</span>}
+            {job.income_outstanding?.length > 0 && <span title={`Waiting on: ${job.income_outstanding.join(', ')}`} style={chip('#fef3c7', '#92400e')}>Waiting: {job.income_outstanding.length} income item{job.income_outstanding.length === 1 ? '' : 's'}</span>}
             {job.capped && <span title={`The queue can't reach it before ${fmt(job.limit)} (statutory less the buffer). Move it up, add hours or reassign.`} style={chip('#fee2e2', '#991b1b')}>{job.overdue ? 'Past safe date' : "Won't make it"}</span>}
             {!job.plan_id && <span title="No workflow yet: setting the dates creates a draft" style={chip('#f1f5f9', '#64748b')}>No workflow</span>}
             {job.plan_status === 'draft' && <span style={chip('#eff6ff', '#0e7fe0')}>Draft</span>}
             {job.prep_done && <span style={chip('#ede9fe', '#6d28d9')}>Prepared</span>}
             {report && <span title={[report.note, `reported ${fmtY(report.created_at)}`].filter(Boolean).join(' · ')} style={report.confidence === 'red' ? chip('#fee2e2', '#991b1b') : chip('#fef3c7', '#92400e')}>{report.confidence === 'red' ? 'Stuck' : 'Delayed'}</span>}
-            <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 11 }}>{job.prep_done ? '' : `${Number(job.prep_hours)}h`}</span>
+            <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 11 }}>{job.prep_done || job.group === 'director' ? '' : `${Number(job.prep_hours)}h`}</span>
           </div>
         )}
       </div>
     </div>
   );
 }
+const sectionHead = { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.3, padding: '8px 2px 2px', borderTop: '1px solid #e5e7eb', marginTop: 4 };
+const DEPRI_REASONS = ['Client Unresponsive', 'Being Struck Off', 'Awaiting Client', 'Other']; // same list as Ready Now
 const chip = (bg, fg) => ({ fontSize: 10.5, fontWeight: 600, padding: '0 6px', borderRadius: 8, background: bg, color: fg, lineHeight: '17px' });
 
 function ColumnEnd({ id }) {
@@ -103,6 +115,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
   const [menu, setMenu] = useState(null);
   const [email, setEmail] = useState(null);
   const [ask, setAsk] = useState(null);
+  const [income, setIncome] = useState(null);
   const [params, setParams] = useSearchParams();
   const template = SERVICES.some((s) => s.id === params.get('template')) ? params.get('template') : 'annual_accounts';
   const [board, setBoard] = useState(null);
@@ -188,7 +201,8 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
     if (!over || a.id === over.id) return;
     const col = board.columns.find((c) => c.jobs.some((j) => j.key === a.id));
     if (!col) return;
-    const keys = col.jobs.map((j) => j.key);
+    const inQueue = (j) => !j.deprioritised && j.group !== 'director';
+    const keys = col.jobs.filter(inQueue).map((j) => j.key);
     const from = keys.indexOf(a.id);
     let to = String(over.id).startsWith('end:') ? (over.id === `end:${col.staff_id}` ? keys.length : -1) : keys.indexOf(over.id);
     if (to < 0) { setNotice({ text: 'A job stays in its submitter\'s column. To move it, reassign its Submission task.', failed: [] }); return; }
@@ -197,7 +211,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
     keys.splice(to, 0, a.id);
     // Optimistic: reorder now, dates follow from the server.
     const byKey = Object.fromEntries(col.jobs.map((j) => [j.key, j]));
-    replaceColumn({ ...col, jobs: keys.map((k, i) => ({ ...byKey[k], position: i + 1 })) });
+    replaceColumn({ ...col, jobs: [...keys.map((k, i) => ({ ...byKey[k], position: i + 1 })), ...col.jobs.filter((j) => !inQueue(j))] });
     run(col, { action: 'priority_reorder', keys });
   };
 
@@ -213,22 +227,30 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
   const moveTo = (j, where) => {
     const col = board.columns.find((c) => c.jobs.some((x) => x.key === j.key));
     if (!col) return;
-    const keys = col.jobs.map((x) => x.key).filter((k) => k !== j.key);
+    const inQueue = (x) => !x.deprioritised && x.group !== 'director';
+    const keys = col.jobs.filter(inQueue).map((x) => x.key).filter((k) => k !== j.key);
     if (where === 'top') keys.unshift(j.key); else keys.push(j.key);
     const byKey = Object.fromEntries(col.jobs.map((x) => [x.key, x]));
-    replaceColumn({ ...col, jobs: keys.map((k, i) => ({ ...byKey[k], position: i + 1 })) });
+    replaceColumn({ ...col, jobs: [...keys.map((k, i) => ({ ...byKey[k], position: i + 1 })), ...col.jobs.filter((x) => !inQueue(x))] });
     run(col, { action: 'priority_reorder', keys });
   };
   const openMenu = (e, j) => {
     e.preventDefault(); e.stopPropagation();
     const bmId = j.prep_job_id || j.ch_job_id;
     const items = [{ label: 'Open', run: () => openJob(j) }];
-    if (!j.review_done) {
+    const inQueue = !j.deprioritised && j.group !== 'director';
+    if (!j.review_done && inQueue) {
       if (j.position > 1) items.push({ label: 'Move to top', run: () => moveTo(j, 'top') });
       items.push({ label: 'Move to bottom', run: () => moveTo(j, 'bottom') });
+    }
+    if (!j.review_done && !j.deprioritised) {
       items.push({ label: 'Report a delay…', run: () => setProgress({ ...j, as: 'amber' }) });
       items.push({ label: 'Report stuck…', run: () => setProgress({ ...j, as: 'red' }) });
     }
+    if (j.template_key === 'self_assessment' && j.is_director) items.push({ label: `Other income…${j.income_outstanding?.length ? ` (${j.income_outstanding.length} waiting)` : ''}`, run: () => setIncome(j) });
+    items.push(j.deprioritised
+      ? { label: 'Back in the queue', run: () => deprioritise(j, null) }
+      : { label: 'Deprioritise…', run: () => setDepri(j) });
     items.push({ label: j.plan_id ? 'Manage workflow' : 'Create workflow', run: () => navigate(workflowPath(j)) });
     items.push({ label: 'Open the client', run: () => navigate(`/clients/${j.entity_id}`) });
     if (j.ch_job_id) items.push({ label: 'Reassign…', run: () => onOpenTask && onOpenTask({ type: 'bm', id: j.ch_job_id, reassign: true }) });
@@ -238,6 +260,16 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
     setMenu({ x: e.clientX, y: e.clientY, title: `${j.client} · ${j.template_key === 'self_assessment' ? 'Self assessment' : 'Accounts'}`, items });
   };
   const closeMenu = useCallback(() => setMenu(null), []);
+  // Deprioritise (Bobby, 2026-10-07): the client-level flag Ready Now and the
+  // Job Selector already use, so the client leaves those queues too.
+  const [depri, setDepri] = useState(null);
+  const [depriReason, setDepriReason] = useState('');
+  const [depriOther, setDepriOther] = useState('');
+  const deprioritise = async (j, reason) => {
+    setError(null);
+    try { await callJobPlan({ action: 'set_deprioritised', entity_id: j.entity_id, reason }); setDepri(null); setDepriReason(''); setDepriOther(''); await load(); }
+    catch (e) { setError(e.message || String(e)); }
+  };
   const activeJob = active ? board?.columns.flatMap((c) => c.jobs).find((j) => j.key === active) : null;
 
   return (
@@ -295,7 +327,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
           {columns.map((col) => {
             const outOfDate = col.jobs.filter((j) => j.out_of_date).length;
             const wont = col.jobs.filter((j) => j.capped && !j.review_done).length;
-            const hours = col.jobs.filter((j) => !j.review_done && !j.prep_done).reduce((s, j) => s + Number(j.prep_hours || 0), 0);
+            const hours = col.jobs.filter((j) => !j.review_done && !j.prep_done && !j.deprioritised && j.group !== 'director').reduce((s, j) => s + Number(j.prep_hours || 0), 0);
             return (
               <div key={col.staff_id} style={{ width: 268, flex: 'none', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10, display: 'flex', flexDirection: 'column', maxHeight: '100%' }}>
                 <div style={{ padding: '10px 10px 8px', borderBottom: '1px solid #e5e7eb', background: '#fff', borderRadius: '10px 10px 0 0' }}>
@@ -314,8 +346,12 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
                     : outOfDate > 0 && <button onClick={() => run(col, { action: 'priority_apply' })} title="Write the queue's dates to the workflows; jobs with no workflow get a draft" style={{ ...BTN.secondary.sm, marginTop: 5, padding: '1px 8px', fontSize: 11.5 }}>Set {outOfDate} date{outOfDate === 1 ? '' : 's'}</button>}
                 </div>
                 <div style={{ padding: 8, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {col.jobs.map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={active === j.key} onOpen={openJob} onMenu={openMenu} report={reportOf[`${template}:${j.key}`]} />)}
+                  {col.jobs.filter((j) => !j.deprioritised && j.group !== 'director').map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={active === j.key} onOpen={openJob} onMenu={openMenu} report={reportOf[`${template}:${j.key}`]} />)}
                   <ColumnEnd id={`end:${col.staff_id}`} />
+                  {col.jobs.some((j) => !j.deprioritised && j.group === 'director') && <div style={sectionHead}>Directors · follow their company</div>}
+                  {col.jobs.filter((j) => !j.deprioritised && j.group === 'director').map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={false} onOpen={openJob} onMenu={openMenu} report={reportOf[`${template}:${j.key}`]} />)}
+                  {col.jobs.some((j) => j.deprioritised) && <div style={sectionHead}>Deprioritised · {col.jobs.filter((j) => j.deprioritised).length}</div>}
+                  {col.jobs.filter((j) => j.deprioritised).map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={false} onOpen={openJob} onMenu={openMenu} report={reportOf[`${template}:${j.key}`]} />)}
                 </div>
               </div>
             );
@@ -325,6 +361,27 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
       </DndContext>
 
       <ContextMenu menu={menu} onClose={closeMenu} />
+      {income && <IncomeItemsModal job={income} staffMap={staffMap} onClose={() => setIncome(null)} onChanged={load} />}
+      {depri && (
+        <div onClick={() => setDepri(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.3)', zIndex: 115, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, width: 420, maxWidth: '96vw', padding: 18, fontFamily: font, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>Deprioritise {depri.client}</div>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>The client leaves the queue here, in Ready Now and in the Job Selector until it's put back. Its jobs keep their statutory deadlines.</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+              {DEPRI_REASONS.map((r) => (
+                <label key={r} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, cursor: 'pointer' }}>
+                  <input type="radio" name="depri" checked={depriReason === r} onChange={() => setDepriReason(r)} /> {r}
+                </label>
+              ))}
+              {depriReason === 'Other' && <input value={depriOther} onChange={(e) => setDepriOther(e.target.value)} placeholder="Why" autoFocus style={{ padding: '6px 10px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }} />}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+              <button disabled={!depriReason || (depriReason === 'Other' && !depriOther.trim())} onClick={() => deprioritise(depri, depriReason === 'Other' ? depriOther.trim() : depriReason)} style={BTN.primary.sm}>Deprioritise</button>
+              <button onClick={() => setDepri(null)} style={BTN.secondary.sm}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
       {email && <EmailModal ctx={{ entity_id: email.entity_id, entity_name: email.client, task_label: `${email.template_key === 'self_assessment' ? 'Self assessment' : 'Accounts'} · year end ${fmtY(email.period_end)}`, task: email.prep_job_id || email.ch_job_id ? { type: 'bm', id: email.prep_job_id || email.ch_job_id } : null }} staffList={staffList} profile={profile} onClose={() => setEmail(null)} />}
       {progress && (

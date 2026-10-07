@@ -47,6 +47,9 @@
 //   progress_history  { template, entity_id, period_end }
 //   progress_reports  {}                                      delay/stuck reports still open (sql/350)
 //   report_dealt_with { id, note? }                           close a report
+//   set_deprioritised { entity_id, reason | null }            the client-level flag (Ready Now, Job Selector, Priority)
+//   company_directors { entity_id }                           directors with their next self assessment (sql/351)
+//   income_items / income_item_add / income_item_received / income_item_remove   directors' other income
 //
 // Returns { success, plan, milestones } for single-plan actions.
 
@@ -100,12 +103,15 @@ function isoDate(v: unknown, field: string): string {
   return s;
 }
 // The picker's ticks: [{ key }] for catalogue items, [{ text }] for free text.
-function pickedItems(v: unknown[]): Array<{ key?: string | null; text?: string | null }> {
+function pickedItems(v: unknown[]): Array<{ key?: string | null; text?: string | null; for?: string[] }> {
   return v.slice(0, 60).map((x) => {
     const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
     const key = o.key ? String(o.key).slice(0, 60) : null;
     const text = o.text ? String(o.text).slice(0, 300) : null;
-    return key ? { key } : { text };
+    // Directors a personal item is for (sql/351): their individual client ids.
+    const forIds = Array.isArray(o.for) ? (o.for as unknown[]).map(String).filter((x) => UUID.test(x)).slice(0, 10) : [];
+    const base = key ? { key } : { text };
+    return forIds.length ? { ...base, for: forIds } : base;
   }).filter((x) => x.key || (x.text && x.text.trim()));
 }
 // A task reference from the browser: { type: ms|bm|quick|block, id, occurrence_date? }.
@@ -571,6 +577,77 @@ Deno.serve(async (req) => {
         return json({ success: true, applied, column: board.columns.find((c) => c.staff_id === staffId) || null });
       }
 
+      // ── Deprioritise (Bobby, 2026-10-07) ─────────────────────────────────
+      // The client-level flag Ready Now and the Job Selector already read
+      // (entities.deprioritise_reason / deprioritised_at), now written here
+      // with a line in entity_priority_log. reason null = back in the queue.
+      case "set_deprioritised": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const reason = p.reason ? String(p.reason).slice(0, 200).trim() : null;
+        const { error } = await db.from("entities").update(reason ? { deprioritise_reason: reason, deprioritised_at: now } : { deprioritise_reason: null, deprioritised_at: null }).eq("id", entityId);
+        if (error) throw new Error(error.message);
+        await db.from("entity_priority_log").insert({ entity_id: entityId, action: reason ? "deprioritise" : "reprioritise", reason, user_id: me });
+        return json({ success: true });
+      }
+
+      // ── Directors' other income (sql/351) ────────────────────────────────
+      // A company's current directors who are clients in their own right, with
+      // their next open self assessment: who a personal item can be for.
+      case "company_directors": {
+        const companyId = uuid(p.entity_id, "entity_id");
+        const { data: eps, error } = await db.from("entity_people").select("person_id").eq("entity_id", companyId).eq("role", "director").is("ended_on", null);
+        if (error) throw new Error(error.message);
+        const persons = (eps || []).map((e: Record<string, any>) => e.person_id);
+        if (!persons.length) return json({ success: true, directors: [] });
+        const { data: ents } = await db.from("entities").select("id, name, entity_status").in("linked_person_id", persons);
+        const out = [];
+        for (const e of (ents || []) as Record<string, any>[]) {
+          if (["nlac", "archived"].includes(e.entity_status)) continue;
+          const { data: job } = await db.from("v_sa_jobs").select("period_end, ch_deadline").eq("entity_id", e.id).gte("ch_deadline", now.slice(0, 10)).order("ch_deadline").limit(1).maybeSingle();
+          out.push({ entity_id: e.id, name: e.name, period_end: job?.period_end ?? null, deadline: job?.ch_deadline ?? null });
+        }
+        return json({ success: true, directors: out });
+      }
+
+      case "income_items": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const periodEnd = isoDate(p.period_end, "period_end");
+        const [{ data, error }, { data: cat }] = await Promise.all([
+          db.from("sa_income_items").select("*").eq("entity_id", entityId).eq("period_end", periodEnd).order("created_at"),
+          db.from("records_items").select("key, label").eq("grp", "personal").eq("active", true).order("sort_order"),
+        ]);
+        if (error) throw new Error(error.message);
+        return json({ success: true, items: data || [], catalogue: cat || [] });
+      }
+
+      case "income_item_add": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const periodEnd = isoDate(p.period_end, "period_end");
+        const key = p.item_key ? String(p.item_key).slice(0, 60) : null;
+        const text = p.custom_text ? String(p.custom_text).slice(0, 300).trim() : null;
+        if (!key && !text) throw new BadRequest("Pick an item or type one");
+        const row = { entity_id: entityId, period_end: periodEnd, item_key: key, custom_text: key ? null : text, requested_at: p.requested ? now : null, requested_by: p.requested ? me : null, created_by: me };
+        const { error } = key
+          ? await db.from("sa_income_items").upsert(row, { onConflict: "entity_id,period_end,item_key", ignoreDuplicates: true })
+          : await db.from("sa_income_items").insert(row);
+        if (error) throw new Error(error.message);
+        return json({ success: true });
+      }
+
+      case "income_item_received": {
+        const id = uuid(p.id, "id");
+        const received = p.received !== false;
+        const { error } = await db.from("sa_income_items").update(received ? { received_at: now, received_by: me } : { received_at: null, received_by: null }).eq("id", id);
+        if (error) throw new Error(error.message);
+        return json({ success: true });
+      }
+
+      case "income_item_remove": {
+        const { error } = await db.from("sa_income_items").delete().eq("id", uuid(p.id, "id"));
+        if (error) throw new Error(error.message);
+        return json({ success: true });
+      }
+
       // Delay and stuck reports still open (sql/350), newest first.
       case "progress_reports": {
         const { data, error } = await db.from("job_progress_updates").select("*, entities(name)").eq("status", "open").order("created_at", { ascending: false }).limit(200);
@@ -629,6 +706,7 @@ Deno.serve(async (req) => {
         let applied = null;
         if (requested) {
           if (!before || !mineBefore) throw new BadRequest("This job isn't on the Priority board (no one on its Submission or Preparation task, or no filing in the next six months), so its date can't be moved from here");
+          if (mineBefore.group === "director") throw new BadRequest(`${mineBefore.client}'s return rides with ${mineBefore.follows?.company || "their company"}: move the company's accounts instead`);
           if (mineBefore.limit && requested > mineBefore.limit) throw new BadRequest(`That's past the latest safe date (${mineBefore.limit}: the statutory date less the buffer)`);
           const others = before.jobs.filter((j) => j.key !== mineBefore.key);
           const at = others.findIndex((j) => !j.review_done && String(j.review_saved || j.review_computed) > requested);
