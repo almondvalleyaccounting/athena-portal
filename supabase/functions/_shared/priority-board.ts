@@ -32,7 +32,7 @@
 // before the statutory limit. The queue won't date a review before the
 // floor, and one landing after the target shows "Behind target".
 // Expedited clients (entities.expedite) whose year end has passed skip the
-// floor and are placed just below the last job in the column that is within
+// floor and (accounts and self assessment alike) are placed just below the last job in the column that is within
 // expedite_guard_days of its filing deadline — never above one of those.
 
 import { runQueue, daysOffMap } from "./priority.ts";
@@ -234,7 +234,9 @@ export async function buildBoard(db: any, templateKey: string, onlyStaff?: strin
       const at = ordered.findIndex((o) => String(o.ch_deadline) > String(u.ch_deadline));
       if (at < 0) ordered.push(u); else ordered.splice(at, 0, u);
     }
-    if (templateKey === "annual_accounts") {
+    {
+      // Expedite placement applies to both kinds of work; only the accounts
+      // floor below is accounts-only.
       const exp = ordered.filter((j) => j.expedite);
       if (exp.length) {
         const rest = ordered.filter((j) => !j.expedite);
