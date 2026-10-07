@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, useSensor, useSensors, closestCenter } from '@dnd-kit/core';
 import { callJobPlan } from '../plan/planQueries';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import ProgressUpdateModal, { CONFIDENCE } from '../components/ProgressUpdateModal';
+import EmailModal from '../components/EmailModal';
+import { ContextMenu, MinutesModal } from '../components/PlannerBits';
 import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 
@@ -26,7 +28,7 @@ const fmt = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toL
 const fmtY = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—');
 const first = (n) => String(n || '').split(' ')[0] || 'Someone';
 
-function Tile({ job, colour, dragging, onOpen, report }) {
+function Tile({ job, colour, dragging, onOpen, onMenu, report }) {
   const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: job.key, disabled: job.review_done });
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: job.key });
   const conf = job.last_update ? CONFIDENCE[job.last_update.confidence] : null;
@@ -34,7 +36,7 @@ function Tile({ job, colour, dragging, onOpen, report }) {
   const red = job.capped || job.overdue;
   return (
     <div ref={dropRef} style={{ borderTop: isOver && !dragging ? '3px solid #0e7fe0' : '3px solid transparent' }}>
-      <div ref={dragRef} {...attributes} {...listeners} onClick={() => onOpen(job)}
+      <div ref={dragRef} {...attributes} {...listeners} onClick={() => onOpen(job)} onContextMenu={(e) => onMenu(e, job)}
         style={{
           background: job.review_done ? '#f8fafc' : '#fff', opacity: dragging ? 0.35 : job.review_done ? 0.6 : 1,
           border: `1px solid ${red ? '#fca5a5' : '#e5e7eb'}`, borderLeft: `4px solid ${red ? '#dc2626' : colour || '#94a3b8'}`,
@@ -96,7 +98,11 @@ function HoursEdit({ col, onSave }) {
 }
 
 export default function PriorityView({ onOpenTask, refreshTick }) {
-  const { filters, staffMap, staffColours } = useWorkPlanner();
+  const { filters, staffMap, staffColours, staffList } = useWorkPlanner();
+  const navigate = useNavigate();
+  const [menu, setMenu] = useState(null);
+  const [email, setEmail] = useState(null);
+  const [ask, setAsk] = useState(null);
   const [params, setParams] = useSearchParams();
   const template = SERVICES.some((s) => s.id === params.get('template')) ? params.get('template') : 'annual_accounts';
   const [board, setBoard] = useState(null);
@@ -199,6 +205,39 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
     const id = j.prep_job_id || j.ch_job_id;
     if (id && onOpenTask) onOpenTask({ type: 'bm', id });
   };
+  // Right-click (Bobby, 2026-10-07): order, report, workflow/client/reassign,
+  // and the same comment / email / log time the Day plan tiles have. Reassign
+  // and comment open the task modal on the job's BM task; reassigning the
+  // Submission task moves the job to that person's column.
+  const workflowPath = (j) => `/planner/plan/${j.entity_id}/${j.period_end}${j.template_key === 'self_assessment' ? '?template=self_assessment' : ''}`;
+  const moveTo = (j, where) => {
+    const col = board.columns.find((c) => c.jobs.some((x) => x.key === j.key));
+    if (!col) return;
+    const keys = col.jobs.map((x) => x.key).filter((k) => k !== j.key);
+    if (where === 'top') keys.unshift(j.key); else keys.push(j.key);
+    const byKey = Object.fromEntries(col.jobs.map((x) => [x.key, x]));
+    replaceColumn({ ...col, jobs: keys.map((k, i) => ({ ...byKey[k], position: i + 1 })) });
+    run(col, { action: 'priority_reorder', keys });
+  };
+  const openMenu = (e, j) => {
+    e.preventDefault(); e.stopPropagation();
+    const bmId = j.prep_job_id || j.ch_job_id;
+    const items = [{ label: 'Open', run: () => openJob(j) }];
+    if (!j.review_done) {
+      if (j.position > 1) items.push({ label: 'Move to top', run: () => moveTo(j, 'top') });
+      items.push({ label: 'Move to bottom', run: () => moveTo(j, 'bottom') });
+      items.push({ label: 'Report a delay…', run: () => setProgress({ ...j, as: 'amber' }) });
+      items.push({ label: 'Report stuck…', run: () => setProgress({ ...j, as: 'red' }) });
+    }
+    items.push({ label: j.plan_id ? 'Manage workflow' : 'Create workflow', run: () => navigate(workflowPath(j)) });
+    items.push({ label: 'Open the client', run: () => navigate(`/clients/${j.entity_id}`) });
+    if (j.ch_job_id) items.push({ label: 'Reassign…', run: () => onOpenTask && onOpenTask({ type: 'bm', id: j.ch_job_id, reassign: true }) });
+    if (bmId) items.push({ label: 'Add a comment…', run: () => onOpenTask && onOpenTask({ type: 'bm', id: bmId, comment: true }) });
+    items.push({ label: 'Email…', run: () => setEmail(j) });
+    if (bmId) items.push({ label: 'Log time…', run: () => setAsk({ title: 'Log time', subtitle: j.client, cta: 'Log', note: 'Goes straight to your timesheet. The job stays open.', run: (m) => { if (!(m > 0)) throw new Error('Enter the minutes'); return callJobPlan({ action: 'log_time', task: { type: 'bm', id: bmId }, minutes: m }); } }) });
+    setMenu({ x: e.clientX, y: e.clientY, title: `${j.client} · ${j.template_key === 'self_assessment' ? 'Self assessment' : 'Accounts'}`, items });
+  };
+  const closeMenu = useCallback(() => setMenu(null), []);
   const activeJob = active ? board?.columns.flatMap((c) => c.jobs).find((j) => j.key === active) : null;
 
   return (
@@ -275,7 +314,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
                     : outOfDate > 0 && <button onClick={() => run(col, { action: 'priority_apply' })} title="Write the queue's dates to the workflows; jobs with no workflow get a draft" style={{ ...BTN.secondary.sm, marginTop: 5, padding: '1px 8px', fontSize: 11.5 }}>Set {outOfDate} date{outOfDate === 1 ? '' : 's'}</button>}
                 </div>
                 <div style={{ padding: 8, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {col.jobs.map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={active === j.key} onOpen={openJob} report={reportOf[`${template}:${j.key}`]} />)}
+                  {col.jobs.map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={active === j.key} onOpen={openJob} onMenu={openMenu} report={reportOf[`${template}:${j.key}`]} />)}
                   <ColumnEnd id={`end:${col.staff_id}`} />
                 </div>
               </div>
@@ -285,6 +324,9 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
         <DragOverlay>{activeJob ? <div style={{ width: 250, padding: '6px 8px', background: '#fff', border: '1px solid #0e7fe0', borderRadius: 7, boxShadow: '0 6px 16px rgba(0,0,0,0.15)', fontSize: 12.5, fontWeight: 600, fontFamily: font }}>{activeJob.client}</div> : null}</DragOverlay>
       </DndContext>
 
+      <ContextMenu menu={menu} onClose={closeMenu} />
+      {ask && <MinutesModal ask={ask} onClose={() => setAsk(null)} />}
+      {email && <EmailModal ctx={{ entity_id: email.entity_id, entity_name: email.client, task_label: `${email.template_key === 'self_assessment' ? 'Self assessment' : 'Accounts'} · year end ${fmtY(email.period_end)}`, task: email.prep_job_id || email.ch_job_id ? { type: 'bm', id: email.prep_job_id || email.ch_job_id } : null }} staffList={staffList} profile={profile} onClose={() => setEmail(null)} />}
       {progress && (
         <ProgressUpdateModal
           job={{ template_key: progress.template_key, entity_id: progress.entity_id, period_end: progress.period_end, client: progress.client, review_date: progress.review_saved || progress.review_computed, limit: progress.limit }}
