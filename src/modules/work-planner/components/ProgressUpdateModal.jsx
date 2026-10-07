@@ -3,31 +3,34 @@ import { supabase } from '../../../lib/supabase';
 import { callJobPlan } from '../plan/planQueries';
 import { BTN } from '../../../lib/buttonStyles';
 
-// Progress update (sql/349) — replaces Job Review. On a job (a set of
-// accounts or a self assessment): how confident we are of the internal
-// review date, what's in the way (Job Review's reasons), Escalate, a note,
-// and optionally a new date. The internal review date is the job's internal
-// deadline; a new date re-ranks the job on the Priority board, which then
-// re-dates the column, so the board and the workflow never disagree.
+// Progress update (sql/349, 350) — replaces Job Review. On a job (a set of
+// accounts or a self assessment): On track, Delayed or Stuck, what's in the
+// way (Job Review's reasons), a note, and optionally a new date. The internal
+// review date is the job's internal deadline; a new date re-ranks the job on
+// the Priority board, which then re-dates the column, so the board and the
+// workflow never disagree. Delayed or Stuck is a report: the manager is
+// emailed straight away and it stays open on the board until dealt with.
+// Nobody is asked for updates; silence means on track (Bobby, 2026-10-07).
 
 const font = "'Outfit', sans-serif";
 const fmt = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const fmtTs = (ts) => new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 export const CONFIDENCE = {
   green: { label: 'On track', dot: '#16a34a', bg: '#dcfce7', fg: '#166534' },
-  amber: { label: 'At risk', dot: '#d97706', bg: '#fef3c7', fg: '#92400e' },
-  red:   { label: 'Will miss it', dot: '#dc2626', bg: '#fee2e2', fg: '#991b1b' },
+  amber: { label: 'Delayed', dot: '#d97706', bg: '#fef3c7', fg: '#92400e' },
+  red:   { label: 'Stuck', dot: '#dc2626', bg: '#fee2e2', fg: '#991b1b' },
 };
 
-export default function ProgressUpdateModal({ job, staffMap, onClose, onSaved }) {
+export default function ProgressUpdateModal({ job, staffMap, initialConfidence, onClose, onSaved }) {
   // job: { template_key, entity_id, period_end, client, review_date?, limit? }
   const [reasons, setReasons] = useState([]);
   const [history, setHistory] = useState([]);
-  const [confidence, setConfidence] = useState('');
+  const [confidence, setConfidenceRaw] = useState(initialConfidence || '');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
-  const [escalate, setEscalate] = useState(false);
-  const [moveDate, setMoveDate] = useState(false);
+  const [moveDate, setMoveDate] = useState(initialConfidence === 'amber');
+  // Delayed usually means a new date, so it opens the date picker.
+  const setConfidence = (k) => { setConfidenceRaw(k); if (k === 'amber') setMoveDate(true); };
   const [date, setDate] = useState(job.review_date || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -44,7 +47,7 @@ export default function ProgressUpdateModal({ job, staffMap, onClose, onSaved })
     try {
       const res = await callJobPlan({
         action: 'progress_update', template: job.template_key, entity_id: job.entity_id, period_end: job.period_end,
-        confidence, reason_code: reason || null, note: note.trim() || null, escalate,
+        confidence, reason_code: reason || null, note: note.trim() || null,
         review_date: moveDate && date && date !== job.review_date ? date : null,
       });
       setDone(res);
@@ -73,13 +76,14 @@ export default function ProgressUpdateModal({ job, staffMap, onClose, onSaved })
           <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: 13.5, color: '#14532d' }}>
             Update saved.
             {done.review_date && done.update?.review_date_requested && <> Internal review is now <b>{fmt(done.review_date)}</b>{done.review_date !== done.update.review_date_requested ? ` (the nearest the queue allows to ${fmt(done.update.review_date_requested)})` : ''}; the rest of the column has been re-dated.</>}
-            {done.escalated > 0 && <> Escalated to {done.escalated} manager{done.escalated === 1 ? '' : 's'}.</>}
+            {done.update?.status === 'open' && <> The manager has been told.</>}
             <div style={{ marginTop: 10 }}><button onClick={onClose} style={BTN.primary.sm}>Done</button></div>
           </div>
         ) : (
           <>
             <div style={{ marginTop: 14 }}>
               <div style={label}>Will it be ready for review by then?</div>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Delayed or Stuck tells the manager straight away.</div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {Object.entries(CONFIDENCE).map(([k, c]) => (
                   <button key={k} onClick={() => setConfidence(k)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 6, background: confidence === k ? c.bg : '#fff', borderColor: confidence === k ? c.dot : '#cbd5e1', color: confidence === k ? c.fg : '#334155', fontWeight: confidence === k ? 700 : 500 }}>
@@ -109,10 +113,6 @@ export default function ProgressUpdateModal({ job, staffMap, onClose, onSaved })
                 <span style={{ fontSize: 12, color: '#64748b' }}>The job moves to that point in the Priority order and the column is re-dated, so the date you get may differ by a day or two.</span>
               </div>
             )}
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13, cursor: 'pointer' }}>
-              <input type="checkbox" checked={escalate} onChange={(e) => setEscalate(e.target.checked)} />
-              Escalate — I need help with this
-            </label>
             {error && <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
               <button disabled={!confidence || busy || (needsWhy && !reason && !note.trim())} onClick={save} style={BTN.primary.sm}>{busy ? 'Saving…' : 'Save update'}</button>
@@ -131,7 +131,8 @@ export default function ProgressUpdateModal({ job, staffMap, onClose, onSaved })
                 <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 2, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ width: 8, height: 8, borderRadius: 4, background: c?.dot }} />
                   <b style={{ color: '#475569' }}>{(staffMap?.[u.author_id]?.name || 'Someone').split(' ')[0]}</b> · {fmtTs(u.created_at)} · {c?.label}
-                  {u.escalate && <span style={{ padding: '0 6px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontWeight: 600 }}>escalated</span>}
+                  {u.status === 'open' && <span style={{ padding: '0 6px', borderRadius: 8, background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>open</span>}
+                  {u.status === 'dealt_with' && <span style={{ padding: '0 6px', borderRadius: 8, background: '#dcfce7', color: '#166534', fontWeight: 600 }} title={u.dealt_with_note || ''}>dealt with</span>}
                   {u.review_date_requested && <span>· date {fmt(u.review_date_before)} → {fmt(u.review_date_after)}</span>}
                 </div>
                 {(u.reason_code || u.note) && <div style={{ whiteSpace: 'pre-wrap', color: '#1e293b' }}>{[reasons.find((r) => r.code === u.reason_code)?.label, u.note].filter(Boolean).join(' — ')}</div>}

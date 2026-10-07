@@ -5,7 +5,6 @@ import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
 import { callJobPlan } from '../plan/planQueries';
 import OverviewDashboard from '../components/OverviewDashboard';
-import ProgressUpdateModal from '../components/ProgressUpdateModal';
 import { generateInstances } from '../lib/instanceEngine';
 import { useWorkPlanner } from '../WorkPlannerModule';
 
@@ -47,17 +46,14 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
   const [signals, setSignals] = useState([]); // plans where the client replied or uploaded (sql/319)
   const [handoverState, setHandoverState] = useState({}); // holiday id -> { undecided, unsent }
   const [toUpdate, setToUpdate] = useState([]); // BM jobs done here, not yet confirmed in BM (sql/311)
-  const [progressDue, setProgressDue] = useState([]); // my jobs whose progress update is due (sql/349)
-  const [progressJob, setProgressJob] = useState(null);
+  // Delay and stuck reports still open (sql/350), for managers. Nobody is
+  // asked for updates any more; this is the only progress box on Overview.
+  const [reports, setReports] = useState([]);
   const today = todayISO();
-
-  // Separate from load(): it runs the Priority queue server-side, so it is
-  // slower and must not hold up the rest of Overview.
-  const loadProgressDue = useCallback(async () => {
-    if (!profile?.id) return;
-    try { setProgressDue((await callJobPlan({ action: 'progress_due' })).jobs || []); } catch { /* the box just stays hidden */ }
-  }, [profile?.id]);
-  useEffect(() => { loadProgressDue(); }, [loadProgressDue]);
+  useEffect(() => {
+    if (!profile?.can_manage_portal) return;
+    callJobPlan({ action: 'progress_reports' }).then((r) => setReports(r.reports || [])).catch(() => { /* the box just stays hidden */ });
+  }, [profile?.can_manage_portal]);
 
   const load = useCallback(async () => {
     if (!profile?.id) return;
@@ -153,23 +149,13 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
               </div>
             );
           })}
-          {progressDue.length > 0 && (
-            <div style={{ background: '#fefce8', border: '1px solid #fde047', borderRadius: 10, padding: '8px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: '#854d0e', flex: 1 }}>Progress updates due · {progressDue.length}</span>
-                <button onClick={() => navigate('/planner/priority')} style={{ background: 'none', border: 'none', padding: 0, color: '#0e7fe0', cursor: 'pointer', fontFamily: font, fontSize: 12.5 }}>Priority board →</button>
-              </div>
-              <div style={{ fontSize: 12, color: '#a16207', marginBottom: 6 }}>No update for a while and the internal review date is close. Say where each one is at.</div>
-              {progressDue.slice(0, 12).map((j) => (
-                <div key={`${j.template_key}:${j.key}`} style={{ fontSize: 13.5, display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0' }}>
-                  <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <span style={{ fontWeight: 500 }}>{j.client}</span>
-                    <span style={{ color: '#64748b' }}> · {j.template_key === 'self_assessment' ? 'Self assessment' : 'Accounts'} · review {fmt(j.review_saved || j.review_computed)}</span>
-                  </span>
-                  <button onClick={() => setProgressJob(j)} style={BTN.secondary.sm}>Update…</button>
-                </div>
-              ))}
-              {progressDue.length > 12 && <div style={{ fontSize: 12, color: '#a16207', marginTop: 2 }}>and {progressDue.length - 12} more on the Priority board</div>}
+          {reports.length > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
+              <span style={{ flex: 1 }}>
+                <b style={{ color: '#92400e' }}>Delays and stuck jobs reported · {reports.length}</b>
+                <span style={{ color: '#475569' }}> · {reports.slice(0, 4).map((r) => `${r.entities?.name || 'Client'} (${r.confidence === 'red' ? 'stuck' : 'delayed'})`).join(', ')}{reports.length > 4 ? ` and ${reports.length - 4} more` : ''}</span>
+              </span>
+              <button onClick={() => navigate('/planner/priority?report=open')} style={BTN.primary.sm}>See them</button>
             </div>
           )}
           {attention.length > 0 && (
@@ -201,11 +187,6 @@ export default function TodayView({ onOpenTask, onOpenHolidays }) {
             </div>
           )}
         </>
-      )}
-      {progressJob && (
-        <ProgressUpdateModal
-          job={{ template_key: progressJob.template_key, entity_id: progressJob.entity_id, period_end: progressJob.period_end, client: progressJob.client, review_date: progressJob.review_saved || progressJob.review_computed, limit: progressJob.limit }}
-          staffMap={staffMap} onClose={() => setProgressJob(null)} onSaved={loadProgressDue} />
       )}
     </div>
   );

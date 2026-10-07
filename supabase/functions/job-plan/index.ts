@@ -45,7 +45,8 @@
 //   priority_set_hours { template, staff_id, weekly_hours }   hours a week on this work; rewrites the dates
 //   progress_update   { template, entity_id, period_end, confidence, reason_code?, escalate?, note?, review_date? }
 //   progress_history  { template, entity_id, period_end }
-//   progress_due      { staff_id? | all? }                    jobs whose update is due (default: mine)
+//   progress_reports  {}                                      delay/stuck reports still open (sql/350)
+//   report_dealt_with { id, note? }                           close a report
 //
 // Returns { success, plan, milestones } for single-plan actions.
 
@@ -53,7 +54,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
 import { computeChain, type StageRule, type JobContext } from "../_shared/workflow.ts";
 import { renderForMilestone, sendForMilestone, renderGeneric, sendGeneric, loadPrefs, cleanPrefs } from "../_shared/job-comms.ts";
-import { runQueue, daysOffMap } from "../_shared/priority.ts";
+import { sendEmail } from "../_shared/resend.ts";
+import { buildBoard as buildBoardShared, PRIORITY_TEMPLATES, jobKey } from "../_shared/priority-board.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -474,162 +476,15 @@ Deno.serve(async (req) => {
   }
 
   // ── Priority board and progress updates (sql/349) ─────────────────────────
-  // One column per preparer, the jobs with a filing in the six months the
-  // Overview counts (this month and the next five). The column order drives
-  // a capacity queue (_shared/priority.ts) that dates each job's internal
-  // review; "applying" a column pins those dates on the workflows, creating
-  // a draft workflow for a job that has none.
-  const PRIORITY_TEMPLATES = ["annual_accounts", "self_assessment"];
-  const BM_RANK: Record<string, number> = {
-    "No Latest Action": 0, "No Progress": 0, "Records Requested": 1, "Part Records Received": 2,
-    "Records Received": 3, "In Progress": 4, "Queries Requested": 5, "Queries Received": 6,
-    "To Review": 7, "Reviewed": 8, "To Send to Client to Approve": 9, "Awaiting Approval": 10,
-  };
-  const jobKey = (e: string, pe: string) => `${e}|${pe}`;
-  const todayISO = () => new Date().toISOString().slice(0, 10);
-
+  // The board itself lives in _shared/priority-board.ts, shared with the
+  // Monday priority-email. "Applying" a column pins the queue's dates on the
+  // workflows, creating a draft workflow for a job that has none.
   function priorityTemplate(v: unknown): string {
     const k = v ? String(v) : "annual_accounts";
     if (!PRIORITY_TEMPLATES.includes(k)) throw new BadRequest("template must be annual_accounts or self_assessment");
     return k;
   }
-
-  async function prioritySettings() {
-    const { data } = await db.from("job_plan_settings").select("priority_buffer_wd, progress_stale_days, progress_window_days").maybeSingle();
-    return { buffer_wd: data?.priority_buffer_wd ?? 10, stale_days: data?.progress_stale_days ?? 14, window_days: data?.progress_window_days ?? 42 };
-  }
-
-  /** Every column of the board, or one person's. Dates are computed, not written. */
-  async function buildBoard(templateKey: string, onlyStaff?: string | null) {
-    const settings = await prioritySettings();
-    const today = todayISO();
-    const d = new Date(`${today}T12:00:00Z`);
-    const windowEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 6, 1)).toISOString().slice(0, 10);
-    const view = templateKey === "self_assessment" ? "v_sa_jobs" : "v_accounts_jobs";
-    const t = await template(templateKey);
-
-    const jobs: Record<string, any>[] = [];
-    for (let from = 0; ; from += 1000) {
-      let q = db.from(view).select("*").not("ch_deadline", "is", null).lt("ch_deadline", windowEnd).order("entity_id").order("period_end").range(from, from + 999);
-      const { data, error } = await q;
-      if (error) throw new Error(error.message);
-      jobs.push(...(data || []));
-      if (!data || data.length < 1000) break;
-    }
-    const entityIds = [...new Set(jobs.map((j) => j.entity_id))];
-
-    // Plans of this template (v_accounts_jobs joins plans of any template).
-    const plans = new Map<string, Record<string, any>>();
-    const milestones = new Map<string, Record<string, any>>(); // `${plan}|${stage}`
-    const ranks = new Map<string, Record<string, any>>();
-    const lastUpdate = new Map<string, Record<string, any>>();
-    const prepHoursBm = new Map<string, number>();
-    for (let i = 0; i < entityIds.length; i += 150) {
-      const ids = entityIds.slice(i, i + 150);
-      const [pl, rk, up] = await Promise.all([
-        db.from("job_plans").select("id, entity_id, period_end, status").eq("template_id", t.id).in("entity_id", ids),
-        db.from("job_priority").select("entity_id, period_end, staff_id, rank").eq("template_key", templateKey).in("entity_id", ids),
-        db.from("job_progress_updates").select("entity_id, period_end, confidence, reason_code, escalate, note, author_id, created_at").eq("template_key", templateKey).in("entity_id", ids).order("created_at", { ascending: false }),
-      ]);
-      for (const r of [pl, rk, up]) if (r.error) throw new Error(r.error.message);
-      for (const x of pl.data || []) plans.set(jobKey(x.entity_id, x.period_end), x);
-      for (const x of rk.data || []) ranks.set(jobKey(x.entity_id, x.period_end), x);
-      for (const x of up.data || []) { const k = jobKey(x.entity_id, x.period_end); if (!lastUpdate.has(k)) lastUpdate.set(k, x); }
-    }
-    const planIds = [...plans.values()].map((x) => x.id);
-    for (let i = 0; i < planIds.length; i += 150) {
-      const { data, error } = await db.from("job_milestones").select("plan_id, stage_key, status, due_date, hours, pinned_by")
-        .in("plan_id", planIds.slice(i, i + 150)).in("stage_key", ["prepare", "internal_review"]);
-      if (error) throw new Error(error.message);
-      for (const m of data || []) milestones.set(`${m.plan_id}|${m.stage_key}`, m);
-    }
-    // The column is the Submission task's owner (Bobby, 2026-10-06: "my
-    // reviews will be with the submitter"), else the preparer when a job has
-    // no Submission task. 31 of 110 accounts jobs had different people on
-    // the two tasks, e.g. the bookkeeper holding Preparation.
-    const submitter = new Map<string, string>();
-    const bmIds = [...new Set(jobs.flatMap((j) => [j.prep_job_id, j.ch_job_id]).filter(Boolean))] as string[];
-    for (let i = 0; i < bmIds.length; i += 150) {
-      const { data, error } = await db.from("bm_task_schedule").select("id, scheduled_hours, assignee_id").in("id", bmIds.slice(i, i + 150));
-      if (error) throw new Error(error.message);
-      for (const r of data || []) {
-        prepHoursBm.set(r.id, Number(r.scheduled_hours) || 0);
-        if (r.assignee_id) submitter.set(r.id, r.assignee_id);
-      }
-    }
-    for (const j of jobs) j.board_owner = (j.ch_job_id && submitter.get(j.ch_job_id)) || j.preparer_id || null;
-    if (onlyStaff) jobs.splice(0, jobs.length, ...jobs.filter((j) => j.board_owner === onlyStaff));
-
-    // People: whoever prepares a job in the window (or the one asked for).
-    const staffIds = [...new Set(jobs.map((j) => j.board_owner).filter(Boolean))] as string[];
-    if (onlyStaff && !staffIds.includes(onlyStaff)) staffIds.push(onlyStaff);
-    const [st, cap, hol] = await Promise.all([
-      staffIds.length ? db.from("staff_profiles").select("id, name, weekly_capacity_hours, working_days, is_active").in("id", staffIds) : Promise.resolve({ data: [], error: null }),
-      staffIds.length ? db.from("priority_capacity").select("staff_id, weekly_hours").eq("template_key", templateKey).in("staff_id", staffIds) : Promise.resolve({ data: [], error: null }),
-      staffIds.length ? db.from("staff_holidays").select("staff_id, date_from, date_to, half_day").in("staff_id", staffIds).gte("date_to", today) : Promise.resolve({ data: [], error: null }),
-    ]);
-    for (const r of [st, cap, hol]) if (r.error) throw new Error(r.error.message);
-
-    const staleBefore = shiftISO(today, -settings.stale_days);
-    const windowTo = shiftISO(today, settings.window_days);
-    const columns = [];
-    for (const s of (st.data || []) as Record<string, any>[]) {
-      const mine = jobs.filter((j) => j.board_owner === s.id).map((j) => {
-        const k = jobKey(j.entity_id, j.period_end);
-        const plan = plans.get(k) || null;
-        const prep = plan ? milestones.get(`${plan.id}|prepare`) : null;
-        const rev = plan ? milestones.get(`${plan.id}|internal_review`) : null;
-        const rank = BM_RANK[j.bm_status as string] ?? -1;
-        return {
-          key: k, entity_id: j.entity_id, client: j.client, period_end: j.period_end, template_key: templateKey,
-          ch_deadline: j.ch_deadline, ct_deadline: j.ct_deadline ?? null, bm_status: j.bm_status ?? null,
-          prep_job_id: j.prep_job_id ?? null, ch_job_id: j.ch_job_id ?? null,
-          plan_id: plan?.id ?? null, plan_status: plan?.status ?? null,
-          prep_hours: Number(prep?.hours ?? prepHoursBm.get(j.prep_job_id) ?? 5) || 5,
-          prep_done: ["done", "skipped"].includes(prep?.status) || rank >= 7,
-          review_done: ["done", "skipped"].includes(rev?.status) || rank >= 8,
-          review_saved: rev && rev.status === "pending" ? rev.due_date : null,
-          review_pinned: !!rev?.pinned_by,
-          rank: ranks.get(k)?.rank ?? null,
-          last_update: lastUpdate.get(k) || null,
-        };
-      });
-      // Ranked jobs in their order; an unranked one goes in ahead of the first
-      // ranked job with a later statutory date, so new work lands where its
-      // deadline says rather than at the bottom.
-      const ranked = mine.filter((j) => j.rank != null).sort((a, b) => a.rank! - b.rank!);
-      const unranked = mine.filter((j) => j.rank == null).sort((a, b) => String(a.ch_deadline).localeCompare(String(b.ch_deadline)) || String(a.client).localeCompare(String(b.client)));
-      const ordered = [...ranked];
-      for (const u of unranked) {
-        const at = ordered.findIndex((o) => String(o.ch_deadline) > String(u.ch_deadline));
-        if (at < 0) ordered.push(u); else ordered.splice(at, 0, u);
-      }
-      const capRow = (cap.data || []).find((c: Record<string, any>) => c.staff_id === s.id);
-      const defaultHours = Math.round((Number(s.weekly_capacity_hours) || 0) / 2 * 4) / 4;
-      const weekly = capRow ? Number(capRow.weekly_hours) : defaultHours;
-      const slots = runQueue(ordered.map((j) => ({ key: j.key, prepHours: j.prep_hours, prepDone: j.prep_done, reviewDone: j.review_done, statutory: j.ch_deadline })), {
-        today, weeklyHours: weekly, workingDays: s.working_days,
-        daysOff: daysOffMap(((hol.data || []) as Array<Record<string, any>>).filter((h) => h.staff_id === s.id) as any), bufferWd: settings.buffer_wd,
-      });
-      const bySlot = new Map(slots.map((x) => [x.key, x]));
-      const tiles = ordered.map((j, i) => {
-        const slot = bySlot.get(j.key)!;
-        const when = j.review_saved || slot.review_date;
-        const updateDue = !j.review_done && !!when && when <= windowTo && (!j.last_update || String(j.last_update.created_at).slice(0, 10) < staleBefore);
-        // Out of date = the queue now says something materially different
-        // (more than three days). The queue starts from today, so without a
-        // tolerance every saved date would be "out" by a day each morning.
-        // Prepared work keeps a saved date that is still ahead of us.
-        const keepPrepared = j.prep_done && !!j.review_saved && j.review_saved >= today;
-        const drift = slot.review_date && j.review_saved ? Math.abs(Date.parse(slot.review_date) - Date.parse(j.review_saved)) / 86400000 : null;
-        const outOfDate = !j.review_done && !keepPrepared && !!slot.review_date && (drift === null || drift > 3);
-        return { ...j, position: i + 1, review_computed: slot.review_date, limit: slot.limit, capped: slot.capped, overdue: slot.overdue, prep_from: slot.prep_from, prep_to: slot.prep_to, update_due: updateDue, out_of_date: outOfDate };
-      });
-      columns.push({ staff_id: s.id, name: s.name, is_active: s.is_active, weekly_hours: weekly, default_hours: defaultHours, hours_set: !!capRow, working_days: s.working_days, jobs: tiles });
-    }
-    columns.sort((a, b) => b.jobs.length - a.jobs.length || String(a.name).localeCompare(String(b.name)));
-    return { settings, today, window_end: windowEnd, template: templateKey, columns };
-  }
+  const buildBoard = (templateKey: string, onlyStaff?: string | null) => buildBoardShared(db, templateKey, onlyStaff);
 
   /** Pin each job's Internal review to the queue's date. A job with no
    *  workflow gets a draft first. Returns how many dates moved. */
@@ -716,16 +571,21 @@ Deno.serve(async (req) => {
         return json({ success: true, applied, column: board.columns.find((c) => c.staff_id === staffId) || null });
       }
 
-      // Jobs needing a progress update, for one person (default: me) or all.
-      case "progress_due": {
-        const who = p.all === true ? null : (p.staff_id ? uuid(p.staff_id, "staff_id") : me);
-        const out: Record<string, any>[] = [];
-        for (const tKey of PRIORITY_TEMPLATES) {
-          const board = await buildBoard(tKey, who);
-          for (const c of board.columns) for (const j of c.jobs) if (j.update_due) out.push({ ...j, staff_id: c.staff_id, staff_name: c.name });
-        }
-        out.sort((a, b) => String(a.review_saved || a.review_computed).localeCompare(String(b.review_saved || b.review_computed)));
-        return json({ success: true, jobs: out });
+      // Delay and stuck reports still open (sql/350), newest first.
+      case "progress_reports": {
+        const { data, error } = await db.from("job_progress_updates").select("*, entities(name)").eq("status", "open").order("created_at", { ascending: false }).limit(200);
+        if (error) throw new Error(error.message);
+        return json({ success: true, reports: data || [] });
+      }
+
+      case "report_dealt_with": {
+        const id = uuid(p.id, "id");
+        const note = p.note ? String(p.note).slice(0, 2000) : null;
+        const { data, error } = await db.from("job_progress_updates").update({ status: "dealt_with", dealt_with_by: me, dealt_with_at: now, dealt_with_note: note })
+          .eq("id", id).eq("status", "open").select("id").maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!data) throw new BadRequest("That report is not open", 409);
+        return json({ success: true });
       }
 
       case "progress_history": {
@@ -752,6 +612,8 @@ Deno.serve(async (req) => {
         }
         const note = p.note ? String(p.note).slice(0, 4000) : null;
         if (confidence !== "green" && !reason && !note) throw new BadRequest("Say what's in the way — a reason or a note");
+        // amber = Delayed, red = Stuck: a report, open until dealt with (sql/350).
+        const isReport = confidence !== "green";
         const requested = p.review_date ? isoDate(p.review_date, "review_date") : null;
         const job = await accountsJob(entityId, periodEnd, tKey);
         // Same column rule as buildBoard: the Submission task's owner, else the preparer.
@@ -780,24 +642,53 @@ Deno.serve(async (req) => {
         const { data: plan } = await db.from("job_plans").select("id").eq("entity_id", entityId).eq("period_end", periodEnd).eq("template_id", (await template(tKey)).id).maybeSingle();
         const { data: row, error } = await db.from("job_progress_updates").insert({
           template_key: tKey, entity_id: entityId, period_end: periodEnd, plan_id: plan?.id ?? null, author_id: me,
-          confidence, reason_code: reason, escalate: p.escalate === true, note,
+          confidence, reason_code: reason, escalate: isReport, note, status: isReport ? "open" : null,
           review_date_before: mineBefore?.review_saved ?? null, review_date_requested: requested, review_date_after: after,
         }).select("*").single();
         if (error) throw new Error(error.message);
 
+        // A report tells the people in priority_email_config.report_recipient_ids
+        // straight away: the bell, and an email unless report_emails_enabled is off.
         let escalated = 0;
-        if (p.escalate === true) {
-          const { data: managers } = await db.from("staff_profiles").select("id").eq("is_active", true).eq("can_manage_portal", true).neq("id", me);
-          const { data: author } = await db.from("staff_profiles").select("name").eq("id", me).maybeSingle();
-          const { data: ent } = await db.from("entities").select("name").eq("id", entityId).maybeSingle();
-          for (const m of managers || []) {
+        if (isReport) {
+          const { data: cfg } = await db.from("priority_email_config").select("report_recipient_ids, report_emails_enabled").eq("id", true).maybeSingle();
+          const ids = ((cfg?.report_recipient_ids as string[]) || []).filter((x) => x !== me);
+          const [{ data: people }, { data: author }, { data: ent }, { data: why }] = await Promise.all([
+            ids.length ? db.from("staff_profiles").select("id, name, email").in("id", ids).eq("is_active", true) : Promise.resolve({ data: [] }),
+            db.from("staff_profiles").select("name").eq("id", me).maybeSingle(),
+            db.from("entities").select("name").eq("id", entityId).maybeSingle(),
+            reason ? db.from("job_review_reason").select("label").eq("code", reason).maybeSingle() : Promise.resolve({ data: null }),
+          ]);
+          const who = String(author?.name || "A colleague");
+          const client = ent?.name || "a client";
+          const kind = confidence === "red" ? "Stuck" : "Delayed";
+          const service = tKey === "self_assessment" ? "self assessment" : "accounts";
+          const athena = Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondvalleyaccounting.co.uk";
+          const link = `${athena}/planner/priority?template=${tKey}&report=${row.id}`;
+          const fmtUk = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—");
+          const escHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const lines = [
+            `${who} has reported ${client} (${service}, year end ${fmtUk(periodEnd)}) as ${kind.toUpperCase()}.`,
+            why?.label ? `Reason: ${why.label}` : null,
+            note ? `Note: ${note}` : null,
+            requested
+              ? `Asked to move internal review to ${fmtUk(requested)}; it is now ${fmtUk(after)} (was ${fmtUk(mineBefore?.review_saved ?? null)}).`
+              : `Internal review: ${fmtUk(mineBefore?.review_saved ?? mineBefore?.review_computed ?? null)}.`,
+            mineBefore?.ch_deadline ? `Statutory deadline: ${fmtUk(mineBefore.ch_deadline)}.` : null,
+          ].filter((x): x is string => !!x);
+          for (const m of (people || []) as Record<string, any>[]) {
             const { error: nErr } = await db.from("notifications").insert({
-              recipient_id: m.id, kind: "progress_escalation",
-              title: `Escalated: ${ent?.name || "a job"} (${tKey === "self_assessment" ? "self assessment" : "accounts"})`,
-              body: `${String(author?.name || "A colleague").split(" ")[0]}: ${[reason, note].filter(Boolean).join(" — ") || "needs help"}`,
-              link_path: `/planner/priority?template=${tKey}&job=${entityId}|${periodEnd}`, source_key: `progress:${row.id}:${m.id}`,
+              recipient_id: m.id, kind: "progress_report",
+              title: `${kind}: ${client} (${service})`,
+              body: `${who.split(" ")[0]}: ${[why?.label, note].filter(Boolean).join(" — ")}`,
+              link_path: `/planner/priority?template=${tKey}&report=${row.id}`, source_key: `progress:${row.id}:${m.id}`,
             });
             if (!nErr) escalated++;
+            if (cfg?.report_emails_enabled !== false && m.email) {
+              const html = `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1e293b;line-height:1.55">${lines.map((l) => `<p style="margin:0 0 8px">${escHtml(l)}</p>`).join("")}<p style="margin:14px 0 0"><a href="${link}" style="background:#1E4560;color:#fff;text-decoration:none;padding:9px 16px;border-radius:8px;font-weight:600">Open it on the Priority board</a></p></div>`;
+              const r = await sendEmail({ to: m.email, subject: `${kind}: ${client} — reported by ${who.split(" ")[0]}`, html, text: [...lines, "", `Open it on the Priority board: ${link}`].join("\n") });
+              if (!r.ok) console.error("report email failed", r.error);
+            }
           }
         }
         return json({ success: true, update: row, applied, review_date: after, escalated });

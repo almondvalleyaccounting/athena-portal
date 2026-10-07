@@ -5,6 +5,7 @@ import { callJobPlan } from '../plan/planQueries';
 import { useWorkPlanner } from '../WorkPlannerModule';
 import ProgressUpdateModal, { CONFIDENCE } from '../components/ProgressUpdateModal';
 import { BTN } from '../../../lib/buttonStyles';
+import { useAuth } from '../../../shell/AppShell';
 
 // Priority (Bobby, 2026-10-06; sql/349). One column per submitter (the owner of
 // the job's Submission task, who does the review; else the preparer), one tile per
@@ -25,7 +26,7 @@ const fmt = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toL
 const fmtY = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }) : '—');
 const first = (n) => String(n || '').split(' ')[0] || 'Someone';
 
-function Tile({ job, colour, dragging, onOpen, onUpdate }) {
+function Tile({ job, colour, dragging, onOpen, report }) {
   const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: job.key, disabled: job.review_done });
   const { setNodeRef: dropRef, isOver } = useDroppable({ id: job.key });
   const conf = job.last_update ? CONFIDENCE[job.last_update.confidence] : null;
@@ -59,7 +60,7 @@ function Tile({ job, colour, dragging, onOpen, onUpdate }) {
             {!job.plan_id && <span title="No workflow yet: setting the dates creates a draft" style={chip('#f1f5f9', '#64748b')}>No workflow</span>}
             {job.plan_status === 'draft' && <span style={chip('#eff6ff', '#0e7fe0')}>Draft</span>}
             {job.prep_done && <span style={chip('#ede9fe', '#6d28d9')}>Prepared</span>}
-            {job.update_due && <button onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onUpdate(job); }} title="No progress update for a while and the review date is close" style={{ ...chip('#fef3c7', '#92400e'), border: '1px solid #fcd34d', cursor: 'pointer', fontFamily: font }}>Update due</button>}
+            {report && <span title={[report.note, `reported ${fmtY(report.created_at)}`].filter(Boolean).join(' · ')} style={report.confidence === 'red' ? chip('#fee2e2', '#991b1b') : chip('#fef3c7', '#92400e')}>{report.confidence === 'red' ? 'Stuck' : 'Delayed'}</span>}
             <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 11 }}>{job.prep_done ? '' : `${Number(job.prep_hours)}h`}</span>
           </div>
         )}
@@ -105,23 +106,49 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
   const [notice, setNotice] = useState(null);
   const [active, setActive] = useState(null);
   const [progress, setProgress] = useState(null);
+  const { profile } = useAuth();
+  // Delay and stuck reports still open (sql/350): a panel above the columns
+  // and a chip on the tile, until someone marks them dealt with.
+  const [reports, setReports] = useState([]);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [busyReport, setBusyReport] = useState(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
+  const loadReports = useCallback(async () => {
+    try { setReports((await callJobPlan({ action: 'progress_reports' })).reports || []); } catch { /* panel just stays empty */ }
+  }, []);
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try { setBoard(await callJobPlan({ action: 'priority_board', template })); }
     catch (e) { setError(e.message || String(e)); }
     finally { setLoading(false); }
-  }, [template]);
+    loadReports();
+  }, [template, loadReports]);
   useEffect(() => { load(); }, [load, refreshTick]);
 
-  // A notification links here with ?job=entity|period_end: open its update.
+  // Links in: ?job=entity|period_end&report=new (the Monday email's "Report a
+  // delay or I'm stuck") opens that job's update set to Delayed; ?report=<id>
+  // (the email to the manager, the bell) opens the reports panel.
   useEffect(() => {
     const k = params.get('job');
     if (!k || !board) return;
     const j = board.columns.flatMap((c) => c.jobs).find((x) => x.key === k);
-    if (j) setProgress(j);
+    if (j) setProgress({ ...j, as: params.get('report') === 'new' ? 'amber' : null });
   }, [board, params]);
+  useEffect(() => { const r = params.get('report'); if (r && r !== 'new') setReportsOpen(true); }, [params]);
+  const reportOf = useMemo(() => {
+    const m = {};
+    reports.forEach((r) => { const k = `${r.template_key}:${r.entity_id}|${r.period_end}`; if (!m[k]) m[k] = r; });
+    return m;
+  }, [reports]);
+  const dealtWith = async (r) => {
+    const note = window.prompt(`Mark the report on ${r.entities?.name || 'this job'} as dealt with. A note on what was done (optional):`, '');
+    if (note === null) return;
+    setBusyReport(r.id); setError(null);
+    try { await callJobPlan({ action: 'report_dealt_with', id: r.id, note: note.trim() || null }); await loadReports(); }
+    catch (e) { setError(e.message || String(e)); }
+    finally { setBusyReport(null); }
+  };
 
   const columns = useMemo(() => {
     const cs = board?.columns || [];
@@ -129,7 +156,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
   }, [board, filters.teamFilter]);
   const totals = useMemo(() => {
     const all = (board?.columns || []).flatMap((c) => c.jobs);
-    return { jobs: all.length, wont: all.filter((j) => j.capped && !j.review_done).length, due: all.filter((j) => j.update_due).length };
+    return { jobs: all.length, wont: all.filter((j) => j.capped && !j.review_done).length };
   }, [board]);
 
   const replaceColumn = (col) => setBoard((b) => ({ ...b, columns: b.columns.map((c) => (c.staff_id === col.staff_id ? col : c)) }));
@@ -186,7 +213,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
         {board && <span style={{ fontSize: 12.5, color: '#64748b' }}>
           {totals.jobs} jobs with a filing before {fmtY(board.window_end)} · buffer {board.settings.buffer_wd} working days
           {totals.wont > 0 && <> · <b style={{ color: '#991b1b' }}>{totals.wont} won't make it</b></>}
-          {totals.due > 0 && <> · <b style={{ color: '#92400e' }}>{totals.due} updates due</b></>}
+          {reports.length > 0 && <> · <button onClick={() => setReportsOpen((o) => !o)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: font, fontSize: 12.5, fontWeight: 700, color: '#92400e', textDecoration: 'underline' }}>{reports.length} delay{reports.length === 1 ? '' : 's'} / stuck reported</button></>}
           {loading && ' · loading…'}
         </span>}
         <button onClick={load} style={{ ...BTN.secondary.sm, marginLeft: 'auto' }}>Refresh</button>
@@ -195,6 +222,27 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
         Drag a tile up or down to change the order. Review dates are worked out from that order, the person's hours a week on this work and their days off, never later than the statutory date less the buffer. <i>Italic</i> = not yet set on the workflow; <span style={{ color: '#0e7fe0' }}>→</span> = the queue now gives a different date.
       </div>
       {error && <div style={{ padding: '8px 12px', borderRadius: 8, background: '#fee2e2', color: '#991b1b', fontSize: 13 }}>{error}</div>}
+      {reportsOpen && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '8px 12px', maxHeight: 260, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', flex: 1 }}>Delays and stuck jobs reported · {reports.length}</span>
+            <button onClick={() => setReportsOpen(false)} style={{ ...BTN.secondary.sm, padding: '0 8px' }}>×</button>
+          </div>
+          {reports.length === 0 && <div style={{ fontSize: 12.5, color: '#a16207' }}>Nothing open.</div>}
+          {reports.map((r) => (
+            <div key={r.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '5px 0', borderTop: '1px solid #fde68a', fontSize: 13, background: params.get('report') === r.id ? '#fef3c7' : 'transparent' }}>
+              <span style={r.confidence === 'red' ? chip('#fee2e2', '#991b1b') : chip('#fef3c7', '#92400e')}>{r.confidence === 'red' ? 'Stuck' : 'Delayed'}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b>{r.entities?.name || 'Client'}</b>
+                <span style={{ color: '#64748b' }}> · {r.template_key === 'self_assessment' ? 'Self assessment' : 'Accounts'} · {first(staffMap?.[r.author_id]?.name)} · {fmtY(r.created_at)}</span>
+                {r.review_date_requested && <span style={{ color: '#64748b' }}> · review {fmt(r.review_date_before)} → {fmt(r.review_date_after)}</span>}
+                {r.note && <div style={{ color: '#475569', whiteSpace: 'pre-wrap' }}>{r.note}</div>}
+              </span>
+              {profile?.can_manage_portal && <button disabled={busyReport === r.id} onClick={() => dealtWith(r)} style={BTN.secondary.sm}>{busyReport === r.id ? 'Saving…' : 'Dealt with'}</button>}
+            </div>
+          ))}
+        </div>
+      )}
       {notice && (
         <div style={{ padding: '8px 12px', borderRadius: 8, background: '#f0f9ff', border: '1px solid #bae6fd', color: '#075985', fontSize: 13, display: 'flex', gap: 8 }}>
           <div style={{ flex: 1 }}>{notice.text}{notice.failed.length > 0 && <div style={{ color: '#991b1b', marginTop: 4 }}>Couldn't date: {notice.failed.join('; ')}</div>}</div>
@@ -227,7 +275,7 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
                     : outOfDate > 0 && <button onClick={() => run(col, { action: 'priority_apply' })} title="Write the queue's dates to the workflows; jobs with no workflow get a draft" style={{ ...BTN.secondary.sm, marginTop: 5, padding: '1px 8px', fontSize: 11.5 }}>Set {outOfDate} date{outOfDate === 1 ? '' : 's'}</button>}
                 </div>
                 <div style={{ padding: 8, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {col.jobs.map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={active === j.key} onOpen={openJob} onUpdate={(job) => setProgress(job)} />)}
+                  {col.jobs.map((j) => <Tile key={j.key} job={j} colour={staffColours?.[col.staff_id]} dragging={active === j.key} onOpen={openJob} report={reportOf[`${template}:${j.key}`]} />)}
                   <ColumnEnd id={`end:${col.staff_id}`} />
                 </div>
               </div>
@@ -240,8 +288,9 @@ export default function PriorityView({ onOpenTask, refreshTick }) {
       {progress && (
         <ProgressUpdateModal
           job={{ template_key: progress.template_key, entity_id: progress.entity_id, period_end: progress.period_end, client: progress.client, review_date: progress.review_saved || progress.review_computed, limit: progress.limit }}
+          initialConfidence={progress.as}
           staffMap={staffMap}
-          onClose={() => { setProgress(null); if (params.get('job')) setParams((p) => { const n = new URLSearchParams(p); n.delete('job'); return n; }); }}
+          onClose={() => { setProgress(null); if (params.get('job')) setParams((p) => { const n = new URLSearchParams(p); n.delete('job'); n.delete('report'); return n; }); }}
           onSaved={() => load()}
         />
       )}
