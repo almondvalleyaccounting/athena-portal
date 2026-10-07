@@ -1,6 +1,6 @@
 import { getServiceClient, qboFetch, qboQuery, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
 import { describeQboError } from "../_shared/qbo-error.ts";
-import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { requireStaffOrService, requireCallerFlag, authErrorResponse, type Caller } from "../_shared/require-staff.ts";
 
 // Push one-off Billing module items (billing_items) to QBO as real
 // invoices. For each approved item we ensure the QBO customer exists, map
@@ -90,7 +90,8 @@ async function handleRequest(req: Request): Promise<Response> {
 
   // list_invoices returns 24 months of any entity's invoices, and send_map creates
   // and emails real ones.
-  try { await requireStaffOrService(req); }
+  let caller: Caller;
+  try { caller = await requireStaffOrService(req); }
   catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   let body: { billing_item_ids?: string[]; send?: boolean; send_map?: Record<string, boolean>; dry_run?: boolean; refresh?: boolean; list_invoices?: boolean; check_settings?: boolean; assign_numbers?: boolean; entity_id?: string; due_days?: number; initiated_by?: string; link_customer?: Record<string, string>; new_customer_ok?: Record<string, boolean>; new_customer_name?: Record<string, string> };
@@ -210,6 +211,8 @@ async function handleRequest(req: Request): Promise<Response> {
   // that setting now off, a full update with DocNumber omitted makes QBO
   // assign the next sequential number — the same as hitting Save in the UI.
   if (body.assign_numbers) {
+    try { await requireCallerFlag(caller, "can_approve_billing", "Renumbering QBO invoices is for billing approvers only."); }
+    catch (err) { return authErrorResponse(err, corsHeaders()); }
     const sel = sb.from("billing_items").select("id, qbo_invoice_id").eq("status", "pushed").not("qbo_invoice_id", "is", null).is("qbo_doc_number", null);
     const { data: rows, error } = ids.length ? await sel.in("id", ids) : await sel;
     if (error) return jsonResponse({ success: false, error: error.message }, 500);
@@ -254,6 +257,18 @@ async function handleRequest(req: Request): Promise<Response> {
 
   if (itemsErr) {
     return jsonResponse({ success: false, error: itemsErr.message }, 500);
+  }
+
+  // Creating (and emailing) invoices is billing-approver only. The read modes above
+  // and the dry-run plan below stay open to anyone with billing. One carve-out, the
+  // same as sql/353's: the fixed £20 + VAT Companies House ID-check invoice, which the
+  // CH codes flow raises and pushes in one step for whoever records "we verify".
+  if (!body.dry_run) {
+    const allChIdCheck = (items || []).length > 0 && (items || []).every(isChIdCheck);
+    if (!allChIdCheck) {
+      try { await requireCallerFlag(caller, "can_approve_billing", "Approving and pushing invoices is for billing approvers only (Staff & Permissions → Billing → Approver)."); }
+      catch (err) { return authErrorResponse(err, corsHeaders()); }
+    }
   }
 
   // Tax code: prefer the connection's configured default (a known-good
@@ -1269,4 +1284,13 @@ async function loadVatRegisteredEntities(
     if (svcs.some((s) => vatItemIds.has(String(s?.qbo_item_id || "")))) vat.add(String(row.entity_id));
   }
   return vat;
+}
+
+// The fixed-price CH ID-check invoice, recognised by its exact shape. Mirrors
+// billing_item_is_ch_id_check() in sql/353.
+function isChIdCheck(b: Record<string, unknown>): boolean {
+  const lines = b.lines as Array<Record<string, unknown>> | null;
+  return b.service === "CH Personal Code — ID Verification"
+    && Number(b.net_amount) === 20 && Number(b.vat_amount) === 4 && Number(b.gross_amount) === 24
+    && Array.isArray(lines) && lines.length === 1 && Number(lines[0]?.net) === 20;
 }

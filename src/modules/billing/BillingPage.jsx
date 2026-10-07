@@ -29,6 +29,9 @@ const STATUS_CONFIG = {
 
 export default function BillingPage() {
   const { profile } = useAuth();
+  // Staff & Permissions → Billing → Approver. Enforced in the DB and the push function;
+  // this only stops showing buttons that would be refused.
+  const canApprove = !!profile?.can_approve_billing;
   const [searchParams] = useSearchParams();
   const highlightId = searchParams.get('highlight');
   const [highlightActive, setHighlightActive] = useState(!!highlightId);
@@ -476,7 +479,9 @@ export default function BillingPage() {
     const update = { status: newStatus };
     if (newStatus === 'approved') { update.approved_by = profile?.id; update.approved_at = new Date().toISOString(); }
     try {
-      await supabase.from('billing_items').update(update).eq('id', item.id);
+      // Approval is enforced at the table (sql/353), so a refusal comes back here.
+      const { error } = await supabase.from('billing_items').update(update).eq('id', item.id);
+      if (error) { window.alert(error.message); return; }
       setItems((prev) => prev.map((i) => i.id === item.id ? { ...i, ...update } : i));
     } catch (e) { console.error(e); }
   };
@@ -764,7 +769,7 @@ export default function BillingPage() {
       // bill) mustn't fall through and open the row either.
       render: (item) => (
         <span data-no-row-click style={{display:'inline-flex',justifyContent:'flex-end'}}>
-          <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact={compact}/>
+          <ActionButtons item={item} onEdit={()=>startEdit(item)} onDelete={()=>handleDelete(item)} onStatus={handleStatusChange} compact={compact} canApprove={canApprove}/>
         </span>
       ),
     },
@@ -934,7 +939,10 @@ export default function BillingPage() {
           <p style={{fontSize:14,color:'#64748b'}}>{counts.pipeline} in pipeline · {counts.all} total</p>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {approvedItems.length > 0 && (
+          {approvedItems.length > 0 && !canApprove && (
+            <span style={{fontSize:12.5,color:'#64748b'}} title="Staff & Permissions → Billing → Approver">Pushing to QuickBooks is for billing approvers</span>
+          )}
+          {approvedItems.length > 0 && canApprove && (
             <button onClick={()=>{setShowPushConfirm(true);setPushResults(null);}} style={{...btnPrimary,gap:5}}>
               <Send size={14}/> Push to QB ({selectedApproved.length > 0 ? selectedApproved.length : approvedItems.length})
             </button>
@@ -1602,7 +1610,7 @@ function CalcInput({ value, onChange, dp = 2, placeholder, style }) {
 // One main action per row (UI audit, Sprint 4): the bill's obvious next step
 // is the button; everything else is in the ⋮ menu, Delete last and in red.
 // Same handlers as before — only where they sit has changed.
-function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
+function ActionButtons({ item, onEdit, onDelete, onStatus, compact, canApprove }) {
   const s = item.status;
   const sz = compact ? 12 : 14;
   // A £0.00 bill is a placeholder — raise it by all means, but it can't be
@@ -1615,8 +1623,10 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
   const note = { fontSize: compact ? 11.5 : 12.5, color: '#64748b', whiteSpace: 'nowrap' };
 
   let main = null;
-  if (s === 'draft' && priced) {
+  if (s === 'draft' && priced && canApprove) {
     main = <button onClick={() => onStatus(item, 'approved')} style={solid} title="Approve"><Check size={sz} strokeWidth={3} />Approve</button>;
+  } else if (s === 'draft' && priced) {
+    main = <span style={note} title="Approval is for billing approvers (Staff & Permissions → Billing → Approver)">Awaiting approval</span>;
   } else if (s === 'draft') {
     main = <button onClick={onEdit} style={quiet} title="Needs an amount first — a £0.00 bill can't be approved or pushed">Add amount</button>;
   } else if (s === 'not_required') {
@@ -1627,7 +1637,9 @@ function ActionButtons({ item, onEdit, onDelete, onStatus, compact }) {
 
   const items = [
     // "Add amount" already opens the editor for an unpriced draft.
-    s !== 'pushed' && !(s === 'draft' && !priced) && { label: 'Edit', icon: Pencil, onClick: onEdit },
+    // An approved bill is locked to its approver's figures; anyone else sends it back first.
+    s !== 'pushed' && !(s === 'draft' && !priced) && !(s === 'approved' && !canApprove) && { label: 'Edit', icon: Pencil, onClick: onEdit },
+    s === 'approved' && { label: 'Back to draft', icon: RotateCcw, onClick: () => onStatus(item, 'draft') },
     (s === 'draft' || s === 'approved') && { label: 'Mark not required', icon: Ban, onClick: () => onStatus(item, 'not_required') },
     { label: 'Delete…', icon: Trash2, onClick: onDelete, danger: true },
   ].filter(Boolean);

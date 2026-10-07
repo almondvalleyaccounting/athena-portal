@@ -16,7 +16,7 @@ import {
   jsonResponse,
   corsHeaders,
 } from "../_shared/qbo-client.ts";
-import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { requireStaffOrService, requireCallerFlag, authErrorResponse, type Caller } from "../_shared/require-staff.ts";
 import { describeQboError } from "../_shared/qbo-error.ts";
 
 type PushMode = "flat_invoice" | "recurring_template" | "setup_invoice_only";
@@ -51,10 +51,16 @@ Deno.serve(async (req) => {
 
   // Creates real QBO invoices and can have Intuit email them, from caller-supplied
   // ids.
-  try { await requireStaffOrService(req); }
+  let caller: Caller;
+  try { caller = await requireStaffOrService(req); }
   catch (err) { return authErrorResponse(err, corsHeaders()); }
 
   const body = await req.json().catch(() => ({}));
+  // A live push is billing-approver only; a dry run (the plan preview) is not.
+  if (!body.dry_run) {
+    try { await requireCallerFlag(caller, "can_approve_billing", "Approving and pushing invoices is for billing approvers only (Staff & Permissions → Billing → Approver)."); }
+    catch (err) { return authErrorResponse(err, corsHeaders()); }
+  }
   const initiatedBy: string | null = body.initiated_by ?? null;
   const mode: PushMode = (body.mode as PushMode) || "flat_invoice";
   const billingId: string | null = body.billing_id ?? null;

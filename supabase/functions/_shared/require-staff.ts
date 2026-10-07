@@ -168,3 +168,27 @@ export async function requireStaffOrService(
 
   return { kind: "staff", userId: user.id };
 }
+
+/**
+ * A further staff_profiles flag, checked after requireStaffOrService has already
+ * identified the caller. For a function whose read modes any staff member may use but
+ * whose write modes need a permission — the invoice pushes, where approving and
+ * pushing is for billing approvers only (Staff & Permissions → Billing → Approver).
+ * Service-role callers pass: they have no profile, and the crons that call these
+ * functions are the automation, not a person.
+ */
+export async function requireCallerFlag(caller: Caller, flag: string, message = "Not authorised"): Promise<void> {
+  if (caller.kind === "service") return;
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) throw new AuthError(500, "Auth not configured");
+  const service = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const { data: profile } = await service
+    .from("staff_profiles")
+    .select(`is_active, ${flag}`)
+    .eq("id", caller.userId)
+    .maybeSingle();
+  if (!profile?.is_active || !(profile as Record<string, unknown>)[flag]) {
+    throw new AuthError(403, message);
+  }
+}

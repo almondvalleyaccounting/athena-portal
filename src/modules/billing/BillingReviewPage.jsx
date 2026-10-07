@@ -27,6 +27,8 @@ const font = "'Outfit', sans-serif";
 export default function BillingReviewPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  // Staff & Permissions → Billing → Approver; enforced on live_billing by sql/353.
+  const canApprove = !!profile?.can_approve_billing;
 
   const [rows, setRows] = useState([]); // live_billing rows w/ entity
   const [loading, setLoading] = useState(true);
@@ -525,12 +527,14 @@ export default function BillingReviewPage() {
           (isDup(i) || s.duplicate_acknowledged) && (s.duplicate_acknowledged
             ? { label: 'Re-flag as a possible duplicate', icon: Copy, onClick: guard(() => unacknowledgeDuplicate(i)) }
             : { label: 'Not a duplicate (intentional)', icon: Copy, onClick: guard(() => acknowledgeDuplicate(i)) }),
-          i.status === 'approved' && { label: 'Un-approve', icon: RotateCcw, onClick: guard(() => unapprove(i)) },
-          i.status !== 'rejected' && { label: 'Reject', icon: X, onClick: guard(() => reject(i)) },
+          canApprove && i.status === 'approved' && { label: 'Un-approve', icon: RotateCcw, onClick: guard(() => unapprove(i)) },
+          canApprove && i.status !== 'rejected' && { label: 'Reject', icon: X, onClick: guard(() => reject(i)) },
         ].filter(Boolean);
         return (
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
-            {i.status !== 'approved' ? (
+            {i.status !== 'approved' && !canApprove ? (
+              <span style={{ fontSize: 12.5, color: '#64748b' }} title="Approval is for billing approvers">Awaiting approval</span>
+            ) : i.status !== 'approved' ? (
               <button onClick={() => approve(i)} disabled={saving} title="Approve"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', cursor: saving ? 'wait' : 'pointer', fontFamily: "'Outfit', sans-serif" }}>
                 <Check size={13} strokeWidth={3} />Approve
@@ -674,8 +678,8 @@ export default function BillingReviewPage() {
         <div style={bulkBarStyle}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>{selected.size} selected</span>
           <div style={{ flex: 1 }} />
-          <button onClick={bulkApprove} disabled={saving} style={btnApprove}>Approve</button>
-          <button onClick={bulkReject} disabled={saving} style={btnReject}>Reject</button>
+          {canApprove && <button onClick={bulkApprove} disabled={saving} style={btnApprove}>Approve</button>}
+          {canApprove && <button onClick={bulkReject} disabled={saving} style={btnReject}>Reject</button>}
           <span style={{ width: 1, alignSelf: 'stretch', background: '#334155', margin: '0 4px' }} />
           <button onClick={() => setUpliftOpen(true)} disabled={saving} style={btnUplift} title="Stage a fee uplift on the selected lines">
             Plan uplift on {selected.size} selected →

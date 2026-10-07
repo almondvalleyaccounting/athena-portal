@@ -29,6 +29,8 @@ const font = "'Outfit', sans-serif";
 export default function BillingUpliftReviewPage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
+  // Staff & Permissions → Billing → Approver; enforced by sql/353 and qbo-push-recurring.
+  const canApprove = !!profile?.can_approve_billing;
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -541,7 +543,7 @@ export default function BillingUpliftReviewPage() {
         const status = r._status;
         const skipped = !!r.uplift_email_skipped;
         const guard = (fn) => () => { if (!saving) fn(); };
-        const approve = r._held
+        const approve = r._held || !canApprove
           ? null
           : { label: 'Approve go-live…', icon: Check, onClick: guard(() => setGoLiveFor(r)) };
         const preview = !skipped && { label: 'Preview email', icon: Mail, onClick: guard(() => setEmailFor(r)) };
@@ -598,7 +600,9 @@ export default function BillingUpliftReviewPage() {
         }
         if (status === 'approved') {
           // Ready to push — and one click from undone.
-          main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Undo the go-live approval — back to pending"><RotateCcw size={13} />Undo approval</button>;
+          main = canApprove
+            ? <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Undo the go-live approval — back to pending"><RotateCcw size={13} />Undo approval</button>
+            : <span style={{ fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }}>Approved</span>;
           items = [!skipped && { label: 'Preview email', icon: Mail, onClick: guard(() => setEmailFor(r)) }, emailToggle, reject, ...signOffItems, discard];
         } else if (status === 'rejected') {
           main = <button onClick={() => setStatus([r.id], 'staged')} disabled={saving} style={quiet} title="Reset"><RotateCcw size={13} />Back to pending</button>;
@@ -606,6 +610,8 @@ export default function BillingUpliftReviewPage() {
         } else {
           main = r._held
             ? <span style={{ fontSize: 12.5, color: '#92400e', whiteSpace: 'nowrap' }} title="Some changes are still with the client">Waiting for client</span>
+            : !canApprove
+            ? <span style={{ fontSize: 12.5, color: '#64748b', whiteSpace: 'nowrap' }} title="Approval is for billing approvers">Awaiting approval</span>
             : <button onClick={() => setGoLiveFor(r)} disabled={saving} style={solid} title="Approve the date the new fees start — required before push"><Check size={13} strokeWidth={3} />Approve go-live</button>;
           items = [preview, emailToggle, reject, discard];
         }
@@ -663,7 +669,7 @@ export default function BillingUpliftReviewPage() {
         <div style={bulkBarStyle}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>{selected.size} selected</span>
           <div style={{ flex: 1 }} />
-          <button onClick={() => setStatus(Array.from(selected), 'approved')} disabled={saving} style={btnApprove}>Approve</button>
+          {canApprove && <button onClick={() => setStatus(Array.from(selected), 'approved')} disabled={saving} style={btnApprove}>Approve</button>}
           <button onClick={() => setStatus(Array.from(selected), 'rejected')} disabled={saving} style={btnReject}>Reject</button>
           <button onClick={() => setStatus(Array.from(selected), 'staged')} disabled={saving} style={btnUndo}>Reset</button>
           <button
@@ -761,9 +767,11 @@ export default function BillingUpliftReviewPage() {
           <button onClick={() => pushApproved(true)} disabled={pushing} style={btnPushDry} title="Show proposed bodies in console, no QBO writes">
             Dry-run
           </button>
-          <button onClick={() => pushApproved(false)} disabled={pushing} style={btnPushLive}>
-            {pushing ? 'Pushing…' : `Send ${approvedCount} to QBO`}
-          </button>
+          {canApprove && (
+            <button onClick={() => pushApproved(false)} disabled={pushing} style={btnPushLive}>
+              {pushing ? 'Pushing…' : `Send ${approvedCount} to QBO`}
+            </button>
+          )}
         </div>
       )}
 

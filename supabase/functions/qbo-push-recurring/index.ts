@@ -1,5 +1,5 @@
 import { getServiceClient, qboFetch, recurringInner, logSync, jsonResponse, corsHeaders } from "../_shared/qbo-client.ts";
-import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
+import { requireStaffOrService, requireCallerFlag, authErrorResponse, type Caller } from "../_shared/require-staff.ts";
 import { monthlyFactor, perInvoiceFor, annualFromInvoice } from "../_shared/billing-interval.ts";
 
 // Push staged fee uplifts (pending_monthly_amount on each service)
@@ -30,18 +30,25 @@ Deno.serve(async (req) => {
   // qbo-push and qbo-push-billing-items, have always required staff; this one
   // was simply missed. Only the two browser pages call it, both with the
   // signed-in user's JWT.
-  let callerUserId: string | null = null;
+  let caller: Caller;
   try {
-    callerUserId = (await requireStaffOrService(req)).userId;
+    caller = await requireStaffOrService(req);
   } catch (err) {
     return authErrorResponse(err, corsHeaders());
   }
+  const callerUserId: string | null = caller.userId;
 
   let body: { billing_ids?: string[]; all_pending?: boolean; dry_run?: boolean; initiated_by?: string };
   try {
     body = await req.json();
   } catch {
     return jsonResponse({ success: false, error: "Invalid JSON" }, 400);
+  }
+
+  // A live push is billing-approver only; a dry run (the proposed bodies) is not.
+  if (!body.dry_run) {
+    try { await requireCallerFlag(caller, "can_approve_billing", "Approving and pushing invoices is for billing approvers only (Staff & Permissions → Billing → Approver)."); }
+    catch (err) { return authErrorResponse(err, corsHeaders()); }
   }
 
   const sb = getServiceClient();
