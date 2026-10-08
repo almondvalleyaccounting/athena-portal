@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
     .from("onboardings")
     .select(`
       id, status, entity_id, owner_id, quote_id, escalation_status, escalated_at, paused_at,
-      started_at, checkin_due, checkin_sent_at, client_replied_at,
+      started_at, checkin_due, checkin_sent_at, client_replied_at, parked_at,
       service_handovers:onboarding_handovers(area, due, done_at, to:staff_profiles!onboarding_handovers_handover_to_fkey(name)),
       entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email, ch_auth_code, vat_number, utr, paye_ref),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name, email, is_active),
@@ -462,6 +462,9 @@ Deno.serve(async (req) => {
       if (s.status !== "waiting_client" || !s.requested_at) continue;
       // The pause email means what it says — no more client emails
       if (["paused", "offboard_due"].includes(escalation)) continue;
+      // Parked from the onboarding list (sql/359): set aside on purpose, so
+      // no client chasers until someone unparks it.
+      if (o.parked_at) continue;
       const count = (s.chase_count as number) || 0;
       if (count >= (cfg.max_chases as number)) {
         bucket.nonResponsive.push({ entity: entityName, step: s });

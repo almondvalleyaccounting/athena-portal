@@ -1209,3 +1209,140 @@ export async function listCrossCheckOrphans() {
   if (error) throw error;
   return data || [];
 }
+
+/* ─── Row actions: email, call, park, reply findings (sql/359) ─────────────
+   Every write goes through the onboarding-actions edge function; the browser
+   reads the timeline and findings directly. */
+
+async function obAction(action, body) {
+  const { data, error } = await supabase.functions.invoke('onboarding-actions', { body: { action, ...body } });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context?.json?.(); if (j?.error) msg = j.error; } catch { /* keep msg */ }
+    throw new Error(msg);
+  }
+  if (data && data.success === false) throw new Error(data.error || 'Failed');
+  return data;
+}
+
+export const OB_EMAIL_KINDS = [
+  { value: 'ob_request', label: 'What we need' },
+  { value: 'ob_follow_up', label: 'Friendly follow-up' },
+  { value: 'ob_final_chase', label: 'Final reminder' },
+  { value: 'blank', label: 'Blank email' },
+];
+
+export const CALL_OUTCOMES = [
+  { value: 'spoke', label: 'Spoke to the client' },
+  { value: 'no_answer', label: 'No answer' },
+  { value: 'voicemail', label: 'Left a voicemail' },
+  { value: 'wrong_number', label: 'Wrong number' },
+];
+
+export const renderOnboardingEmail = (onboardingId, kind, stepIds) =>
+  obAction('render_email', { onboarding_id: onboardingId, kind, step_ids: stepIds ?? undefined });
+export const sendOnboardingClientEmail = (onboardingId, payload) =>
+  obAction('send_email', { onboarding_id: onboardingId, ...payload });
+export const logOnboardingCall = (onboardingId, outcome, note) =>
+  obAction('log_call', { onboarding_id: onboardingId, outcome, note });
+export const setOnboardingParked = (onboardingId, parked, note) =>
+  obAction('park', { onboarding_id: onboardingId, parked, note });
+export const reviewReplyFinding = (findingId, accept) =>
+  obAction('review_finding', { finding_id: findingId, accept });
+
+// Read this client's new emails for anything we asked for, now rather than
+// at the next quarter-hour.
+export async function readRepliesNow(onboardingId) {
+  const { data, error } = await supabase.functions.invoke('onboarding-reply-scan', { body: { onboarding_id: onboardingId } });
+  if (error) throw error;
+  return data;
+}
+
+export async function listReplyFindings(onboardingId, { onlyOpen = true } = {}) {
+  let q = supabase
+    .from('onboarding_reply_findings')
+    .select('id, step_id, item_label, found_value, evidence, confidence, status, created_at, reviewed_at, communication:client_communications(id, occurred_at, subject, from_email)')
+    .eq('onboarding_id', onboardingId)
+    .order('created_at', { ascending: false });
+  if (onlyOpen) q = q.eq('status', 'suggested');
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+// Everything said to and from the client since the onboarding started, oldest
+// last: emails (every connected mailbox, both directions), calls, and the
+// emails Athena sends itself (welcome, chasers — Resend, so not in a mailbox).
+export async function listCommsTimeline(ob) {
+  const since = ob.created_at || ob.started_at;
+  const [{ data: mail, error: e1 }, { data: acts, error: e2 }, findings] = await Promise.all([
+    supabase
+      .from('client_communications')
+      .select('id, direction, mailbox, from_email, from_name, to_emails, subject, snippet, body_text, occurred_at')
+      .eq('entity_id', ob.entity_id)
+      .gte('occurred_at', since)
+      .order('occurred_at', { ascending: false })
+      .limit(300),
+    supabase
+      .from('onboarding_activity')
+      .select('id, kind, body, created_at, communication_id, author:staff_profiles!onboarding_activity_created_by_fkey(name)')
+      .eq('onboarding_id', ob.id)
+      .in('kind', ['call', 'email_out', 'client_reply'])
+      .order('created_at', { ascending: false }),
+    listReplyFindings(ob.id, { onlyOpen: false }),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const byComm = new Map();
+  findings.forEach((f) => {
+    const id = f.communication?.id;
+    if (id) byComm.set(id, [...(byComm.get(id) || []), f]);
+  });
+  const events = [
+    ...(mail || []).map((m) => ({
+      key: `m-${m.id}`, at: m.occurred_at, type: m.direction === 'in' ? 'email_in' : 'email_out',
+      who: m.direction === 'in' ? (m.from_name || m.from_email) : (m.from_name || m.mailbox),
+      to: (m.to_emails || []).join(', '), subject: m.subject, body: m.body_text || m.snippet || '',
+      findings: byComm.get(m.id) || [],
+    })),
+    // An activity row that points at a stored email is that email; a reply
+    // logged by the chase scanner is the inbound email above. What's left is
+    // calls and Athena's own Resend emails.
+    ...(acts || [])
+      .filter((a) => !a.communication_id && !(a.kind === 'client_reply' && /^Email reply received/.test(a.body || '')))
+      .map((a) => ({
+        key: `a-${a.id}`, at: a.created_at,
+        type: a.kind === 'call' ? 'call' : a.kind === 'email_out' ? 'email_out' : 'portal_reply',
+        who: a.author?.name || 'Athena', body: a.body, findings: [],
+      })),
+  ];
+  return events.sort((a, b) => (a.at < b.at ? 1 : -1));
+}
+
+// Onboarding email templates (comm_type 'onboarding'). Plain text with
+// {{tokens}}, edited from the email modal.
+export async function listOnboardingTemplates() {
+  const { data, error } = await supabase
+    .from('comm_templates')
+    .select('kind, subject, body_text, updated_at')
+    .eq('comm_type', 'onboarding');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function saveOnboardingTemplate(kind, { subject, body_text }, { actorId } = {}) {
+  const { data, error } = await supabase
+    .from('comm_templates')
+    .update({ subject, body_text, updated_by: actorId || null, updated_at: new Date().toISOString() })
+    .eq('comm_type', 'onboarding').eq('kind', kind)
+    .select('kind');
+  if (error) throw error;
+  if (!data?.length) throw new Error('Nothing was saved — the template row would not update.');
+}
+
+// "Already in place" is only meaningful where the client may already be set
+// up with us: Self Assessment (the director is already our SA client) and
+// Billing (already on a live recurring invoice). Everywhere else it's N/A.
+export function canBeInPlace(groupName) {
+  return /^SA( — |$)/.test(groupName || '') || groupName === 'Billing';
+}

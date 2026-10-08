@@ -27,7 +27,7 @@ function fmtLong(iso: string | null | undefined): string {
   const d = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
   return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 }
-function firstWord(name: string | null | undefined): string {
+export function firstWord(name: string | null | undefined): string {
   return String(name ?? "").trim().split(/\s+/)[0] || "";
 }
 function encodeSubject(s: string): string {
@@ -79,7 +79,7 @@ export function templateKindFor(stageKey: string, plan: { records_via_vat?: bool
 }
 
 /** The primary contact: preferred name and email. BrightManager's first. */
-async function primaryContact(db: SupabaseClient, entityId: string) {
+export async function primaryContact(db: SupabaseClient, entityId: string) {
   const { data } = await db.from("entity_people")
     .select("source, is_primary_contact, people(preferred_name, first_name, name, email)")
     .eq("entity_id", entityId).eq("is_primary_contact", true).is("ended_on", null);
@@ -126,7 +126,7 @@ async function signatureText(db: SupabaseClient, staffId: string | null, mailbox
 }
 
 /** {{opener}} and {{signoff}} for the templates. */
-async function closingVars(db: SupabaseClient, staffId: string | null, mailbox: string | null, firstName: string, prefs: CommsPrefs) {
+export async function closingVars(db: SupabaseClient, staffId: string | null, mailbox: string | null, firstName: string, prefs: CommsPrefs) {
   const opener = prefs.opener_enabled && prefs.opener_text ? `${prefs.opener_text.trim()} ` : "";
   const sig = prefs.signature_mode === "signature" ? await signatureText(db, staffId, mailbox) : null;
   const signoff = `${prefs.signoff},\n${sig || firstName}`;

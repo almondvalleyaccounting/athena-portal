@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, MessageSquare, CheckCircle2, RotateCcw, Archive, Flag } from 'lucide-react';
+import { UserPlus, MessageSquare, CheckCircle2, RotateCcw, Archive, Flag, Phone, Mail, History, PauseCircle, PlayCircle } from 'lucide-react';
 import { Btn } from '../../../components/ui';
 import DataTable from '../../../components/DataTable';
 import RowMenu from '../../../components/RowMenu';
@@ -9,7 +9,10 @@ import { useAuth } from '../../../shell/AppShell';
 import ChasersPanel from '../components/ChasersPanel';
 import ViewTabs from '../components/ViewTabs';
 import NotesThread from '../components/NotesThread';
-import { listOnboardings, setOnboardingStatus, setOnboardingPriority, priorityMeta, ONBOARDING_PRIORITIES, setOnboardingArchived, outstandingSteps, autoCompletedSteps } from '../api';
+import LogCallModal from '../components/LogCallModal';
+import OnboardingEmailModal from '../components/OnboardingEmailModal';
+import CommsTimelineModal from '../components/CommsTimelineModal';
+import { listOnboardings, setOnboardingStatus, setOnboardingPriority, priorityMeta, ONBOARDING_PRIORITIES, setOnboardingArchived, outstandingSteps, autoCompletedSteps, setOnboardingParked } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
 const font = "'Outfit', sans-serif";
@@ -109,8 +112,9 @@ function GroupChip({ group, hovered, onHover }) {
   );
 }
 
-// High priority always on top, whatever the column sort.
-const pinByPriority = (r) => priorityMeta(r.priority).rank;
+// High priority always on top, whatever the column sort; parked always at
+// the bottom, whatever its priority.
+const pinByPriority = (r) => (r.parked_at ? 10 : priorityMeta(r.priority).rank);
 
 export default function PipelineView() {
   const navigate = useNavigate();
@@ -127,6 +131,7 @@ export default function PipelineView() {
   const [openNotes, setOpenNotes] = useState(null); // onboarding id whose comments are expanded
   const [sort, setSort] = useState(null); // null = as loaded (newest first)
   const [page, setPage] = useState(1);
+  const [modal, setModal] = useState(null); // { kind: 'call' | 'email' | 'timeline', row }
 
   // Back to page 1 when the tab or search changes. Paging is controlled so an
   // action or a new comment (which reloads the rows) never jumps the page.
@@ -206,6 +211,16 @@ export default function PipelineView() {
       } else if (action === 'restore') {
         await setOnboardingArchived(r.id, false, { actorId: profile?.id });
         patch = { archived_at: null };
+      } else if (action === 'park' || action === 'unpark') {
+        let note = null;
+        if (action === 'park') {
+          note = window.prompt(`Park ${r.entity?.name || 'this onboarding'}?
+
+It moves to the bottom of the list and the chaser stops emailing the client until you unpark it. Reason (optional):`, '');
+          if (note === null) { setBusyId(null); return; }
+        }
+        await setOnboardingParked(r.id, action === 'park', note);
+        patch = action === 'park' ? { parked_at: new Date().toISOString(), parked_note: note || null } : { parked_at: null, parked_note: null };
       }
       setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, ...patch } : x)));
       // Reopen restores each step to the status it held before completion,
@@ -237,6 +252,14 @@ export default function PipelineView() {
                 </span>
               )}
               {r.priority === 'low' && <span style={chipStyle('neutral')}>Low</span>}
+              {r.parked_at && (
+                <span
+                  style={{ ...chipStyle('neutral'), display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  title={`Parked ${new Date(r.parked_at).toLocaleDateString('en-GB')}${r.parked_note ? ` — ${r.parked_note}` : ''}`}
+                >
+                  <PauseCircle size={10} /> Parked
+                </span>
+              )}
             </div>
           </div>
         );
@@ -262,7 +285,7 @@ export default function PipelineView() {
       ),
     },
     {
-      key: 'actions', label: '', width: 190, align: 'right', sortable: false,
+      key: 'actions', label: '', width: 270, align: 'right', sortable: false,
       // One main action per row (UI audit, Sprint 4). The row itself opens the
       // onboarding — the usual next step — so a button only appears when there
       // is a real decision on the row: Complete once every step is done,
@@ -275,17 +298,41 @@ export default function PipelineView() {
         const openCount = outstandingSteps(r.steps).length;
         const noEvent = { stopPropagation() {} };
         const act = (action) => () => { if (!busy) runAction(r, action, noEvent); };
-        const menu = r.archived_at ? [] : [
+        const menu = r.archived_at ? [
+          { label: 'Comms timeline', icon: History, onClick: () => setModal({ kind: 'timeline', row: r }) },
+        ] : [
+          { label: 'Comms timeline', icon: History, onClick: () => setModal({ kind: 'timeline', row: r }) },
           r.status === 'complete'
             ? { label: 'Reopen…', icon: RotateCcw, onClick: act('reopen') }
             : openCount > 0 && { label: `Mark complete… (${openCount} step${openCount === 1 ? '' : 's'} open)`, icon: CheckCircle2, onClick: act('complete') },
           ...ONBOARDING_PRIORITIES.filter((p) => p.value !== (r.priority || 'normal')).map((p) => ({
             label: `${p.label} priority`, icon: Flag, onClick: act(`priority:${p.value}`),
           })),
+          r.parked_at
+            ? { label: 'Unpark', icon: PlayCircle, onClick: act('unpark') }
+            : { label: 'Park…', icon: PauseCircle, onClick: act('park'), title: 'Move to the bottom of the list and stop chasing until unparked' },
           { label: 'Archive', icon: Archive, onClick: act('archive'), danger: true },
         ].filter(Boolean);
         return (
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            {!r.archived_at && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setModal({ kind: 'call', row: r }); }}
+                  title="Log a call with the client"
+                  style={{ ...actionBtnStyle('neutral'), display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Phone size={12} /> Call
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setModal({ kind: 'email', row: r }); }}
+                  title="Email the client — what we need, a follow-up or a final reminder"
+                  style={{ ...actionBtnStyle('neutral'), display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Mail size={12} /> Email
+                </button>
+              </>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); setOpenNotes(notesOpen ? null : r.id); }}
               title={notesOpen ? 'Hide comments' : 'Comments'}
@@ -373,7 +420,7 @@ export default function PipelineView() {
           rowKey={(r) => r.id}
           rowHref={(r) => `/onboarding/${r.id}`}
           onOpen={(href) => navigate(href)}
-          rowStyle={(r) => (busyId === r.id ? { opacity: 0.55 } : undefined)}
+          rowStyle={(r) => (busyId === r.id ? { opacity: 0.55 } : r.parked_at ? { opacity: 0.7 } : undefined)}
           pinFirst={pinByPriority}
           sort={sort}
           onSort={(next) => { setSort(next); setPage(1); }}
@@ -384,6 +431,10 @@ export default function PipelineView() {
           ) : null)}
         />
       )}
+
+      {modal?.kind === 'call' && <LogCallModal onboarding={modal.row} onClose={() => setModal(null)} onLogged={reload} />}
+      {modal?.kind === 'email' && <OnboardingEmailModal onboarding={modal.row} onClose={() => setModal(null)} onSent={reload} />}
+      {modal?.kind === 'timeline' && <CommsTimelineModal onboarding={modal.row} onClose={() => setModal(null)} onChanged={reload} />}
     </div>
   );
 }

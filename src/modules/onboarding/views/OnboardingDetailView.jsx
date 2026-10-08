@@ -14,10 +14,11 @@ import CheckinPanel from '../components/CheckinPanel';
 import DateField from '../components/DateField';
 import NotesThread from '../components/NotesThread';
 import BackgroundModal from '../components/BackgroundModal';
+import ReplyFindingsPanel from '../components/ReplyFindings';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus, ONBOARDING_PRIORITIES, setOnboardingPriority,
-  outstandingSteps, autoCompletedSteps, NA_REASONS, isInPlace, setGroupNa,
+  outstandingSteps, autoCompletedSteps, NA_REASONS, isInPlace, setGroupNa, canBeInPlace, listReplyFindings,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -35,6 +36,12 @@ function stepStatusMeta(value) {
 // place" — both stored as status 'na' with a na_reason (sql/358).
 const IN_PLACE = { value: 'in_place', label: 'Already in place', tone: 'teal' };
 const STEP_CHOICES = [...STEP_STATUSES, IN_PLACE];
+
+// Already in place is offered only on SA and Billing (canBeInPlace) — and on
+// any step already marked that way, so the dropdown can show it.
+function stepChoices(step) {
+  return canBeInPlace(step.group_name) || isInPlace(step) ? STEP_CHOICES : STEP_STATUSES;
+}
 
 function stepChoice(step) {
   return isInPlace(step) ? IN_PLACE.value : step.status;
@@ -63,8 +70,11 @@ export default function OnboardingDetailView() {
   const [taskFilter, setTaskFilter] = useState('all'); // all | client | staff
   const [backgroundOpen, setBackgroundOpen] = useState(false);
 
+  const [findings, setFindings] = useState([]);
+
   const load = useCallback(() => {
     getOnboarding(id).then(setOb).catch((e) => setError(e.message));
+    listReplyFindings(id).then(setFindings).catch(() => {});
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
@@ -213,6 +223,11 @@ export default function OnboardingDetailView() {
               {ob.template?.name} · started {new Date(ob.started_at).toLocaleDateString('en-GB')}
               {ob.quote_id ? ' · quote linked' : ' · no quote linked'}
               {ob.referred_by?.name ? ` · referred by ${ob.referred_by.name}` : ''}
+              {ob.parked_at && (
+                <span style={{ ...chipStyle('neutral'), marginLeft: 8 }} title={ob.parked_note || 'Unpark it from the onboarding list'}>
+                  Parked {new Date(ob.parked_at).toLocaleDateString('en-GB')} — chasers paused
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -322,7 +337,7 @@ export default function OnboardingDetailView() {
                       >
                         <RotateCcw size={11} /> Reinstate
                       </button>
-                    ) : NA_REASONS.map((r) => (
+                    ) : NA_REASONS.filter((r) => r.value !== 'in_place' || canBeInPlace(groupName)).map((r) => (
                       <button
                         key={r.value}
                         onClick={() => handleGroupNa(groupName, allSteps, r.value)}
@@ -393,7 +408,7 @@ export default function OnboardingDetailView() {
                             border: `1px solid ${tones[meta.tone].border}`, fontWeight: 600, minWidth: 130,
                           }}
                         >
-                          {STEP_CHOICES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                          {stepChoices(step).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
                       </div>
                       {isOpen && (
@@ -447,6 +462,7 @@ export default function OnboardingDetailView() {
 
         {/* Right column: notes first, then services, portal access + activity */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', paddingRight: 2 }}>
+        <ReplyFindingsPanel findings={findings} onChanged={load} />
         <EscalationPanel ob={ob} onChanged={load} />
         {/* Notes — the same thread the pipeline row's comments write to */}
         <div style={{ ...card, padding: '14px 18px' }}>
