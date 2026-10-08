@@ -285,6 +285,14 @@ export default function PortalDashboardView({
         </div>
       )}
 
+      {/* Why October is missing when QuickBooks has October in it: we have not
+          checked it yet. Said plainly so nobody reads the gap as a fault. */}
+      {payload?.release?.to && (
+        <div style={{ fontSize: 13, color: t.faint, marginBottom: 12 }}>
+          Figures checked and released up to {shortDate(payload.release.to)}.
+        </div>
+      )}
+
       {error && (
         <div style={{ fontSize: 14.5, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 14px' }}>
           {error}{' '}

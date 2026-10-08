@@ -83,7 +83,24 @@ export function usePortalDashboard({
   const [plCompare, setPlCompare] = useState('trend');
   const [bsCompare, setBsCompare] = useState('m12');
 
-  const today = useMemo(() => new Date(), []);
+  /*
+    "Today", as far as the presets are concerned.
+
+    The server only shows figures up to the date we have released (sql/355),
+    so a preset counted back from the real today would ask for months the
+    client cannot see and get them silently trimmed. Counting back from the
+    day after the release instead makes "Last month" the last released month
+    and "Last 12 months" the twelve before it — the dates on screen are the
+    dates in the figures. The server enforces it either way; this is honesty.
+  */
+  const releaseTo = payload?.release?.to || null;
+  const today = useMemo(() => {
+    const now = new Date();
+    if (!releaseTo) return now;
+    const [y, m, d] = releaseTo.split('-').map(Number);
+    const dayAfter = new Date(y, m - 1, d + 1);
+    return dayAfter < now ? dayAfter : now;
+  }, [releaseTo]);
 
   /*
     The fiscal year start month, 0-based.

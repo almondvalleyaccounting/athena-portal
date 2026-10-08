@@ -277,6 +277,43 @@ Deno.serve(async (req) => {
     if (conn.is_practice) return jr({ success: false, error: "Not authorised" }, 403);
     const realmId = conn.realm_id;
 
+    /*
+      RELEASE WINDOW (sql/355). QuickBooks is live, so without this a client
+      sees a month the moment anything is posted to it, checked or not. Staff
+      set the window by hand and nothing moves it; every date below is bounded
+      by it. A missing row FAILS CLOSED to the standard defaults (released to
+      the end of last month) rather than open — the trigger seeds a row on every
+      new grant, so a missing one means something went wrong, not "show all".
+      mode 'all' means no window: only the 62-month clamp applies.
+    */
+    const { data: relRow } = await sb
+      .from("dashboard_release_window")
+      .select("mode, release_from, release_to")
+      .eq("entity_id", entityId)
+      .maybeSingle();
+    const thisYear = Number(todayIso().slice(0, 4));
+    const release = relRow?.mode === "all"
+      ? null
+      : {
+          from: ISO.test(String(relRow?.release_from)) ? String(relRow!.release_from) : `${thisYear - 6}-01-01`,
+          to: ISO.test(String(relRow?.release_to))
+            ? String(relRow!.release_to)
+            : lastDay(keyOf(absOf(todayIso().slice(0, 7)) - 1)),
+        };
+    // The last WHOLE month inside the window: a monthly figure (a KPI, a month
+    // of projection actuals) is released only if all of its month is.
+    const releasedMonthKey = release
+      ? (release.to === lastDay(release.to.slice(0, 7)) ? release.to.slice(0, 7) : keyOf(isoAbs(release.to) - 1))
+      : null;
+    const inRelease = (d: string | null | undefined) =>
+      !release || (!!d && d >= release.from && d <= release.to);
+    const boundDate = (d: string) => {
+      if (!release) return d;
+      if (d > release.to) return release.to;
+      if (d < release.from) return release.from;
+      return d;
+    };
+
     // The fiscal year end — never from the caller. Staff override, then
     // BrightManager's own year end, then QuickBooks' setting, then the flagged
     // fallback. Same order as the staff dashboard's resolveFiscalYear, because
@@ -312,7 +349,18 @@ Deno.serve(async (req) => {
       start: firstDay(keyOf(absOf(lastCompleteKey) - 11)),
       end: lastDay(lastCompleteKey),
     };
-    const period = clampRange(body.period?.start, body.period?.end, defaultPeriod);
+    let period = clampRange(body.period?.start, body.period?.end, defaultPeriod);
+    if (release) {
+      // A period running past the release keeps its LENGTH and ends at the
+      // release, so "the last 12 months" means the last 12 released months
+      // rather than a shorter, oddly-labelled stub.
+      if (period.end > release.to) {
+        const shift = isoAbs(period.end) - isoAbs(release.to);
+        period = { start: shiftMonthsBack(period.start, shift), end: release.to };
+      }
+      if (period.start < release.from) period = { ...period, start: release.from };
+      if (period.start > period.end) period = { ...period, start: period.end };
+    }
 
     // The prior period — the same LENGTH of time immediately before, which is
     // what the Overview's vs-previous deltas compare against.
@@ -324,10 +372,16 @@ Deno.serve(async (req) => {
 
     // The as-at date for the balance sheet and the aged ledgers. Its own
     // control, because a position and a flow are chosen separately.
-    const asAtDate = clampDate(body.asAt?.date, lastDay(lastCompleteKey));
+    const asAtDate = boundDate(clampDate(body.asAt?.date, lastDay(lastCompleteKey)));
 
     // The Overview's bucket columns, counted back from the period end.
     const win = buildWindow(grain, basis, fyIdx, period.end.slice(0, 7));
+    // The chart runs whole months, so its last month can end after a mid-month
+    // release date, and its extra front bucket can start before the release.
+    if (release) {
+      win.chartEnd = boundDate(win.chartEnd);
+      win.chartStart = boundDate(win.chartStart);
+    }
 
     // Comparatives. A P&L is a FLOW, so its comparative is the same length of
     // time ending earlier; a balance sheet is a POSITION, so its comparative is
@@ -336,10 +390,14 @@ Deno.serve(async (req) => {
     // a year, and reaching a column heading.
     const plCmp = cmpMonthsFor(body.plCompare);
     const bsCmp = cmpMonthsFor(body.bsCompare);
-    const plCmpRange = plCmp
+    // A comparative reaching back before the release is dropped, not
+    // shortened: half a comparative year beside a full one misleads.
+    let plCmpRange = plCmp
       ? { start: shiftMonthsBack(period.start, plCmp), end: shiftMonthsBack(period.end, plCmp) }
       : null;
-    const bsCmpDate = bsCmp ? shiftMonthsBack(asAtDate, bsCmp) : null;
+    if (plCmpRange && !inRelease(plCmpRange.start)) plCmpRange = null;
+    let bsCmpDate = bsCmp ? shiftMonthsBack(asAtDate, bsCmp) : null;
+    if (bsCmpDate && !inRelease(bsCmpDate)) bsCmpDate = null;
 
     // A custom range is pulled live and never cached, the same rule the staff
     // dashboard follows: a cache keyed on one person's ad-hoc window fills up
@@ -396,6 +454,24 @@ Deno.serve(async (req) => {
     /* 4. What goes out. Every field is named. */
     const m = pulled?.metrics || {};
 
+    // The balance sheet's built-in comparatives (this month, last month, 3 and
+    // 12 months back) and the aged ledgers' "same customers 3 months ago" are
+    // positions at earlier dates. Any that fall before the release go blank.
+    const BS_BACK: Record<string, number> = { now: 0, m1: 1, m3: 3, m12: 12 };
+    const releasedComparatives = (c: any) => {
+      if (!c || !release) return c;
+      const keep = (c.columns || []).map((col: any) =>
+        inRelease(shiftMonthsBack(asAtDate, BS_BACK[col.key] ?? 0)));
+      return {
+        columns: c.columns,
+        rows: (c.rows || []).map((r: any) => ({
+          ...r, values: (r.values || []).map((v: unknown, i: number) => (keep[i] ? v : null)),
+        })),
+      };
+    };
+    const prevReleased = inRelease(shiftMonthsBack(asAtDate, 1));
+    const sameReleased = inRelease(shiftMonthsBack(asAtDate, 3));
+
     const detail = m.pnl_chart_detail
       ? {
           period: m.pnl_chart_detail.period,
@@ -439,7 +515,7 @@ Deno.serve(async (req) => {
           total_liabilities: s.total_liabilities,
           net_assets: s.net_assets,
           equity: s.equity,
-          prev: s.prev
+          prev: s.prev && prevReleased
             ? {
                 cash: s.prev.cash, debtors: s.prev.debtors,
                 accounts_payable: s.prev.accounts_payable,
@@ -455,7 +531,7 @@ Deno.serve(async (req) => {
           currency: s.currency,
           buckets: s.buckets,
           top: s.top,
-          same_clients: s.same_clients,
+          same_clients: sameReleased ? s.same_clients : null,
         }
       : null);
 
@@ -472,7 +548,7 @@ Deno.serve(async (req) => {
     if (grant.show_balance) {
       const bsa = m.bs_asat || m.bs_period;
       metrics.bs_asat = bsa
-        ? { ...balanceFigures(bsa), comparatives: bsa.comparatives, report: bsa.report || null }
+        ? { ...balanceFigures(bsa), comparatives: releasedComparatives(bsa.comparatives), report: bsa.report || null }
         : null;
       if (m.bs_compare) {
         metrics.bs_compare = { ...balanceFigures(m.bs_compare), report: m.bs_compare.report || null };
@@ -517,10 +593,17 @@ Deno.serve(async (req) => {
         sb.from("kpi_dimension_value").select("*").eq("entity_id", entityId).order("sort_order"),
         sb.from("kpi_value").select("*").eq("entity_id", entityId).limit(20000),
       ]);
+      // A KPI is a monthly figure: released only if its whole month is.
+      const fromKey = release ? release.from.slice(0, 7) : "";
+      const releasedVals = (vals || []).filter((v: any) => {
+        if (!release) return true;
+        const k = String(v.period || "").slice(0, 7);
+        return /^\d{4}-\d{2}$/.test(k) && k >= fromKey && k <= String(releasedMonthKey);
+      });
       kpis = {
         definitions: defs || [],
         dimension_values: dims || [],
-        values: vals || [],
+        values: releasedVals,
       };
     }
 
@@ -589,9 +672,15 @@ Deno.serve(async (req) => {
         // Five years back covers every grain the portal offers; it is one
         // report per statement and dashboard-qbo-pull caches it by range.
         let actuals: Record<string, unknown> | null = null;
-        const cutoffKey = String(link.actuals_through || "").slice(0, 7);
+        let cutoffKey = String(link.actuals_through || "").slice(0, 7);
+        // Actuals stop at the release; months after it are forecast, which is
+        // what a projection shows past its cut-off anyway.
+        if (releasedMonthKey && /^\d{4}-\d{2}$/.test(cutoffKey) && cutoffKey > releasedMonthKey) {
+          cutoffKey = releasedMonthKey;
+        }
         if (/^\d{4}-\d{2}$/.test(cutoffKey)) {
-          const startKey = keyOf(absOf(cutoffKey) - 59);
+          let startKey = keyOf(absOf(cutoffKey) - 59);
+          if (release && startKey < release.from.slice(0, 7)) startKey = release.from.slice(0, 7);
           const pr = await pull({
             window: {
               kind: "preset",
@@ -612,7 +701,7 @@ Deno.serve(async (req) => {
           forecast_name: forecast?.name || null,
           opening_period: forecast?.opening_period || null,
           horizon_months: forecast?.horizon_months || null,
-          actuals_through: link.actuals_through,
+          actuals_through: /^\d{4}-\d{2}$/.test(cutoffKey) ? lastDay(cutoffKey) : link.actuals_through,
           rows,
           overrides: overrideRows || [],
           actuals,
@@ -658,7 +747,14 @@ Deno.serve(async (req) => {
       bs_compare_date: bsCmpDate,
       // The Overview's bucket window, and how far back a client may ask.
       window: { start: win.chartStart, end: win.chartEnd, latest_end: win.latestEndKey },
-      limits: { max_months_back: MAX_MONTHS_BACK, earliest: shiftMonthsBack(todayIso(), MAX_MONTHS_BACK), latest: todayIso() },
+      limits: {
+        max_months_back: MAX_MONTHS_BACK,
+        earliest: release && release.from > shiftMonthsBack(todayIso(), MAX_MONTHS_BACK)
+          ? release.from : shiftMonthsBack(todayIso(), MAX_MONTHS_BACK),
+        latest: release && release.to < todayIso() ? release.to : todayIso(),
+      },
+      // What we have released. null = everything (mode 'all').
+      release: release ? { from: release.from, to: release.to } : null,
       fiscal_year_start_month: fyIdx + 1,
       sections: {
         overview: grant.show_overview,

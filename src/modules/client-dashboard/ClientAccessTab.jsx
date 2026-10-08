@@ -7,7 +7,7 @@ import { BTN } from '../../lib/buttonStyles';
 // Shared with /admin/dashboard-access, which grants the same access from the
 // other direction and so needs the same way of telling somebody about it.
 import {
-  personStatus, sendPortalLink, confirmSendLink, sendLinkLabel, sendLinkIsPending, sendLinkTitle,
+  personStatus, sendPortalLink, confirmSendLink, sendLinkLabel, sendLinkIsPending, sendLinkTitle, fnError,
 } from './portalLink';
 
 /*
@@ -245,6 +245,8 @@ export default function ClientAccessTab({ entityId, clientName, realmId, canMana
           </span>
         </div>
       </div>
+
+      <ReleaseWindowCard entityId={entityId} clientName={clientName} people={live} />
 
       {loading && (
         <div style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 9, color: '#94a3b8', fontFamily: OUTFIT, fontSize: 14 }}>
@@ -621,6 +623,181 @@ const fieldLabel = {
   display: 'flex', flexDirection: 'column', gap: 6,
   fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#475569',
 };
+/*
+  Figures released to the client (sql/355).
+
+  QuickBooks is live, so without this a client sees a month as soon as anything
+  is posted to it. The window says which dates they may see, and nothing moves
+  it but this card: releasing September is somebody saying it has been checked.
+  "See all" removes the window. Saving can email everybody with access that new
+  figures are there — through the dashboard-release edge function, which is
+  also the only thing that writes the table.
+*/
+const isoToday = () => new Date().toISOString().slice(0, 10);
+// Mirror of dashboard_release_defaults(): 1 Jan six years back, end of last month.
+function releaseDefaults(today = new Date()) {
+  const y = today.getFullYear();
+  const endLast = new Date(y, today.getMonth(), 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    release_from: `${y - 6}-01-01`,
+    release_to: `${endLast.getFullYear()}-${pad(endLast.getMonth() + 1)}-${pad(endLast.getDate())}`,
+  };
+}
+
+function ReleaseWindowCard({ entityId, clientName, people }) {
+  const [saved, setSaved] = useState(null);
+  const [form, setForm] = useState(null);
+  const [notify, setNotify] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    if (!entityId) return;
+    const { data, error } = await supabase
+      .from('dashboard_release_window')
+      .select('mode, release_from, release_to, updated_at, last_notified_at')
+      .eq('entity_id', entityId)
+      .maybeSingle();
+    if (error) { setMsg({ tone: 'error', text: error.message }); return; }
+    setSaved(data || null);
+    setForm(data
+      ? { mode: data.mode, release_from: data.release_from, release_to: data.release_to }
+      : { mode: 'window', ...releaseDefaults() });
+  }, [entityId]);
+
+  useEffect(() => { setMsg(null); setNotify(false); load(); }, [load]);
+
+  if (!form) return null;
+
+  const dirty = !saved
+    || saved.mode !== form.mode
+    || saved.release_from !== form.release_from
+    || saved.release_to !== form.release_to;
+  const invalid = form.mode === 'window'
+    && (!form.release_from || !form.release_to || form.release_from > form.release_to);
+  const emails = people.map((p) => p.email);
+
+  const save = async () => {
+    if (notify && !window.confirm(
+      `Save, and email ${emails.join(', ')} that new figures are available?`,
+    )) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('dashboard-release', {
+        body: { entity_id: entityId, ...form, notify },
+      });
+      if (error) throw new Error(await fnError(error));
+      if (!data?.success) throw new Error(data?.error || 'Could not save');
+      const told = data.notified_to?.length ? ` Emailed ${data.notified_to.join(', ')}.` : '';
+      setMsg({ tone: data.warning ? 'error' : 'success', text: data.warning || `Saved.${told}` });
+      setNotify(false);
+      await load();
+    } catch (e) {
+      setMsg({ tone: 'error', text: String(e.message || e) });
+    }
+    setBusy(false);
+  };
+
+  const label = { fontFamily: OUTFIT, fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 5 };
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ fontFamily: OUTFIT, fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>
+        Figures released to {clientName || 'the client'}
+      </div>
+      <p style={{ fontFamily: OUTFIT, fontSize: 13.5, color: '#64748b', margin: '5px 0 14px', lineHeight: 1.6 }}>
+        They only see figures between these dates. The dates never move on their own — change
+        the <strong>To</strong> date once a month has been checked.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div>
+          <div style={label}>Show</div>
+          <select
+            value={form.mode}
+            onChange={(e) => setForm({ ...form, mode: e.target.value })}
+            style={{ ...inputStyle, width: 'auto', minWidth: 190 }}
+          >
+            <option value="window">Released dates only</option>
+            <option value="all">See all</option>
+          </select>
+        </div>
+        {form.mode === 'window' && (
+          <>
+            <div>
+              <div style={label}>From</div>
+              <input
+                type="date" value={form.release_from || ''}
+                onChange={(e) => setForm({ ...form, release_from: e.target.value })}
+                style={{ ...inputStyle, width: 'auto' }}
+              />
+            </div>
+            <div>
+              <div style={label}>To</div>
+              <input
+                type="date" value={form.release_to || ''} max={isoToday()}
+                onChange={(e) => setForm({ ...form, release_to: e.target.value })}
+                style={{ ...inputStyle, width: 'auto' }}
+              />
+            </div>
+          </>
+        )}
+        <button
+          onClick={save}
+          disabled={busy || invalid || (!dirty && !notify)}
+          style={{
+            ...BTN.primary.md, display: 'inline-flex', alignItems: 'center', gap: 7,
+            ...((busy || invalid || (!dirty && !notify)) && { opacity: 0.45, cursor: 'not-allowed' }),
+          }}
+        >
+          {busy ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={15} />}
+          Save
+        </button>
+      </div>
+
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontFamily: OUTFIT, fontSize: 14,
+        color: emails.length ? '#334155' : '#94a3b8', cursor: emails.length ? 'pointer' : 'not-allowed',
+      }}>
+        <input
+          type="checkbox" checked={notify} disabled={!emails.length}
+          onChange={(e) => setNotify(e.target.checked)}
+        />
+        Email {emails.length ? emails.join(', ') : 'the client'} that new figures have been released
+      </label>
+
+      {invalid && (
+        <div style={{ marginTop: 10, fontFamily: OUTFIT, fontSize: 13.5, color: '#b91c1c' }}>
+          The From date has to be on or before the To date.
+        </div>
+      )}
+      {!saved && (
+        <div style={{ marginTop: 10, fontFamily: OUTFIT, fontSize: 13.5, color: '#b45309' }}>
+          Not set yet — they are shown the dates above until you save.
+        </div>
+      )}
+      {saved && (
+        <div style={{ marginTop: 10, fontFamily: OUTFIT, fontSize: 13, color: '#94a3b8' }}>
+          Last changed {fmtDate(saved.updated_at)}
+          {saved.last_notified_at ? ` · client last emailed ${fmtDate(saved.last_notified_at)}` : ''}
+        </div>
+      )}
+      {msg && (
+        <div style={{
+          marginTop: 12, padding: '10px 14px', borderRadius: 10, fontFamily: OUTFIT, fontSize: 14,
+          backgroundColor: msg.tone === 'error' ? '#fef2f2' : '#f0fdf4',
+          border: `1px solid ${msg.tone === 'error' ? '#fecaca' : '#bbf7d0'}`,
+          color: msg.tone === 'error' ? '#991b1b' : '#166534',
+        }}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const linkishBtn = { ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
 const dangerBtn = { ...BTN.danger.sm, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' };
 // Nudged, not shouted: the one row action that is outstanding work rather than
