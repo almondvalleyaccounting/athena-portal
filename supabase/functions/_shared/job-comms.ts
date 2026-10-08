@@ -380,6 +380,7 @@ export interface GenericSend {
   text: string;
   ownerId: string;
   mailbox?: string | null;
+  fromMailbox?: string | null;     // send from exactly this mailbox (caller has checked access); overrides the own-mailbox rule
   testOnly?: boolean;
   remember?: PickedItem[] | null;  // records request: what was asked for
   periodEnd?: string | null;
@@ -392,8 +393,10 @@ export async function sendGeneric(db: SupabaseClient, s: GenericSend) {
     db.from("gmail_connections").select("account_email").eq("owner_staff_id", s.ownerId).eq("status", "active").limit(1),
   ]);
   const ownEmail = gc?.[0]?.account_email || null;
-  const token = await getValidGmailToken(ownEmail || s.mailbox || undefined);
-  const fromName = ownEmail ? (token.displayName || sp?.name || "") : (sp?.name || token.displayName);
+  const chosen = s.fromMailbox || ownEmail || s.mailbox || undefined;
+  const token = await getValidGmailToken(chosen);
+  const fromOwn = Boolean(ownEmail) && token.accountEmail.toLowerCase() === ownEmail!.toLowerCase();
+  const fromName = fromOwn ? (token.displayName || sp?.name || "") : (sp?.name || token.displayName);
   const mime = buildMime(s.to, s.subject, s.text, token.accountEmail, fromName);
   const resp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",

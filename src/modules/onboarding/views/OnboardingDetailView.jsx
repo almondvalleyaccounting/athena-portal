@@ -15,6 +15,7 @@ import DateField from '../components/DateField';
 import NotesThread from '../components/NotesThread';
 import BackgroundModal from '../components/BackgroundModal';
 import ReplyFindingsPanel from '../components/ReplyFindings';
+import OnboardingContactCard from '../components/OnboardingContact';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus, ONBOARDING_PRIORITIES, setOnboardingPriority,
@@ -464,6 +465,7 @@ export default function OnboardingDetailView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', paddingRight: 2 }}>
         <ReplyFindingsPanel findings={findings} onChanged={load} />
         <EscalationPanel ob={ob} onChanged={load} />
+        <OnboardingContactCard onboardingId={ob.id} onChanged={load} />
         {/* Notes — the same thread the pipeline row's comments write to */}
         <div style={{ ...card, padding: '14px 18px' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 10 }}>

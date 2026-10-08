@@ -10,13 +10,14 @@ const input = {
   width: '100%', padding: '7px 10px', fontSize: 14, fontFamily: font, boxSizing: 'border-box',
   border: '1px solid #cbd5e1', borderRadius: 8, color: '#0f172a',
 };
-const TOKENS = ['{{greeting}}', '{{opener}}', '{{client_name}}', '{{items}}', '{{portal_url}}', '{{signoff}}', '{{sender_first_name}}'];
+const TOKENS = ['{{first_name}}', '{{opener}}', '{{client_name}}', '{{items}}', '{{sender_name}}', '{{sender_first_name}}', '{{from_email}}'];
 
 // The wording of the onboarding emails (comm_templates, comm_type
 // 'onboarding'). Plain text — the email goes out looking hand-typed.
 export default function OnboardingTemplatesModal({ initialKind = 'ob_request', onClose, onSaved }) {
   const { profile } = useAuth();
-  const kinds = OB_EMAIL_KINDS.filter((k) => k.value !== 'blank');
+  const kinds = [...OB_EMAIL_KINDS.filter((k) => k.value !== 'blank'), { value: 'ob_signature', label: 'Signature' }];
+  const isSig = kind === 'ob_signature';
   const [kind, setKind] = useState(initialKind);
   const [rows, setRows] = useState(null);
   const [draft, setDraft] = useState({ subject: '', body_text: '' });
@@ -90,20 +91,26 @@ export default function OnboardingTemplatesModal({ initialKind = 'ob_request', o
         <div style={{ fontSize: 14, color: '#64748b' }}>Loading…</div>
       ) : (
         <>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Subject</div>
-          <input style={{ ...input, marginBottom: 10 }} value={draft.subject} onChange={(e) => setDraft((d) => ({ ...d, subject: e.target.value }))} />
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Message</div>
+          {!isSig && (
+            <>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Subject</div>
+              <input style={{ ...input, marginBottom: 10 }} value={draft.subject} onChange={(e) => setDraft((d) => ({ ...d, subject: e.target.value }))} />
+            </>
+          )}
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
+            {isSig ? 'Signature — added under every onboarding email' : 'Message'}
+          </div>
           <textarea
             value={draft.body_text}
             onChange={(e) => setDraft((d) => ({ ...d, body_text: e.target.value }))}
-            style={{ ...input, minHeight: 280, resize: 'vertical', lineHeight: 1.5, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13 }}
+            style={{ ...input, minHeight: isSig ? 140 : 280, resize: 'vertical', lineHeight: 1.5, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 13 }}
           />
           <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
             Tokens:{' '}
             {TOKENS.map((t) => (
               <code key={t} style={{ background: '#f1f5f9', padding: '1px 5px', borderRadius: 4, marginRight: 5, color: '#475569' }}>{t}</code>
             ))}
-            <div>{'{{items}}'} is the ticked list from the email screen. {'{{opener}}'} and {'{{signoff}}'} follow each sender’s own email settings.</div>
+            <div>{'{{first_name}}'} is the onboarding contact’s first name. {'{{items}}'} is the ticked list from the email screen. {'{{from_email}}'} is the mailbox it’s sent from. The signature goes under every email automatically.</div>
           </div>
         </>
       )}

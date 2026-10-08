@@ -1239,8 +1239,14 @@ export const CALL_OUTCOMES = [
   { value: 'wrong_number', label: 'Wrong number' },
 ];
 
-export const renderOnboardingEmail = (onboardingId, kind, stepIds) =>
-  obAction('render_email', { onboarding_id: onboardingId, kind, step_ids: stepIds ?? undefined });
+export const renderOnboardingEmail = (onboardingId, kind, stepIds, fromMailbox) =>
+  obAction('render_email', { onboarding_id: onboardingId, kind, step_ids: stepIds ?? undefined, from_mailbox: fromMailbox || undefined });
+
+// The onboarding contact: who onboarding emails go to and greet by first
+// name. Unsaved, it's the client's main director (resolved server-side).
+export const getOnboardingContact = (onboardingId) => obAction('get_contact', { onboarding_id: onboardingId });
+export const setOnboardingContact = (onboardingId, contact) =>
+  obAction('set_contact', { onboarding_id: onboardingId, ...contact });
 export const sendOnboardingClientEmail = (onboardingId, payload) =>
   obAction('send_email', { onboarding_id: onboardingId, ...payload });
 export const logOnboardingCall = (onboardingId, outcome, note) =>

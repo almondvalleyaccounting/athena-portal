@@ -4,17 +4,25 @@
 // paths are edge functions (CLAUDE.md); attribution is the JWT's user.
 //
 // Body: { action, ...fields }
-//   render_email  { onboarding_id, kind, step_ids? }
+//   get_contact   { onboarding_id }  the onboarding contact (sql/360): the
+//                 saved one, else the default — the client's main director
+//                 (or sole trader / primary contact) — plus the people on the
+//                 client to choose from.
+//   set_contact   { onboarding_id, person_id?, name, first_name, email, phone? }
+//                 Saves it; from then on the default no longer applies.
+//   render_email  { onboarding_id, kind, step_ids?, from_mailbox? }
 //                 kind: ob_request | ob_follow_up | ob_final_chase | blank.
-//                 Returns the draft (to, from, subject, text) plus every open
-//                 client item, with any unreviewed reply finding against it so
-//                 the modal can warn before asking again. step_ids = the items
-//                 to list; omitted = every open item without such a finding.
-//   send_email    { onboarding_id, to, subject, text, kind, step_ids? }
-//                 Sends through the sender's own Gmail (else the practice
-//                 mailbox with their name), logs it on the client and the
-//                 onboarding, and marks listed client steps still at To do as
-//                 requested today — the email is the formal ask.
+//                 Returns the draft (to = the contact, from, subject, text with
+//                 the signature) plus every open client item, with any
+//                 unreviewed reply finding against it so the modal can warn
+//                 before asking again. step_ids = the items to list; omitted =
+//                 every open item without such a finding. from_mailbox
+//                 defaults to the practice mailbox (info@).
+//   send_email    { onboarding_id, subject, text, kind, step_ids?, from_mailbox? }
+//                 Sends to the onboarding contact from the chosen mailbox,
+//                 logs it on the client and the onboarding, and marks listed
+//                 client steps still at To do as requested today — the email
+//                 is the formal ask.
 //   log_call      { onboarding_id, outcome, note? }
 //                 outcome: spoke | no_answer | voicemail | wrong_number.
 //                 Spoke clears a "Call needed" escalation to "Call made".
@@ -26,11 +34,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaffOrService, authErrorResponse } from "../_shared/require-staff.ts";
-import { sendGeneric, loadPrefs, primaryContact, closingVars, firstWord } from "../_shared/job-comms.ts";
+import { sendGeneric, loadPrefs, closingVars, firstWord } from "../_shared/job-comms.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const CLIENT_PORTAL_URL = Deno.env.get("CLIENT_PORTAL_URL") || "https://clients.almondvalleyaccounting.co.uk";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -92,7 +99,7 @@ Deno.serve(async (req) => {
 
   async function loadOnboarding(id: string) {
     const { data, error } = await db.from("onboardings")
-      .select("id, entity_id, status, escalation_status, parked_at, entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email), steps:onboarding_steps(id, name, client_label, owner_type, status, requested_at, group_sort, sort)")
+      .select("id, entity_id, status, escalation_status, parked_at, contact_person_id, contact_name, contact_first_name, contact_email, contact_phone, entity:entities!onboardings_entity_id_fkey(id, name, billing_email, prospect_email), steps:onboarding_steps(id, name, client_label, owner_type, status, requested_at, group_sort, sort)")
       .eq("id", id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) throw new BadRequest("Onboarding not found", 404);
@@ -103,6 +110,79 @@ Deno.serve(async (req) => {
       onboarding_id: onboardingId, kind, body, created_by: me, ...extra,
     });
     if (error) throw new Error(error.message);
+  }
+
+  // ── The onboarding contact ──────────────────────────────────────────────
+  // People on the client, best first: a current director (primary contact
+  // first, BrightManager's record before Companies House's), then the sole
+  // trader / partner, then any primary contact, then any contact.
+  const ROLE_RANK: Record<string, number> = { director: 0, sole_trader: 1, partner: 1, contact: 3, shareholder: 4 };
+  async function candidates(entityId: string) {
+    const { data } = await db.from("entity_people")
+      .select("role, is_primary_contact, source, people(id, name, first_name, preferred_name, email, phone)")
+      .eq("entity_id", entityId).is("ended_on", null);
+    const byPerson = new Map<string, Record<string, any>>();
+    for (const r of (data || []) as Record<string, any>[]) {
+      const p = r.people;
+      if (!p) continue;
+      const rank = (ROLE_RANK[r.role] ?? 5) - (r.is_primary_contact ? 0.5 : 0) - (r.source === "brightmanager" ? 0.1 : 0)
+        + (r.role === "contact" && !r.is_primary_contact ? 1 : 0) - (p.email ? 0.05 : 0);
+      const cur = byPerson.get(p.id);
+      if (!cur || rank < cur.rank) {
+        byPerson.set(p.id, {
+          rank, person_id: p.id, role: r.role,
+          name: p.name || p.first_name || "",
+          first_name: (p.preferred_name || "").trim() || (p.first_name || "").trim() || firstWord(p.name),
+          email: (p.email || "").trim() || null,
+          phone: (p.phone || "").trim() || null,
+        });
+      }
+    }
+    return [...byPerson.values()].sort((a, b) => a.rank - b.rank);
+  }
+  async function resolveContact(ob: Record<string, any>) {
+    const people = await candidates(ob.entity_id);
+    if (ob.contact_name || ob.contact_email) {
+      return {
+        contact: {
+          person_id: ob.contact_person_id, name: ob.contact_name,
+          first_name: ob.contact_first_name || firstWord(ob.contact_name),
+          email: ob.contact_email, phone: ob.contact_phone,
+        },
+        saved: true, source: "saved", people,
+      };
+    }
+    const best = people[0];
+    const ent = ob.entity as Record<string, any>;
+    const fallbackEmail = firstEmail(ent?.billing_email) || firstEmail(ent?.prospect_email);
+    if (best) {
+      return {
+        contact: { person_id: best.person_id, name: best.name, first_name: best.first_name, email: best.email || fallbackEmail, phone: best.phone },
+        saved: false, source: best.role === "director" ? "main director" : String(best.role).replace(/_/g, " "), people,
+      };
+    }
+    return { contact: { person_id: null, name: null, first_name: null, email: fallbackEmail, phone: null }, saved: false, source: "client record", people };
+  }
+
+  // Mailboxes this person may send from: every shared one, and their own.
+  async function mailboxes() {
+    const { data } = await db.from("gmail_connections")
+      .select("account_email, kind, owner_staff_id, is_practice_default")
+      .eq("status", "active");
+    return ((data || []) as Record<string, any>[])
+      .filter((g) => g.kind !== "personal" || g.owner_staff_id === me)
+      .sort((a, b) => Number(b.is_practice_default) - Number(a.is_practice_default) || String(a.account_email).localeCompare(b.account_email))
+      .map((g) => ({ email: g.account_email as string, kind: g.kind as string, practice_default: Boolean(g.is_practice_default) }));
+  }
+  async function pickMailbox(requested: unknown) {
+    const boxes = await mailboxes();
+    if (!boxes.length) throw new BadRequest("No mailbox is connected — connect one under Communications");
+    if (requested) {
+      const hit = boxes.find((b) => b.email.toLowerCase() === String(requested).toLowerCase());
+      if (!hit) throw new BadRequest("You can't send from that mailbox");
+      return { from: hit.email, boxes };
+    }
+    return { from: (boxes.find((b) => b.practice_default) || boxes[0]).email, boxes };
   }
 
   // Open client items, in checklist order, each with any finding still waiting
@@ -137,57 +217,62 @@ Deno.serve(async (req) => {
         const listed = chosen ? items.filter((i) => chosen.includes(i.step_id)) : items.filter((i) => !i.finding);
 
         const ent = ob.entity as Record<string, any>;
-        const [contact, { data: sp }, { data: gc }, { data: invites }] = await Promise.all([
-          primaryContact(db, ob.entity_id),
+        const [resolved, { data: sp }, mb, { data: tmpls }] = await Promise.all([
+          resolveContact(ob),
           db.from("staff_profiles").select("name").eq("id", me).maybeSingle(),
-          db.from("gmail_connections").select("account_email").eq("owner_staff_id", me).eq("status", "active").limit(1),
-          db.from("client_portal_invites").select("email").eq("entity_id", ob.entity_id),
+          pickMailbox(p.from_mailbox),
+          db.from("comm_templates").select("kind, subject, body_text").eq("comm_type", "onboarding"),
         ]);
-        const toOptions = [...new Set([
-          contact?.email?.toLowerCase(), firstEmail(ent?.billing_email), firstEmail(ent?.prospect_email),
-          ...(invites || []).map((i: Record<string, string>) => firstEmail(i.email)),
-        ].filter(Boolean) as string[])];
         const fromName = sp?.name || "";
-        const fromEmail = gc?.[0]?.account_email || null;
         const prefs = await loadPrefs(db, me, p.prefs);
-        const closing = await closingVars(db, me, fromEmail, firstWord(fromName) || "Almond Valley Accounting", prefs);
-        const greeting = contact?.greeting || "there";
+        const closing = await closingVars(db, me, mb.from, firstWord(fromName) || "Almond Valley Accounting", prefs);
+        const firstName = resolved.contact.first_name || "there";
+        const vars: Record<string, string> = {
+          opener: closing.opener, first_name: firstName, greeting: firstName,
+          client_name: ent?.name || "your business",
+          sender_name: fromName || "Almond Valley Accounting",
+          sender_first_name: firstWord(fromName) || "Almond Valley Accounting",
+          from_email: mb.from,
+          items: listed.length ? listed.map((i) => `• ${i.label}`).join("\n") : "• (nothing outstanding — untick this or pick items)",
+        };
+        const tmpl = (k: string) => ((tmpls || []) as Record<string, string>[]).find((t) => t.kind === k);
+        const sig = tmpl("ob_signature");
+        const signature = sig?.body_text ? renderStr(sig.body_text, vars).trim() : "";
 
         let subject = "";
         let text = "";
         if (kind === "blank") {
           subject = ent?.name || "";
-          text = `Hi ${greeting},\n\n${closing.opener.trim()}${closing.opener ? "\n\n" : ""}\n\n${closing.signoff}`;
+          text = `Hi ${firstName},\n\n${closing.opener.trim()}${closing.opener ? "\n\n" : ""}\n\nKind regards,`;
         } else {
-          const { data: tmpl } = await db.from("comm_templates").select("subject, body_text")
-            .eq("comm_type", "onboarding").eq("kind", kind).maybeSingle();
-          if (!tmpl) throw new BadRequest("That template is missing — add it under the onboarding email templates");
-          const vars: Record<string, string> = {
-            ...closing, greeting, client_name: ent?.name || "your business", portal_url: CLIENT_PORTAL_URL,
-            sender_first_name: firstWord(fromName) || "Almond Valley Accounting",
-            items: listed.length ? listed.map((i) => `• ${i.label}`).join("\n") : "• (nothing outstanding — untick this or pick items)",
-          };
-          subject = renderStr(tmpl.subject, vars);
-          text = renderStr(tmpl.body_text, vars);
+          const t = tmpl(kind);
+          if (!t) throw new BadRequest("That template is missing — add it under the onboarding email templates");
+          subject = renderStr(t.subject, vars);
+          text = renderStr(t.body_text, vars);
         }
+        // The signature always goes at the bottom, under the sign-off.
+        if (signature) text = `${text.trimEnd()}\n${signature}`;
         return json({
           success: true, kind, subject, text,
-          to: toOptions[0] || null, to_options: toOptions,
-          from_email: fromEmail, from_name: fromName,
+          contact: resolved.contact, contact_saved: resolved.saved, contact_source: resolved.source, people: resolved.people,
+          from_mailbox: mb.from, mailboxes: mb.boxes, from_name: fromName,
           items, listed: listed.map((i) => i.step_id),
         });
       }
 
       case "send_email": {
         const ob = await loadOnboarding(uuid(p.onboarding_id, "onboarding_id"));
-        const to = String(p.to || "").trim();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new BadRequest("A valid To address is needed");
+        // Always the onboarding contact's address — change the contact to change it.
+        const resolved = await resolveContact(ob);
+        const to = String(resolved.contact.email || "").trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new BadRequest("The onboarding contact has no email address — add one first");
+        const mb = await pickMailbox(p.from_mailbox);
         const subject = String(p.subject || "").trim().slice(0, 200);
         const text = String(p.text || "").slice(0, 20000);
         if (!subject || !text.trim()) throw new BadRequest("Subject and message are needed");
         const chosen = uuidList(p.step_ids) || [];
 
-        const sent = await sendGeneric(db, { entityId: ob.entity_id, to, subject, text, ownerId: me });
+        const sent = await sendGeneric(db, { entityId: ob.entity_id, to, subject, text, ownerId: me, fromMailbox: mb.from });
         let communicationId: string | null = null;
         if (sent.gmail_message_id) {
           const { data: comm } = await db.from("client_communications").select("id")
@@ -196,7 +281,7 @@ Deno.serve(async (req) => {
         }
 
         // Listed items still at To do become formally requested today, so the
-        // portal shows them as needed and the waiting clock starts.
+        // checklist shows them as asked for and the waiting clock starts.
         const steps = (ob.steps || []) as Record<string, any>[];
         const release = steps.filter((s) => chosen.includes(s.id) && s.owner_type === "client" && s.status === "pending").map((s) => s.id);
         if (release.length) {
@@ -207,6 +292,30 @@ Deno.serve(async (req) => {
           `Email sent to ${to} — “${subject}”` + (asked.length ? `\nAsked for: ${asked.join("; ")}` : ""),
           { communication_id: communicationId });
         return json({ success: true, to, from: sent.from, released: release.length });
+      }
+
+      case "get_contact": {
+        const ob = await loadOnboarding(uuid(p.onboarding_id, "onboarding_id"));
+        const r = await resolveContact(ob);
+        return json({ success: true, ...r });
+      }
+
+      case "set_contact": {
+        const ob = await loadOnboarding(uuid(p.onboarding_id, "onboarding_id"));
+        const name = String(p.name || "").trim().slice(0, 200);
+        const firstName = String(p.first_name || "").trim().slice(0, 100) || firstWord(name);
+        const email = String(p.email || "").trim().toLowerCase().slice(0, 254);
+        const phone = String(p.phone || "").trim().slice(0, 40) || null;
+        if (!name) throw new BadRequest("The contact needs a name");
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequest("That email address doesn't look right");
+        const personId = p.person_id ? uuid(p.person_id, "person_id") : null;
+        const { error } = await db.from("onboardings").update({
+          contact_person_id: personId, contact_name: name, contact_first_name: firstName,
+          contact_email: email || null, contact_phone: phone, contact_set_by: me, contact_set_at: now,
+        }).eq("id", ob.id);
+        if (error) throw new Error(error.message);
+        await activity(ob.id, "system", `Onboarding contact set to ${name}${email ? ` <${email}>` : " (no email)"}.`);
+        return json({ success: true });
       }
 
       case "log_call": {
