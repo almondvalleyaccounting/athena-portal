@@ -229,15 +229,20 @@ export default function QuoteFormPage({ mode = 'new' }) {
       f.setCsEnabled(!!csLI);
       if (csLI?.annual_amount != null) f.setCsFee(Number(csLI.annual_amount));
 
+      // VAT and MTD have no *_detail column, so the line stores only
+      // annual = freq × rate. Take the frequency from the Group Quote
+      // Builder's inputs when it saved this quote, else quarterly, and
+      // derive the per-return rate so the form round-trips to the same total.
+      const builderDrivers = q.builder_inputs?.drivers || {};
+      const freqFor = (key) => Number(builderDrivers[key]) || 4;
+
       const vatLI = findLI('vat_returns');
       if (vatLI) {
         f.setVatEnabled(true);
-        // The line stores annual = freq × rate. Default freq is 4
-        // (quarterly); derive a per-return rate from the saved annual so
-        // the form round-trips to the same total.
         const annual = Number(vatLI.annual_amount) || 0;
-        f.setVatFreq(4);
-        if (annual > 0) f.setVatRate(Math.round((annual / 4) * 100) / 100);
+        const freq = freqFor('vat_returns_pa');
+        f.setVatFreq(freq);
+        if (annual > 0) f.setVatRate(Math.round((annual / freq) * 100) / 100);
       }
 
       const aeLI = findLI('auto_enrolment');
@@ -261,11 +266,10 @@ export default function QuoteFormPage({ mode = 'new' }) {
       const mtdLI = findLI('mtd_returns');
       if (mtdLI) {
         f.setMtdEnabled(true);
-        // Line stores annual = freq × rate. Default freq 4 (quarterly); derive
-        // a per-return rate from the saved annual so the form round-trips.
         const annual = Number(mtdLI.annual_amount) || 0;
-        f.setMtdFreq(4);
-        if (annual > 0) f.setMtdRate(Math.round((annual / 4) * 100) / 100);
+        const freq = freqFor('mtd_returns_pa');
+        f.setMtdFreq(freq);
+        if (annual > 0) f.setMtdRate(Math.round((annual / freq) * 100) / 100);
       }
 
       if (mode === 'edit') {

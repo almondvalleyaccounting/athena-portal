@@ -232,8 +232,8 @@ export default function GroupQuoteInputPage() {
         });
 
         // Pull drivers out of a saved quote's detail JSONs.
-        const driversFromQuote = (q) => {
-          const d = defaultDrivers();
+        const driversFromQuote = (q, base = defaultDrivers()) => {
+          const d = { ...base };
           if (!q) return d;
           if (q.estimated_turnover != null) d.turnover = Number(q.estimated_turnover) || 0;
           if (q.accounts_detail?.type) d.acc_type = q.accounts_detail.type;
@@ -261,9 +261,13 @@ export default function GroupQuoteInputPage() {
         const initDrivers = {}, initOverrides = {}, initDiscounts = {};
         (ents || []).forEach(e => {
           const q = quoteByEntity[e.id];
-          // What was typed into this builder last time, if it saved this quote.
+          // What was typed into this builder last time, if it saved this
+          // quote — underneath the quote's own detail fields, which are
+          // current even when the quote was edited individually since. The
+          // builder's inputs still supply what no detail field holds (VAT and
+          // MTD returns per year, rates).
           const saved = q?.builder_inputs;
-          const drv = { ...driversFromQuote(q), ...(saved?.drivers || {}) };
+          const drv = driversFromQuote(q, { ...defaultDrivers(), ...(saved?.drivers || {}) });
           initDrivers[e.id] = drv;
 
           // Saved amount per matrix row from the quote's line items.
@@ -302,10 +306,9 @@ export default function GroupQuoteInputPage() {
             [...OFF, 'auto_enrolment', 'mtd_returns', 'modulr', 'budgeting', 'registered_office', 'software']
               .forEach((sid) => { ov[sid] = 0; });
           }
-          // The builder's own overrides first, then the inferred ones on top:
-          // the quote's saved lines are the truth, so an edit made on the
-          // individual quote since still shows through.
-          initOverrides[e.id] = { ...(saved?.overrides || {}), ...ov };
+          // Overrides are always re-derived from the saved lines (never the
+          // stored ones), so an edit made on the individual quote since shows.
+          initOverrides[e.id] = ov;
           initDiscounts[e.id] = 0; // saved amounts are already net of any discount
         });
         setDrivers(initDrivers);
@@ -442,6 +445,52 @@ export default function GroupQuoteInputPage() {
     driverSections[d.section].push(d);
   });
 
+  // The *_detail columns the individual quote form reads its inputs from
+  // (useQuoteForm.loadFromQuote). Written here too, so a quote saved by the
+  // builder opens in Edit with its inputs filled in, not blank. Each detail
+  // must reproduce the saved line exactly, so where an override (or the
+  // discount) means the drivers no longer explain the figure, the rate is
+  // refitted to it.
+  const detailFields = (entityId, disc) => {
+    const d = drivers[entityId] || {};
+    const net = (sid) => round2((computed[entityId]?.[sid]?.value || 0) * (1 - disc / 100));
+    const fit = (value, qty) => (qty > 0 ? round2(value / qty) : value);
+    const num = (v) => Number(v) || 0;
+
+    const acc = net('accounts_ct');
+    const dtr = net('directors_tax_return');
+    const nDirs = Math.max(1, num(d.num_directors));
+    const bk = net('bookkeeping_vat');
+    const bkHours = num(d.bk_hours) || 1;
+    const pr = net('payroll');
+    // An override below the per-employee charge can't be split into a flat
+    // fee + employees, so it goes in as a flat fee alone.
+    const prEeRaw = num(d.monthly_employees) * num(d.monthly_ee_rate) + num(d.weekly_employees) * num(d.weekly_ee_rate) * 4.33;
+    const prEeFits = prEeRaw <= pr / 12;
+    const prEe = prEeFits ? prEeRaw : 0;
+    const ma = net('management_accounts');
+    const rm = net('review_meetings');
+    const cfo = net('fractional_cfo');
+
+    return {
+      estimated_turnover: num(d.turnover) || null,
+      accounts_detail: acc > 0 ? { type: d.acc_type || 'trading', rate: acc } : null,
+      directors: dtr > 0
+        ? Array.from({ length: nDirs }, () => ({ name: '', base: fit(dtr, nDirs), other_dividends: false, has_rentals: false, rental_properties: 0, capital_gains: false, savings_income: false, other_sources: [], total: fit(dtr, nDirs) }))
+        : [],
+      bookkeeping_detail: bk > 0 ? { hours_per_month: bkHours, rate: fit(bk, bkHours * 12), includes_vat: d.bk_inc_vat !== false, vat_adj: 0 } : null,
+      payroll_detail: pr > 0 ? {
+        flat_monthly: round2(pr / 12 - prEe),
+        monthly_ee: prEeFits ? num(d.monthly_employees) : 0, monthly_ee_rate: num(d.monthly_ee_rate),
+        weekly_ee: prEeFits ? num(d.weekly_employees) : 0, weekly_ee_rate: num(d.weekly_ee_rate),
+        cis: 0, cis_rate: defaults?.payroll?.cis_rate || 0, p11d: 0, p11d_rate: defaults?.payroll?.p11d_rate || 0,
+      } : null,
+      management_accounts_detail: ma > 0 ? { sets: num(d.ma_sets) || 1, rate_per_set: fit(ma, num(d.ma_sets) || 1) } : null,
+      review_meetings_detail: rm > 0 ? { count: num(d.rm_count) || 1, rate: fit(rm, num(d.rm_count) || 1) } : null,
+      cfo_detail: cfo > 0 ? { days: num(d.cfo_days) || 1, day_rate: fit(cfo, num(d.cfo_days) || 1) } : null,
+    };
+  };
+
   const handleSave = async () => {
     setSaving(true); setError(''); setSuccess('');
     try {
@@ -470,6 +519,7 @@ export default function GroupQuoteInputPage() {
         };
 
         const totalsPatch = {
+          ...detailFields(entity.id, disc),
           builder_inputs: { drivers: drivers[entity.id] || {}, overrides: overrides[entity.id] || {}, discount: disc },
           annual_total: Math.round(annualTotal * 100) / 100,
           annual_services: Math.round((entityTotals[entity.id] || 0) * 100) / 100,
