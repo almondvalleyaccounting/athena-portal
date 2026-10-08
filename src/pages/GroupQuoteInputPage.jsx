@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { fmt, Btn } from '../components/ui';
@@ -167,7 +167,24 @@ export default function GroupQuoteInputPage() {
   const [focusedCell, setFocusedCell] = useState(null); // `${entityId}:${svcId}`
   const [focusedText, setFocusedText] = useState(''); // raw text while editing a value cell
 
-  useEffect(() => { loadGroupData(); }, [groupId, defaults]);
+  // Reload when the fee defaults arrive (the first render has placeholders),
+  // but never once anything has been typed: the defaults can be refetched in
+  // the background, and reloading would put every unsaved figure back to
+  // what's saved.
+  const editedRef = useRef(false);
+  const markEdited = () => { editedRef.current = true; };
+  useEffect(() => { editedRef.current = false; }, [groupId]);
+  useEffect(() => { if (!editedRef.current) loadGroupData(); }, [groupId, defaults]);
+  // Closing or reloading the tab with unsaved figures asks first.
+  useEffect(() => {
+    const warn = (ev) => { if (editedRef.current) { ev.preventDefault(); ev.returnValue = ''; } };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
+  const leave = () => {
+    if (editedRef.current && !window.confirm('Leave without saving? Your changes to these quotes will be lost.')) return;
+    navigate(`/manage/quotes/group/${groupId}`);
+  };
 
   const loadGroupData = async () => {
     setLoading(true);
@@ -334,6 +351,7 @@ export default function GroupQuoteInputPage() {
   };
 
   const setDriver = (entityId, driverId, value) => {
+    markEdited();
     setDrivers(prev => ({ ...prev, [entityId]: { ...prev[entityId], [driverId]: value } }));
     const svc = DRIVER_TO_SERVICE[driverId];
     if (svc) {
@@ -347,6 +365,7 @@ export default function GroupQuoteInputPage() {
   };
 
   const setOverride = (entityId, serviceId, value) => {
+    markEdited();
     setOverrides(prev => ({ ...prev, [entityId]: { ...prev[entityId], [serviceId]: value === '' ? null : (parseFloat(value) || 0) } }));
   };
 
@@ -568,6 +587,7 @@ export default function GroupQuoteInputPage() {
         const lineItems = buildLineItems(quoteId);
         if (lineItems.length > 0) await supabase.from('quote_line_items').insert(lineItems);
       }
+      editedRef.current = false;
       setSuccess('Quotes saved!');
       setTimeout(() => navigate(`/manage/quotes/group/${groupId}`), 800);
     } catch (e) { setError(e.message || 'Failed to save'); }
@@ -586,7 +606,7 @@ export default function GroupQuoteInputPage() {
           <p className="text-xs text-gray-400">{group.name} &middot; {entities.length} entities</p>
         </div>
         <div className="flex gap-2">
-          <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}`)} variant="ghost">Back</Btn>
+          <Btn onClick={leave} variant="ghost">Back</Btn>
           <Btn onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save Quotes'}</Btn>
         </div>
       </div>
@@ -724,7 +744,7 @@ export default function GroupQuoteInputPage() {
               <td className="px-3 py-1.5 text-gray-500 sticky left-0 bg-white z-10">Discount (%)</td>
               {entities.map(e => (
                 <td key={e.id} className="px-1 py-0.5">
-                  <input type="number" value={discounts[e.id] || ''} onChange={ev => setDiscounts(prev => ({ ...prev, [e.id]: parseFloat(ev.target.value) || 0 }))}
+                  <input type="number" value={discounts[e.id] || ''} onChange={ev => { markEdited(); setDiscounts(prev => ({ ...prev, [e.id]: parseFloat(ev.target.value) || 0 })); }}
                     placeholder="0" min="0" max="100" className="w-full text-right text-xs font-mono border border-gray-200 rounded px-1.5 py-1" />
                 </td>
               ))}

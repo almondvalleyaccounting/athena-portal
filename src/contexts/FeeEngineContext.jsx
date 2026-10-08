@@ -47,9 +47,13 @@ function FeeEngineProvider({ children }) {
     setDefaults(await fetchFeeDefaults());
   }, []);
 
+  // Keyed on the user, not the profile object: the profile is refetched in
+  // the background (token refresh), and a new defaults object makes pages
+  // like the Group Quote Builder reload over unsaved edits.
+  const profileId = profile?.id;
   useEffect(() => {
-    if (profile) loadDefaults();
-  }, [profile, loadDefaults]);
+    if (profileId) loadDefaults();
+  }, [profileId, loadDefaults]);
 
   return (
     <FeeEngineContext.Provider value={{ defaults, reloadDefaults: loadDefaults }}>

@@ -39,7 +39,6 @@ export default function GroupsPage() {
   const [showNewClient, setShowNewClient] = useState(false);
   const [addingNew, setAddingNew] = useState(false);
   const [letter, setLetter] = useState(null);
-  const [showDeleted, setShowDeleted] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -68,27 +67,17 @@ export default function GroupsPage() {
     membersByGroup[m.group_id].push(m);
   });
 
-  // Every quote, for spotting a group that is wholly deleted; and the live
-  // ones, which are what the status badge and the Monthly DD describe (deleted
-  // quotes were being added into the DD).
-  const allQuotesByGroup = {};
+  // The live quotes are what the status badge and the Monthly DD describe
+  // (deleted quotes were being added into the DD). A group stays listed even
+  // when every quote is deleted — that's a group being redone; Delete Group
+  // on the group page is what removes one.
   const quotesByGroup = {};
   quotes.forEach(q => {
-    (allQuotesByGroup[q.group_id] ||= []).push(q);
     if (q.status !== 'deleted') (quotesByGroup[q.group_id] ||= []).push(q);
   });
-
-  // A group whose every quote was deleted is history, not work — hidden
-  // unless asked for.
-  const isDeletedGroup = (g) => {
-    const qs = allQuotesByGroup[g.id] || [];
-    return qs.length > 0 && qs.every((q) => q.status === 'deleted');
-  };
-  const deletedCount = groups.filter(isDeletedGroup).length;
-  const visibleGroups = showDeleted ? groups : groups.filter((g) => !isDeletedGroup(g));
   const filteredGroups = letter
-    ? visibleGroups.filter((g) => firstCharBucket(g.name) === letter)
-    : visibleGroups;
+    ? groups.filter((g) => firstCharBucket(g.name) === letter)
+    : groups;
 
   // One row per group, with the figures the table shows and sorts on.
   const groupRows = filteredGroups.map((g) => {
@@ -296,13 +285,7 @@ export default function GroupsPage() {
       )}
 
       <div className="mb-3 flex items-center gap-3">
-        <AlphabetFilter items={visibleGroups} selected={letter} onChange={setLetter} />
-        {deletedCount > 0 && (
-          <label className="text-xs text-gray-400 flex items-center gap-1 whitespace-nowrap">
-            <input type="checkbox" checked={showDeleted} onChange={(e) => setShowDeleted(e.target.checked)} />
-            Show deleted ({deletedCount})
-          </label>
-        )}
+        <AlphabetFilter items={groups} selected={letter} onChange={setLetter} />
       </div>
 
       {/* Groups List */}
@@ -317,7 +300,7 @@ export default function GroupsPage() {
           defaultSort={{ key: 'name', dir: 'asc' }}
           rowHref={(r) => `/manage/quotes/group/${r.id}`}
           onOpen={(href) => navigate(href)}
-          empty="No groups match. Try another letter, or show deleted groups."
+          empty="No groups match. Try another letter."
         />
       )}
     </div>
