@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, UserPlus, MessageSquare } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Zap, ChevronDown, ChevronRight, UserPlus, MessageSquare, FileText, RotateCcw } from 'lucide-react';
 import { tones, chipStyle, pillStyle } from '../../../lib/tokens';
 import { BTN } from '../../../lib/buttonStyles';
 import { useAuth } from '../../../shell/AppShell';
@@ -13,10 +13,11 @@ import HandoverPanel from '../components/HandoverPanel';
 import CheckinPanel from '../components/CheckinPanel';
 import DateField from '../components/DateField';
 import NotesThread from '../components/NotesThread';
+import BackgroundModal from '../components/BackgroundModal';
 import {
   getOnboarding, listStaff, updateOnboarding, updateStep, addDirectorSa,
   isOverdue, daysSince, STEP_STATUSES, ONBOARDING_STATUSES, setOnboardingStatus, ONBOARDING_PRIORITIES, setOnboardingPriority,
-  outstandingSteps, autoCompletedSteps,
+  outstandingSteps, autoCompletedSteps, NA_REASONS, isInPlace, setGroupNa,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -28,6 +29,19 @@ const selectStyle = {
 
 function stepStatusMeta(value) {
   return STEP_STATUSES.find((s) => s.value === value) || STEP_STATUSES[0];
+}
+
+// The step dropdown splits N/A in two — "N/A" (not needed) and "Already in
+// place" — both stored as status 'na' with a na_reason (sql/358).
+const IN_PLACE = { value: 'in_place', label: 'Already in place', tone: 'teal' };
+const STEP_CHOICES = [...STEP_STATUSES, IN_PLACE];
+
+function stepChoice(step) {
+  return isInPlace(step) ? IN_PLACE.value : step.status;
+}
+
+function choiceMeta(value) {
+  return value === IN_PLACE.value ? IN_PLACE : stepStatusMeta(value);
 }
 
 const NEWLINE = '\n';
@@ -47,6 +61,7 @@ export default function OnboardingDetailView() {
   const [expanded, setExpanded] = useState({});
   const [groupNotesOpen, setGroupNotesOpen] = useState({});
   const [taskFilter, setTaskFilter] = useState('all'); // all | client | staff
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
 
   const load = useCallback(() => {
     getOnboarding(id).then(setOb).catch((e) => setError(e.message));
@@ -91,10 +106,12 @@ export default function OnboardingDetailView() {
     }
   }
 
-  function handleStepStatus(step, status) {
-    if (status === step.status) return;
+  function handleStepStatus(step, choice) {
+    const from = stepChoice(step);
+    if (choice === from) return;
+    const status = choice === IN_PLACE.value ? 'na' : choice;
     const today = new Date().toISOString().slice(0, 10);
-    const patch = { status };
+    const patch = { status, na_reason: status === 'na' ? (choice === IN_PLACE.value ? 'in_place' : 'not_needed') : null };
     if (['waiting_client', 'waiting_external'].includes(status) && !step.requested_at) patch.requested_at = today;
     if (status === 'complete') {
       patch.completed_at = new Date().toISOString();
@@ -103,8 +120,20 @@ export default function OnboardingDetailView() {
       patch.completed_at = null;
       patch.completed_by = null;
     }
-    const meta = stepStatusMeta(status);
-    patchStep(step, patch, `${step.name}: ${stepStatusMeta(step.status).label} → ${meta.label}`);
+    patchStep(step, patch, `${step.name}: ${choiceMeta(from).label} → ${choiceMeta(choice).label}`);
+  }
+
+  // Whole-section N/A / Already in place (reason) or reinstate (reason null).
+  async function handleGroupNa(groupName, allSteps, reason) {
+    const done = allSteps.filter((s) => s.status === 'complete').length;
+    if (reason) {
+      const label = NA_REASONS.find((r) => r.value === reason)?.label;
+      const warn = done ? `${NEWLINE}${NEWLINE}${done} step${done === 1 ? ' is' : 's are'} ticked Complete and will change to ${label} too.` : '';
+      if (!window.confirm(`Mark every step in ${groupName} as ${label}?${warn}`)) return;
+    } else if (!window.confirm(`Put every step in ${groupName} back to To do?`)) return;
+    try { await setGroupNa(ob, groupName, reason, { actorId: profile?.id }); }
+    catch (e) { setError(e.message); }
+    load();
   }
 
   // Completing closes out whatever is still open on the checklist; moving off
@@ -265,6 +294,7 @@ export default function OnboardingDetailView() {
             const groupDone = allSteps.filter((s) => s.status === 'complete').length;
             const groupApplicable = allSteps.filter((s) => s.status !== 'na').length;
             const allNa = groupApplicable === 0;
+            const allInPlace = allNa && allSteps.every(isInPlace);
             const groupNotes = notes.filter((n) => n.group_name === groupName);
             const notesOpen = groupNotesOpen[groupName];
             return (
@@ -284,8 +314,28 @@ export default function OnboardingDetailView() {
                     >
                       <MessageSquare size={10} /> {groupNotes.length ? `${groupNotes.length} note${groupNotes.length === 1 ? '' : 's'}` : 'Add note'}
                     </button>
-                    <div style={{ fontSize: 13, color: '#94a3b8' }}>
-                      {allNa ? 'not applicable' : `${groupDone}/${groupApplicable}`}
+                    {allNa ? (
+                      <button
+                        onClick={() => handleGroupNa(groupName, allSteps, null)}
+                        title="Put every step in this section back to To do"
+                        style={{ ...BTN.secondary.sm, padding: '3px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <RotateCcw size={11} /> Reinstate
+                      </button>
+                    ) : NA_REASONS.map((r) => (
+                      <button
+                        key={r.value}
+                        onClick={() => handleGroupNa(groupName, allSteps, r.value)}
+                        title={r.value === 'in_place'
+                          ? 'Already set up — nothing to onboard in this section'
+                          : 'This section does not apply to the client'}
+                        style={{ ...BTN.secondary.sm, padding: '3px 8px', fontSize: 12 }}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                    <div style={{ fontSize: 13, color: allInPlace ? tones.teal.fg : '#94a3b8', fontWeight: allInPlace ? 600 : 400 }}>
+                      {allInPlace ? 'already in place' : allNa ? 'not applicable' : `${groupDone}/${groupApplicable}`}
                     </div>
                   </div>
                 </div>
@@ -295,7 +345,8 @@ export default function OnboardingDetailView() {
                   </div>
                 )}
                 {steps.map((step) => {
-                  const meta = stepStatusMeta(step.status);
+                  const choice = stepChoice(step);
+                  const meta = choiceMeta(choice);
                   const overdue = isOverdue(step);
                   const waited = daysSince(step.requested_at);
                   const isOpen = expanded[step.id];
@@ -334,7 +385,7 @@ export default function OnboardingDetailView() {
                           </span>
                         )}
                         <select
-                          value={step.status}
+                          value={choice}
                           onChange={(e) => handleStepStatus(step, e.target.value)}
                           style={{
                             ...selectStyle,
@@ -342,7 +393,7 @@ export default function OnboardingDetailView() {
                             border: `1px solid ${tones[meta.tone].border}`, fontWeight: 600, minWidth: 130,
                           }}
                         >
-                          {STEP_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                          {STEP_CHOICES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                         </select>
                       </div>
                       {isOpen && (
@@ -403,17 +454,22 @@ export default function OnboardingDetailView() {
             Notes
           </div>
           <NotesThread onboardingId={ob.id} notes={notes} onAdded={load} maxHeight={320} />
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#94a3b8', margin: '14px 0 6px' }}>
-            Background
-          </div>
-          <textarea
-            key={`notes-${ob.id}`}
-            defaultValue={ob.notes || ''}
-            placeholder="Internal notes / imported background…"
-            onBlur={(e) => { if (e.target.value !== (ob.notes || '')) handleObField({ notes: e.target.value || null }); }}
-            style={{ ...selectStyle, width: '100%', minHeight: 60, resize: 'vertical', boxSizing: 'border-box', whiteSpace: 'pre-wrap' }}
-          />
+          <button
+            onClick={() => setBackgroundOpen(true)}
+            title={ob.notes ? 'Open the background notes' : 'Add background notes'}
+            style={{ ...BTN.secondary.sm, marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            <FileText size={12} /> Background{ob.notes ? '' : ' — add'}
+          </button>
         </div>
+        {backgroundOpen && (
+          <BackgroundModal
+            clientName={ob.entity?.name}
+            value={ob.notes || ''}
+            onClose={() => setBackgroundOpen(false)}
+            onSave={async (text) => { await handleObField({ notes: text || null }); setBackgroundOpen(false); }}
+          />
+        )}
         <ServicesPanel ob={ob} staff={staff} onChanged={load} />
         <CompaniesHousePanel ob={ob} onChanged={load} />
         <HandoverPanel ob={ob} staff={staff} onChanged={load} />

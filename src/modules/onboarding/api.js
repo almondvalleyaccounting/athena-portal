@@ -35,6 +35,18 @@ export const STEP_STATUSES = [
   { value: 'na', label: 'N/A', tone: 'neutral' },
 ];
 
+// Why a step is N/A. 'in_place' = it already exists (the director is already
+// our SA client), 'not_needed' = the client doesn't need it. Both sit on status
+// 'na', so every count that skips N/A skips these too (sql/358).
+export const NA_REASONS = [
+  { value: 'not_needed', label: 'N/A' },
+  { value: 'in_place', label: 'Already in place' },
+];
+
+export function isInPlace(step) {
+  return step?.status === 'na' && step?.na_reason === 'in_place';
+}
+
 export const ONBOARDING_STATUSES = [
   { value: 'active', label: 'Active', tone: 'info' },
   { value: 'on_hold', label: 'On hold', tone: 'warning' },
@@ -197,7 +209,7 @@ export async function listOnboardings() {
       template:onboarding_templates(id, code, name),
       owner:staff_profiles!onboardings_owner_id_fkey(id, name),
       lead:staff_profiles!onboardings_lead_id_fkey(id, name),
-      steps:onboarding_steps(id, status, owner_type, requested_at, expected_days, chase_after_days, name, group_name, group_sort, sort, milestone, auto_completed_at),
+      steps:onboarding_steps(id, status, na_reason, owner_type, requested_at, expected_days, chase_after_days, name, group_name, group_sort, sort, milestone, auto_completed_at),
       handovers:onboarding_handovers(area, due, done_at),
       notes:onboarding_activity(id, kind, body, group_name, created_at, author:staff_profiles!onboarding_activity_created_by_fkey(id, name))
     `)
@@ -776,6 +788,71 @@ export async function addAdHocStep(ob, { group, groupSort, name, assigneeId, not
   await supabase.from('onboarding_activity').insert({
     onboarding_id: ob.id, kind: 'system', body: `Task added — ${name}`, created_by: actorId || null,
   });
+}
+
+// Mark every step in a checklist section N/A or Already in place in one go —
+// steps already ticked Complete are included, because a section that never
+// needed doing shouldn't read as work the team did. reason null reinstates the
+// section: every N/A step goes back to To do.
+export async function setGroupNa(ob, groupName, reason, { actorId } = {}) {
+  const inGroup = (ob.steps || []).filter((s) => s.group_name === groupName);
+  const now = new Date().toISOString();
+  let ids;
+  let patch;
+  let body;
+  if (reason) {
+    ids = inGroup.filter((s) => !(s.status === 'na' && s.na_reason === reason)).map((s) => s.id);
+    patch = {
+      status: 'na', na_reason: reason, completed_at: null, completed_by: null,
+      auto_completed_at: null, status_before_auto: null, updated_at: now,
+    };
+    const label = NA_REASONS.find((r) => r.value === reason)?.label || 'N/A';
+    body = `${groupName}: section marked ${label} (${ids.length} step${ids.length === 1 ? '' : 's'})`;
+  } else {
+    ids = inGroup.filter((s) => s.status === 'na').map((s) => s.id);
+    patch = { status: 'pending', na_reason: null, updated_at: now };
+    body = `${groupName}: section reinstated (${ids.length} step${ids.length === 1 ? '' : 's'} back to To do)`;
+  }
+  if (!ids.length) return 0;
+  const { error } = await supabase.from('onboarding_steps').update(patch).in('id', ids);
+  if (error) throw error;
+  await supabase.from('onboarding_activity').insert({
+    onboarding_id: ob.id, kind: 'status_change', group_name: groupName, body, created_by: actorId || null,
+  });
+  return ids.length;
+}
+
+// BM task services → onboarding service keys. Mirrors the bm_task rows in
+// onboarding_crosscheck_service_rules, plus Bookkeeping, which the cross-check
+// has no tax for.
+const BM_SERVICE_RULES = [
+  [/^(annual accounts|accounts|corporation tax)$/i, 'ct'],
+  [/^(self assessment|personal tax)$/i, 'sa'],
+  [/^vat$/i, 'vat'],
+  [/^(payroll|pensions)$/i, 'paye'],
+  [/^confirmation statement$/i, 'confirmation_statement'],
+  [/^bookkeeping$/i, 'bookkeeping'],
+];
+
+// What the client's quote and BrightManager each say they take, as service
+// keys — the Services panel shows both beside the (editable) selection.
+// bmServices is null when BM has no tasks for the client at all (not set up
+// on BM yet), which is different from "BM says no".
+export async function serviceEvidence(entityId) {
+  const [{ quote, serviceIds }, { data: bm, error }] = await Promise.all([
+    findActiveQuote(entityId),
+    supabase.from('bm_task_schedule').select('service').eq('entity_id', entityId).is('excluded_at', null).limit(1000),
+  ]);
+  if (error) throw error;
+  const quoteServices = quote ? metConditions({ serviceIds }) : null;
+  let bmServices = null;
+  if (bm?.length) {
+    bmServices = new Set();
+    for (const { service } of bm) {
+      for (const [re, key] of BM_SERVICE_RULES) if (re.test((service || '').trim())) bmServices.add(key);
+    }
+  }
+  return { quote, quoteServices, bmServices };
 }
 
 export async function deleteOnboardingStep(stepId) {

@@ -30,11 +30,15 @@ function Cell({ step, groupStart }) {
     return <td style={tdStyle} title="Not part of this client's onboarding template" />;
   }
   const meta = STEP_STATUSES.find((s) => s.value === step.status) || STEP_STATUSES[0];
-  const title = `${step.name}\n${meta.label}${step.requested_at ? ` · requested ${new Date(step.requested_at).toLocaleDateString('en-GB')}` : ''}`;
+  const inPlace = step.status === 'na' && step.na_reason === 'in_place';
+  const title = `${step.name}\n${inPlace ? 'Already in place' : meta.label}${step.requested_at ? ` · requested ${new Date(step.requested_at).toLocaleDateString('en-GB')}` : ''}`;
 
   let boxStyle;
   let glyph = '';
-  if (step.status === 'na') {
+  if (inPlace) {
+    boxStyle = { background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, color: tones.teal.fg };
+    glyph = '✓';
+  } else if (step.status === 'na') {
     boxStyle = { background: tones.neutral.bg, border: `1px solid ${tones.neutral.border}`, color: tones.neutral.fg };
     glyph = '–';
   } else if (step.status === 'pending') {

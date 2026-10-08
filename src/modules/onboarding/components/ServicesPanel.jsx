@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ClipboardList, Plus, X } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { BTN } from '../../../lib/buttonStyles';
@@ -6,7 +6,7 @@ import { useAuth } from '../../../shell/AppShell';
 import {
   SERVICE_OPTIONS, REGISTRATION_OPTIONS, CH_TASK_OPTIONS,
   REG_GROUP, REG_GROUP_SORT, CH_GROUP, CH_GROUP_SORT,
-  setServiceConditions, addAdHocStep, deleteOnboardingStep,
+  setServiceConditions, addAdHocStep, deleteOnboardingStep, serviceEvidence,
 } from '../api';
 
 const font = "'Outfit', sans-serif";
@@ -17,11 +17,24 @@ const font = "'Outfit', sans-serif";
   handover areas (task owners) and the 3-month check-in tiles. Registrations
   and Companies House changes each become a tracked task step in their own
   group so they show in the checklist and count toward progress.
+
+  The selection is seeded once, when the onboarding is created, from the
+  client's quote (or, with no quote, its live QBO billing). After that it is
+  the team's to edit. Beside each service the panel shows what the quote and
+  BrightManager each say today, and flags where the selection disagrees —
+  a prompt to look, never an automatic change.
 */
 export default function ServicesPanel({ ob, staff, onChanged }) {
   const { profile } = useAuth();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [evidence, setEvidence] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    serviceEvidence(ob.entity_id).then((ev) => { if (live) setEvidence(ev); }).catch(() => {});
+    return () => { live = false; };
+  }, [ob.entity_id]);
 
   const conditions = ob.service_conditions || [];
   const steps = ob.steps || [];
@@ -76,18 +89,42 @@ export default function ServicesPanel({ ob, staff, onChanged }) {
       {/* Services taken */}
       <div style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Services taken</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
-        {SERVICE_OPTIONS.map((opt) => (
-          <label key={opt.key} style={box}>
-            <input
-              type="checkbox" checked={conditions.includes(opt.key)} disabled={busy}
-              onChange={(e) => toggleService(opt.key, e.target.checked)}
-            />
-            {opt.label}
-          </label>
-        ))}
+        {SERVICE_OPTIONS.map((opt) => {
+          const ticked = conditions.includes(opt.key);
+          const onQuote = evidence?.quoteServices?.has(opt.key);
+          const onBm = evidence?.bmServices?.has(opt.key);
+          // Only BM can contradict the selection: the quote seeded it and the
+          // team has since edited it on purpose.
+          const bmDisagrees = evidence?.bmServices && ticked !== Boolean(onBm);
+          return (
+            <div key={opt.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ ...box, flex: 1 }}>
+                <input
+                  type="checkbox" checked={ticked} disabled={busy}
+                  onChange={(e) => toggleService(opt.key, e.target.checked)}
+                />
+                {opt.label}
+              </label>
+              {onQuote && <span style={chipStyle('neutral')} title="On the client's quote">quote</span>}
+              {onBm && !bmDisagrees && <span style={chipStyle('success')} title="BrightManager has tasks for this service">BM</span>}
+              {bmDisagrees && (
+                <span
+                  style={chipStyle('warning')}
+                  title={ticked
+                    ? `Ticked here, but BrightManager has no ${opt.label} tasks for this client${opt.key === 'sa' ? ' (a director’s own return sits on their own client record in BM)' : ''}`
+                    : `BrightManager has ${opt.label} tasks for this client, but it isn't ticked here`}
+                >
+                  {ticked ? 'not on BM' : 'on BM'}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
-        Unticking marks open steps N/A. Completed steps stay.
+        Seeded from the {evidence?.quote ? 'quote' : 'quote or QBO billing'} when the onboarding started; edit freely.
+        {evidence && !evidence.bmServices && ' Not on BrightManager yet, so nothing to check against.'}
+        {' '}Unticking marks open steps N/A. Completed steps stay.
       </div>
 
       {/* HMRC registrations */}
