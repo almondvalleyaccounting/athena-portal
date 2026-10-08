@@ -41,6 +41,12 @@ function fmtNoteTime(iso) {
   return isNaN(d) ? '' : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+// A bare yyyy-mm-dd deadline. Parsed as local noon so no timezone tips it a day.
+function fmtDate(ymd) {
+  const d = new Date(`${ymd}T12:00:00`);
+  return isNaN(d) ? ymd : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /*
   One task's detail: its own fields (editable, including the client and the
   service its bill is coded to) and the full notes thread.
@@ -64,6 +70,7 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
   const [task, setTask] = useState(null);
   const [entity, setEntity] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [deadlineLog, setDeadlineLog] = useState([]); // admin_task_deadline_changes, newest first (sql/357)
   const [staffMap, setStaffMap] = useState({});
   const [allEntities, setAllEntities] = useState([]);
   const [newClientModal, setNewClientModal] = useState({ open: false, initialName: '', resolve: null });
@@ -82,18 +89,21 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: t, error: e1 }, { data: n }, { data: st }, { data: ents }, { data: sf }, svc] = await Promise.all([
+      const [{ data: t, error: e1 }, { data: n }, { data: st }, { data: ents }, { data: sf }, svc, { data: dl }] = await Promise.all([
         supabase.from('admin_tasks').select('*, entity:entities(id, name)').eq('id', taskId).single(),
         supabase.from('admin_task_notes').select('*').eq('task_id', taskId).order('created_at', { ascending: true }),
         supabase.from('staff_profiles').select('id, name, email'),
         supabase.from('entities').select('id, name').order('name'),
         supabase.from('standard_fees').select('task_name, service_id, standard_net').order('task_name'),
         fetchAdhocServices(),
+        supabase.from('admin_task_deadline_changes').select('id, old_deadline, new_deadline, changed_by, changed_at')
+          .eq('task_id', taskId).order('changed_at', { ascending: false }),
       ]);
       if (e1) throw e1;
       setTask(t);
       setEntity(t?.entity || null);
       setNotes(n || []);
+      setDeadlineLog(dl || []);
       setStaffMap(Object.fromEntries((st || []).map((s) => [s.id, s.name || s.email])));
       setAllEntities(ents || []);
       setFees(sf || []);
@@ -279,6 +289,19 @@ export default function AdminTaskDetail({ taskId, onChanged }) {
             <Flame size={13} color={form.urgent ? '#dc2626' : '#64748b'} /> Urgent
           </label>
         </div>
+
+        {/* Every deadline change is logged by trigger (sql/357); null changed_by = automation */}
+        {deadlineLog.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Deadline history</div>
+            {deadlineLog.map((c) => (
+              <div key={c.id} style={{ fontSize: 12.5, color: '#475569', padding: '2px 0' }}>
+                {c.old_deadline ? `${fmtDate(c.old_deadline)} → ` : 'Set to '}{c.new_deadline ? fmtDate(c.new_deadline) : 'none'}
+                <span style={{ color: '#94a3b8', marginLeft: 6 }}>— {c.changed_by ? (staffMap[c.changed_by] || 'staff') : 'system'} · {fmtNoteTime(c.changed_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <div style={label}>Notes / description</div>
