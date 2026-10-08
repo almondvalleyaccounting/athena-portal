@@ -341,9 +341,9 @@ export default function GroupDetailPage() {
           </Btn>
         )}
         <Btn onClick={handlePreview} variant="secondary" className="text-xs py-1 px-3">Preview Quote</Btn>
-        <Btn onClick={handleExportPdf} variant="ghost" className="text-xs py-1 px-3">Export PDF</Btn>
+        <Btn onClick={handleExportPdf} variant="secondary" className="text-xs py-1 px-3">Export PDF</Btn>
         <span className="mx-1 text-gray-300">|</span>
-        <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}/quote`)} variant="primary" className="text-xs py-1 px-3">Build Group Quote</Btn>
+        <Btn onClick={() => navigate(`/manage/quotes/group/${groupId}/quote`)} variant="primary" className="text-xs py-1 px-3">{quotes.length > 0 ? 'Edit Group Quote' : 'Build Group Quote'}</Btn>
         <Btn onClick={() => navigate('/manage/quotes/new?group=' + groupId)} className="text-xs py-1 px-3">Add client</Btn>
         <Btn onClick={() => navigate('/manage/quotes')} variant="secondary" className="text-xs py-1 px-3">Back to Quotes</Btn>
       </div>
