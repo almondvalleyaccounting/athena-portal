@@ -200,7 +200,7 @@ export default function GroupQuoteInputPage() {
         // displayed value faithful to the quote.
         const { data: gQuotes } = await supabase
           .from('quotes')
-          .select('id, entity_id, status, created_at, estimated_turnover, accounts_detail, directors, bookkeeping_detail, payroll_detail, management_accounts_detail, review_meetings_detail, cfo_detail, modulr_detail, budgeting_detail, software_detail, line_items:quote_line_items(service_id, annual_amount, is_recurring)')
+          .select('id, entity_id, status, created_at, estimated_turnover, accounts_detail, directors, bookkeeping_detail, payroll_detail, management_accounts_detail, review_meetings_detail, cfo_detail, modulr_detail, budgeting_detail, software_detail, builder_inputs, line_items:quote_line_items(service_id, annual_amount, is_recurring)')
           .in('entity_id', entityIds)
           .neq('status', 'deleted')
           .order('created_at', { ascending: false });
@@ -261,7 +261,9 @@ export default function GroupQuoteInputPage() {
         const initDrivers = {}, initOverrides = {}, initDiscounts = {};
         (ents || []).forEach(e => {
           const q = quoteByEntity[e.id];
-          const drv = driversFromQuote(q);
+          // What was typed into this builder last time, if it saved this quote.
+          const saved = q?.builder_inputs;
+          const drv = { ...driversFromQuote(q), ...(saved?.drivers || {}) };
           initDrivers[e.id] = drv;
 
           // Saved amount per matrix row from the quote's line items.
@@ -274,15 +276,11 @@ export default function GroupQuoteInputPage() {
           }
           const ov = {};
           if (q) {
-            // Faithfully mirror the quote: services NOT on it are £0. Only
-            // the DRIVERLESS services need an explicit 0 override — their
-            // calc fabricates a default (Auto-Enrolment £60, Confirmation
-            // £110, Registered Office, Software, Modulr, Budgeting, and
-            // Accounts' £750 band fallback). Driver-based services already
-            // calc to £0 when their drivers are 0, and must stay live so
-            // editing a driver updates the value.
-            const ZERO_IF_ABSENT = ['accounts_ct', 'sole_trader_accounts', 'confirmation_statement', 'auto_enrolment', 'modulr', 'budgeting', 'registered_office', 'software'];
-            ZERO_IF_ABSENT.forEach((sid) => {
+            // Faithfully mirror the quote: every service NOT on it is £0. The
+            // driverless calcs would otherwise fabricate a default, and with
+            // the builder's drivers restored a driver-based one can too.
+            // Editing a driver clears its service's override, so it stays live.
+            SERVICE_ROWS.map(r => r.id).forEach((sid) => {
               if (!(sid in savedByRow)) ov[sid] = 0;
             });
             // Services that ARE on the quote: override only where the driver
@@ -304,7 +302,10 @@ export default function GroupQuoteInputPage() {
             [...OFF, 'auto_enrolment', 'mtd_returns', 'modulr', 'budgeting', 'registered_office', 'software']
               .forEach((sid) => { ov[sid] = 0; });
           }
-          initOverrides[e.id] = ov;
+          // The builder's own overrides first, then the inferred ones on top:
+          // the quote's saved lines are the truth, so an edit made on the
+          // individual quote since still shows through.
+          initOverrides[e.id] = { ...(saved?.overrides || {}), ...ov };
           initDiscounts[e.id] = 0; // saved amounts are already net of any discount
         });
         setDrivers(initDrivers);
@@ -469,6 +470,7 @@ export default function GroupQuoteInputPage() {
         };
 
         const totalsPatch = {
+          builder_inputs: { drivers: drivers[entity.id] || {}, overrides: overrides[entity.id] || {}, discount: disc },
           annual_total: Math.round(annualTotal * 100) / 100,
           annual_services: Math.round((entityTotals[entity.id] || 0) * 100) / 100,
           monthly_net: m.net, monthly_vat: m.vat, monthly_gross: m.gross,
