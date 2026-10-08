@@ -292,6 +292,17 @@ export default function GroupQuoteInputPage() {
               const calc = calcService(rowId, drv, defaults).value;
               if (Math.abs(calc - saved) > 0.5) ov[rowId] = saved;
             }
+          } else {
+            // No quote yet: start every opt-in service at £0. Without this the
+            // driverless calcs switch themselves on for every client in the
+            // group — Sole Trader Accounts, Auto-Enrolment and MTD were landing
+            // on limited companies nobody had ticked. Only the statutory
+            // basics for the entity's type stay on.
+            const OFF = e.company_number
+              ? ['sole_trader_accounts']                     // Ltd: Accounts & CT + Confirmation stay on
+              : ['accounts_ct', 'confirmation_statement'];   // sole trader: their own accounts instead
+            [...OFF, 'auto_enrolment', 'mtd_returns', 'modulr', 'budgeting', 'registered_office', 'software']
+              .forEach((sid) => { ov[sid] = 0; });
           }
           initOverrides[e.id] = ov;
           initDiscounts[e.id] = 0; // saved amounts are already net of any discount
