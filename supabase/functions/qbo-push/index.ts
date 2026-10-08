@@ -853,7 +853,8 @@ async function ensureQboCustomer(sb: ReturnType<typeof getServiceClient>, entity
 async function createQboInvoice(customerId: string, lineItems: Array<Record<string, unknown>>, clientName: string, dueDateOffsetDays: number, email: string | null, billAddr: Record<string, unknown> | null = null, salesTermId: string | null = null): Promise<{ invoiceId: string }> {
   const txnDate = new Date().toISOString().slice(0, 10);
   const dueDate = addDays(txnDate, dueDateOffsetDays);
-  const payload: Record<string, unknown> = { CustomerRef: { value: customerId }, Line: lineItems, TxnDate: txnDate, DueDate: dueDate, PrivateNote: `Created from Athena Portal for ${clientName}` };
+  const payload: Record<string, unknown> = { CustomerRef: { value: customerId }, Line: lineItems, TxnDate: txnDate, DueDate: dueDate };
+  // No PrivateNote: QBO prints it as "Message on statement", so it reached the client.
   if (salesTermId) payload.SalesTermRef = { value: salesTermId };
   if (email) payload.BillEmail = { Address: email };
   if (billAddr) payload.BillAddr = billAddr;
