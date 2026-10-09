@@ -259,6 +259,45 @@ function AddressInput({ value, onChange, contacts, placeholder }) {
   );
 }
 
+// "Inside which label?" — searchable, for nesting a new or moved label.
+// value = the parent's full name ('' = top level). Matches anywhere in the
+// path, so "ltd" finds "INBOX/Clients - Ltd".
+function ParentPicker({ labels, value, onChange, maxHeight = 180 }) {
+  const [term, setTerm] = useState('');
+  const t = term.trim().toLowerCase();
+  const matches = [...labels]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .filter((l) => !t || l.name.toLowerCase().includes(t));
+  const row = (on) => ({
+    padding: '5px 8px', fontSize: 13, cursor: 'pointer', borderRadius: 6,
+    background: on ? tones.info.bg : 'transparent', color: on ? tones.info.fg : '#334155',
+    fontWeight: on ? 700 : 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <input
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation(); // don't trigger the outer picker's Enter/Escape
+          if (e.key === 'Enter' && matches.length) { e.preventDefault(); onChange(matches[0].name); setTerm(''); }
+        }}
+        placeholder={value ? `Inside: ${value.split('/').join(' › ')} — type to change` : 'Search for the parent label…'}
+        style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', outline: 'none' }}
+      />
+      <div style={{ maxHeight, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', padding: 2 }}>
+        <div onClick={() => { onChange(''); setTerm(''); }} style={row(!value)}>— top level —</div>
+        {matches.map((l) => (
+          <div key={l.id} onClick={() => { onChange(l.name); setTerm(''); }} style={row(value === l.name)} title={l.name}>
+            {l.name.split('/').join(' › ')}
+          </div>
+        ))}
+        {!matches.length && <div style={{ padding: '5px 8px', fontSize: 12.5, color: '#94a3b8' }}>No label matches “{term.trim()}”.</div>}
+      </div>
+    </div>
+  );
+}
+
 // Searchable label picker with create ("Tax/VAT" nests) — used for the
 // bulk Tag+archive and the single-thread Tag action.
 function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
@@ -341,17 +380,8 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
           {term.trim() && !exact && (
             <div style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {/* Nest the new tag under an existing one (Gmail stores it as Parent/Child). */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b' }}>
-                Inside
-                <select
-                  value={parent}
-                  onChange={(e) => setParent(e.target.value)}
-                  style={{ flex: 1, minWidth: 0, padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
-                >
-                  <option value="">— top level —</option>
-                  {sorted.map((l) => <option key={l.id} value={l.name}>{l.name.split('/').join(' › ')}</option>)}
-                </select>
-              </label>
+              <div style={{ fontSize: 12.5, color: '#64748b' }}>Inside</div>
+              <ParentPicker labels={sorted} value={parent} onChange={setParent} maxHeight={150} />
               <button
                 onClick={create}
                 disabled={busy}
@@ -2401,21 +2431,16 @@ export default function EmailView() {
                 style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7 }}
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
               Inside
-              <select
+              {/* Not itself or anything inside it. */}
+              <ParentPicker
+                labels={userLabels.filter((l) => l.id !== moveLabel.label.id && !l.name.startsWith(`${moveLabel.label.name}/`))}
                 value={moveLabel.parent}
-                onChange={(e) => setMoveLabel((m) => ({ ...m, parent: e.target.value }))}
-                style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff' }}
-              >
-                <option value="">— top level —</option>
-                {/* Not itself or anything inside it. */}
-                {[...userLabels]
-                  .filter((l) => l.id !== moveLabel.label.id && !l.name.startsWith(`${moveLabel.label.name}/`))
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((l) => <option key={l.id} value={l.name}>{l.name.split('/').join(' › ')}</option>)}
-              </select>
-            </label>
+                onChange={(v) => setMoveLabel((m) => ({ ...m, parent: v }))}
+                maxHeight={240}
+              />
+            </div>
             <div style={{ fontSize: 12, color: '#94a3b8' }}>
               Emails keep this label — it just moves in the list. Labels inside it move with it. The change shows in Gmail too.
             </div>
