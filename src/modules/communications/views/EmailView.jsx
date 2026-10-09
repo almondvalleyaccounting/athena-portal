@@ -3,7 +3,7 @@ import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Check, Search, Send, Sparkles, Tag, Trash2, X,
+  Check, Keyboard, Search, Send, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
@@ -327,17 +327,42 @@ function buildLabelTree(userLabels) {
   return roots;
 }
 
-// Quote the original message for reply/forward bodies (plain text).
-function quoteBody(msg) {
-  const text = msg.bodyText || decodeEntities(msg.snippet);
+// The original email on a reply/forward. Kept OUT of the box you type in —
+// pasting it there as "> " lines is what put the chevrons on screen — and
+// attached at send time as a real quote, the way Gmail does it.
+function originalOf(msg, kind) {
   const from = parseAddress(msg.from);
   const when = msg.internalDate ? new Date(msg.internalDate).toLocaleString('en-GB') : msg.date;
-  return `On ${when}, ${from.name} <${from.email}> wrote:\n${text.split('\n').map((l) => `> ${l}`).join('\n')}`;
+  const header = kind === 'forward'
+    ? `---------- Forwarded message ---------\nFrom: ${msg.from}\nDate: ${msg.date}\nSubject: ${msg.subject}\nTo: ${msg.to}`
+    : `On ${when}, ${from.name} <${from.email}> wrote:`;
+  return {
+    kind, header, include: true,
+    fromName: from.name, when: msg.internalDate,
+    text: msg.bodyText || decodeEntities(msg.snippet),
+    html: msg.bodyHtml || '',
+  };
 }
 
-function forwardBody(msg) {
-  const text = msg.bodyText || decodeEntities(msg.snippet);
-  return `---------- Forwarded message ----------\nFrom: ${msg.from}\nDate: ${msg.date}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${text}`;
+const escHtml = (t) => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// What actually goes out: your text, then the original. The plain-text part
+// keeps "> " quoting (that's the convention there and nobody sees it in a
+// normal mail client); the HTML part uses a blockquote.
+function composeBodies(c) {
+  const text = c.body || '';
+  const q = c.quote;
+  if (!q || q.include === false) return { bodyText: text };
+  const bodyText = q.kind === 'forward'
+    ? `${text}\n\n${q.header}\n\n${q.text}`
+    : `${text}\n\n${q.header}\n${q.text.split('\n').map((l) => `> ${l}`).join('\n')}`;
+  const mine = `<div>${escHtml(text).replace(/\r?\n/g, '<br>')}</div>`;
+  const original = q.html || `<div style="white-space:pre-wrap">${escHtml(q.text)}</div>`;
+  const head = escHtml(q.header).replace(/\n/g, '<br>');
+  const bodyHtml = q.kind === 'forward'
+    ? `${mine}<br><div class="gmail_quote">${head}<br><br>${original}</div>`
+    : `${mine}<br><div class="gmail_quote"><div>${head}</div><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${original}</blockquote></div>`;
+  return { bodyText, bodyHtml };
 }
 
 // Recipients of a thread's latest message: [first, count].
@@ -462,6 +487,8 @@ export default function EmailView() {
     try { return JSON.parse(localStorage.getItem('comms_draft') || 'null'); } catch { return null; }
   });
   const [sending, setSending] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // { text, undo? }
   const [addOpen, setAddOpen] = useState(false);
@@ -810,6 +837,24 @@ export default function EmailView() {
     return visibleThreads.filter((t) => sugById.get(t.id)?.labels.some((l) => l.id === tagFilter));
   }, [tagFilterOn, tagFilter, visibleThreads, sugById]);
 
+  // The list as shown, and the open email, for the keyboard and for
+  // "open the next one" after a delete — read through refs so they're current
+  // inside handlers made before the latest render.
+  const listRef = useRef([]);
+  listRef.current = listThreads;
+  const openIdRef = useRef(null);
+  const openThreadRef = useRef(null);
+  // When the open email leaves the list, open its neighbour (below, else above)
+  // rather than leaving the pane empty. Call BEFORE removing it from the list.
+  const advanceFrom = (id) => {
+    if (openIdRef.current !== id) return; // something else was open — leave it
+    const l = listRef.current;
+    const i = l.findIndex((x) => x.id === id);
+    const next = i < 0 ? null : (l[i + 1] || l[i - 1] || null);
+    if (next) openThreadRef.current?.(next);
+    else setThread(null);
+  };
+
   // "Approve" acts on what's on screen, so a filter is also the scope.
   const suggested = useMemo(
     () => listThreads.filter((t) => sugById.has(t.id)).map((t) => ({ t, sug: sugById.get(t.id) })),
@@ -823,16 +868,19 @@ export default function EmailView() {
   }, [tagFilter, suggestedLabelCounts]);
 
   // Applies the whole suggested set in one modify, then archives.
-  const applySuggestion = useCallback(async (t, sug) => {
+  const applySuggestion = useCallback(async (t, sug, { advance = true } = {}) => {
     await gmail.modifyMessage(t.mailbox, t.id, {
       addLabelIds: sug.labels.map((l) => l.id),
       removeLabelIds: ['INBOX'],
     });
     for (const l of sug.labels) recordTagRule(t.mailbox, sug.sender, l);
     threadCache.current.delete(`${t.mailbox}:${t.id}`);
+    // A batch approve closes the pane instead — stepping through would open,
+    // and mark read, every email in the batch.
+    if (advance) advanceFrom(t.id);
+    else setThread((prev) => (prev?.id === t.id ? null : prev));
     setThreads((prev) => prev.filter((x) => x.id !== t.id));
     setSelected((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
-    setThread((prev) => (prev?.id === t.id ? null : prev));
   }, []);
 
   const acceptSuggestion = useCallback(async (t, sug) => {
@@ -850,7 +898,7 @@ export default function EmailView() {
     let failed = 0;
     for (const { t, sug } of suggested) {
       try {
-        await applySuggestion(t, sug);
+        await applySuggestion(t, sug, { advance: false });
         done++;
       } catch {
         failed++;
@@ -893,8 +941,8 @@ export default function EmailView() {
       if (sender && sender !== mailbox) recordTagRule(t.mailbox, sender, label);
       for (const l of sug?.labels || []) if (l.id !== label.id) rejectSuggested(sug.sender, l);
       threadCache.current.delete(`${t.mailbox}:${t.id}`);
+      advanceFrom(t.id);
       setThreads((prev) => prev.filter((x) => x.id !== t.id));
-      setThread((prev) => (prev?.id === t.id ? null : prev));
       flash(`Tagged “${label.name}” & archived.`);
     } catch (e) {
       setError(e.message);
@@ -1030,8 +1078,8 @@ export default function EmailView() {
         ? { addLabelIds: ['INBOX'] }
         : { removeLabelIds: ['INBOX'] });
       forgetThread(threadMailbox, threadId);
+      advanceFrom(threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      setThread(null);
       flash(restore ? 'Moved back to inbox.' : 'Archived.');
     } catch (e) {
       setError(e.code === 'needs_reconnect'
@@ -1045,8 +1093,8 @@ export default function EmailView() {
     try {
       await gmail.trashMessage(threadMailbox, threadId);
       forgetThread(threadMailbox, threadId);
+      advanceFrom(threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      setThread(null);
       flash('Moved to bin.', async () => {
         await gmail.untrashMessage(threadMailbox, threadId).catch(() => {});
         loadThreads();
@@ -1060,8 +1108,8 @@ export default function EmailView() {
     try {
       await gmail.untrashMessage(threadMailbox, threadId);
       forgetThread(threadMailbox, threadId);
+      advanceFrom(threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
-      setThread(null);
       flash('Restored from bin.');
     } catch (e) {
       setError(e.message);
@@ -1180,10 +1228,10 @@ export default function EmailView() {
           .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer(withStart({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply'), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: `${sig}\n\n${forwardBody(latestMsg)}`, mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward'), mailbox: threadMailbox }));
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
@@ -1210,8 +1258,8 @@ export default function EmailView() {
     try {
       await gmail.trashMessage(t.mailbox, t.id);
       forgetThread(t.mailbox, t.id);
+      advanceFrom(t.id);
       setThreads((prev) => prev.filter((x) => x.id !== t.id));
-      setThread((prev) => (prev?.id === t.id ? null : prev));
       flash('Moved to bin.', async () => {
         await gmail.untrashMessage(t.mailbox, t.id).catch(() => {});
         loadThreads();
@@ -1249,7 +1297,7 @@ export default function EmailView() {
         to: composer.to.trim().replace(/,\s*$/, ''),
         cc: composer.cc?.trim().replace(/,\s*$/, '') || undefined,
         subject: composer.subject.trim(),
-        bodyText: composer.body || '',
+        ...composeBodies(composer),
         threadId: composer.threadId || undefined,
         inReplyTo: composer.inReplyTo || undefined,
         references: composer.references || undefined,
@@ -1265,6 +1313,50 @@ export default function EmailView() {
       setSending(false);
     }
   }, [composer, mailbox, thread, threadMailbox, openThread]);
+
+  // ── Keyboard ──
+  // Ignored while typing in any box, and with Ctrl/Cmd/Alt held (so browser
+  // and app shortcuts like "/" search keep working). Clicking inside an
+  // email's body moves focus into it — click the list to get keys back.
+  openIdRef.current = thread?.id || null;
+  openThreadRef.current = openThread;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || sigOpen) return;
+      const el = e.target;
+      if (el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)) return;
+      const list = listRef.current;
+      const i = list.findIndex((x) => x.id === openIdRef.current);
+      const go = (t) => { if (t) openThread(t); };
+      const inInbox = thread?.messages.some((m) => m.labelIds.includes('INBOX'));
+      const run = {
+        ArrowDown: () => go(i < 0 ? list[0] : list[i + 1]),
+        j: () => go(i < 0 ? list[0] : list[i + 1]),
+        ArrowUp: () => go(i < 0 ? list[0] : list[i - 1]),
+        k: () => go(i < 0 ? list[0] : list[i - 1]),
+        Delete: () => thread && !threadInTrash && trashThread(thread.id),
+        '#': () => thread && !threadInTrash && trashThread(thread.id),
+        e: () => thread && inInbox && archiveThread(thread.id),
+        r: () => thread && startComposer('reply'),
+        a: () => thread && startComposer('replyAll'),
+        f: () => thread && startComposer('forward'),
+        x: () => thread && toggleSelect(thread.id),
+        Escape: () => { if (keysOpen) setKeysOpen(false); else if (thread && okToDiscard()) { setComposer(null); setThread(null); } },
+        '?': () => setKeysOpen((o) => !o),
+      }[e.key];
+      if (!run) return;
+      e.preventDefault();
+      run();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // Keep the open email's row in view as the arrows move through the list.
+  useEffect(() => {
+    if (!thread?.id) return;
+    document.querySelector(`[data-mid="${thread.id}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [thread?.id]);
 
   // ── Contacts sync / signature save ──
   const doSyncContacts = useCallback(async () => {
@@ -1393,6 +1485,34 @@ export default function EmailView() {
           style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, fontWeight: 600 }} />
         <textarea value={composer.body} onChange={(e) => setComposer((c) => ({ ...c, body: e.target.value }))} rows={10} autoFocus
           style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical', lineHeight: 1.5 }} />
+        {composer.quote && (
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: 7, background: '#f8fafc', fontSize: 12.5, color: '#64748b' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={composer.quote.include !== false}
+                  onChange={(e) => setComposer((c) => ({ ...c, quote: { ...c.quote, include: e.target.checked } }))}
+                />
+                {composer.quote.kind === 'forward' ? 'Forwarded email' : 'Original email'} from {composer.quote.fromName}
+                {composer.quote.when ? `, ${fmtDate(composer.quote.when)}` : ''} — included when you send
+              </label>
+              <button
+                onClick={() => setQuoteOpen((o) => !o)}
+                style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: tones.info.solid, fontSize: 12.5, fontFamily: font }}
+              >
+                {quoteOpen ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {quoteOpen && (
+              <div style={{ borderTop: '1px solid #e2e8f0', maxHeight: 320, overflowY: 'auto', background: '#fff' }}>
+                {composer.quote.html
+                  ? <HtmlBody html={composer.quote.html} />
+                  : <div style={{ padding: 10, whiteSpace: 'pre-wrap', color: '#334155' }}>{composer.quote.text}</div>}
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={sendComposer} disabled={sending}
             style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 8, opacity: sending ? 0.45 : 1, cursor: sending ? 'not-allowed' : 'pointer' }}>
@@ -1632,6 +1752,34 @@ export default function EmailView() {
               <Tag size={13} /> {taggingMode ? 'Tagging on' : 'Tagging'}
             </button>
           )}
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setKeysOpen((o) => !o)} title="Keyboard shortcuts (?)" style={btnIcon}>
+              <Keyboard size={14} />
+            </button>
+            {keysOpen && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 40, width: 250, padding: '10px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', fontSize: 13, color: '#334155' }}>
+                <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Keyboard shortcuts</div>
+                {[
+                  ['↓  or  j', 'Next email'],
+                  ['↑  or  k', 'Previous email'],
+                  ['Delete  or  #', 'Move to bin'],
+                  ['e', 'Archive'],
+                  ['r', 'Reply'],
+                  ['a', 'Reply all'],
+                  ['f', 'Forward'],
+                  ['x', 'Tick / untick the open email'],
+                  ['Esc', 'Close the email'],
+                  ['?', 'Show / hide this list'],
+                ].map(([k, what]) => (
+                  <div key={k} style={{ display: 'flex', gap: 10, padding: '2px 0' }}>
+                    <span style={{ flex: '0 0 92px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#0f172a' }}>{k}</span>
+                    <span>{what}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 6, fontSize: 11.5, color: '#94a3b8' }}>Not while typing in a box. After clicking inside an email, click the list to use keys again.</div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sort + inbox noise filter */}
@@ -1892,6 +2040,7 @@ export default function EmailView() {
             return (
               <div
                 key={t.id}
+                data-mid={t.id}
                 onClick={() => openThread(t)}
                 onMouseEnter={() => { clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(() => prefetchThread(t), 250); }}
                 onMouseLeave={() => clearTimeout(hoverTimer.current)}
