@@ -3,7 +3,7 @@ import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Search, Send, Sparkles, Tag, Trash2, X,
+  Check, Search, Send, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
@@ -55,8 +55,12 @@ function fmtDate(ms) {
 
 // Sandboxed HTML email body — allow-same-origin (no scripts) so we can
 // measure the content height, but nothing inside can run code or reach
-// the portal session. Height is re-measured on a short schedule after
-// load because images/remote assets arrive late and grow the document.
+// the portal session.
+//
+// Sized from the moment the document is parsed, not on iframe `load`: load
+// waits for every remote image, so a newsletter sat in a 160px box with its
+// own scrollbar for seconds. A ResizeObserver then follows the document as
+// images arrive and grow it.
 function HtmlBody({ html }) {
   const ref = useRef(null);
   const [height, setHeight] = useState(160);
@@ -66,20 +70,31 @@ function HtmlBody({ html }) {
       const doc = ref.current?.contentDocument;
       if (!doc) return;
       const h = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0);
-      if (h > 0) setHeight(Math.min(h + 24, 2400));
+      if (h > 0) setHeight(Math.min(h + 24, 12000));
     } catch { /* leave as-is */ }
   }, []);
 
-  const onLoad = () => {
-    measure();
-    [200, 600, 1200, 2500, 5000].forEach((ms) => setTimeout(measure, ms));
-    try {
-      const doc = ref.current?.contentDocument;
-      for (const img of doc?.images || []) {
-        if (!img.complete) img.addEventListener('load', measure, { once: true });
-      }
-    } catch { /* sandbox quirks */ }
-  };
+  useEffect(() => {
+    let observer = null;
+    let raf = 0;
+    let tries = 0;
+    const attach = () => {
+      try {
+        const doc = ref.current?.contentDocument;
+        const RO = doc?.defaultView?.ResizeObserver;
+        // The initial about:blank is "complete" before srcdoc replaces it.
+        if (doc?.URL === 'about:srcdoc' && doc.body && doc.readyState !== 'loading' && RO) {
+          measure();
+          observer = new RO(measure);
+          observer.observe(doc.body);
+          return;
+        }
+      } catch { /* sandbox quirks — onLoad still measures */ }
+      if (tries++ < 120) raf = requestAnimationFrame(attach);
+    };
+    raf = requestAnimationFrame(attach);
+    return () => { cancelAnimationFrame(raf); observer?.disconnect(); };
+  }, [html, measure]);
 
   const srcDoc = `<!doctype html><html><head><base target="_blank"><style>body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;margin:8px;word-break:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
   return (
@@ -88,7 +103,7 @@ function HtmlBody({ html }) {
       title="email body"
       sandbox="allow-same-origin"
       srcDoc={srcDoc}
-      onLoad={onLoad}
+      onLoad={measure}
       style={{ width: '100%', height, border: 'none', background: '#fff' }}
     />
   );
@@ -360,6 +375,48 @@ function rowParty(t, mailbox, showRecipient) {
   return { name: last.name, own, to: informative ? rcptLabel : null };
 }
 
+// Drag handle between two columns. While dragging, a full-screen layer takes
+// the mouse: otherwise the cursor crossing an email's iframe swallows the
+// mousemove/mouseup and the drag sticks. Double-click resets the width.
+function Splitter({ width, onChange, min, max, onReset }) {
+  const [drag, setDrag] = useState(null); // { x, w }
+  const [hover, setHover] = useState(false);
+  const move = (e) => onChange(Math.max(min, Math.min(max, drag.w + e.clientX - drag.x)));
+  return (
+    <>
+      <div
+        // Start from the column's rendered width — flex may have shrunk it.
+        onMouseDown={(e) => {
+          e.preventDefault();
+          const shown = e.currentTarget.previousElementSibling?.getBoundingClientRect().width;
+          setDrag({ x: e.clientX, w: Math.round(shown || width) });
+        }}
+        onDoubleClick={onReset}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title="Drag to resize · double-click to reset"
+        style={{ flex: '0 0 9px', cursor: 'col-resize', display: 'flex', justifyContent: 'center', alignSelf: 'stretch' }}
+      >
+        <div style={{ width: 2, borderRadius: 2, background: drag || hover ? tones.info.solid : 'transparent', transition: 'background .12s' }} />
+      </div>
+      {drag && (
+        <div
+          onMouseMove={move}
+          onMouseUp={() => setDrag(null)}
+          onMouseLeave={() => setDrag(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 200, cursor: 'col-resize' }}
+        />
+      )}
+    </>
+  );
+}
+
+const RAIL_W = 212;
+const LIST_W = 560;
+const readWidth = (key, fallback) => {
+  try { return Number(localStorage.getItem(key)) || fallback; } catch { return fallback; }
+};
+
 export default function EmailView() {
   const { profile } = useAuth();
   const isAdmin = profile?.is_portal_admin || profile?.can_manage_portal;
@@ -407,11 +464,20 @@ export default function EmailView() {
   const [learnBusy, setLearnBusy] = useState(false);
   const [sweepBusy, setSweepBusy] = useState(false);
   const autoLearned = useRef(new Set());
+  // Tagging mode: suggestions only appear when asked for. Off, the inbox is
+  // just mail. On, every row gets a tag line and the list can be filtered
+  // down to one suggested tag to eyeball and approve as a batch.
+  const [taggingMode, setTaggingMode] = useState(false);
+  const [tagFilter, setTagFilter] = useState('suggested'); // all | suggested | none | <labelId>
   const [expanded, setExpanded] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('comms_labels_expanded') || '[]')); }
     catch { return new Set(); }
   });
   const paneRef = useRef(null);
+  const [railW, setRailW] = useState(() => readWidth('comms_rail_w', RAIL_W));
+  const [listW, setListW] = useState(() => readWidth('comms_list_w', LIST_W));
+  useEffect(() => { try { localStorage.setItem('comms_rail_w', String(railW)); } catch { /* cosmetic */ } }, [railW]);
+  useEffect(() => { try { localStorage.setItem('comms_list_w', String(listW)); } catch { /* cosmetic */ } }, [listW]);
 
   const isAll = mailbox === ALL_MAILBOXES;
   const mailboxObj = useMemo(
@@ -619,8 +685,8 @@ export default function EmailView() {
     return list;
   }, [threads, sort]);
 
-  useEffect(() => { setThread(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
-  useEffect(() => { setThread(null); loadThreads(); }, [loadThreads]);
+  useEffect(() => { setThread(null); setPending(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
+  useEffect(() => { setThread(null); setPending(null); loadThreads(); }, [loadThreads]);
 
   // ── Auto-suggested tags ──
   // Sender→label rules learned from this mailbox's history + every manual
@@ -670,7 +736,7 @@ export default function EmailView() {
   // Suggestions for one inbox thread — every entity the SENDER has been filed
   // under, keyed on their address, narrowed to labels that still exist.
   const suggestionFor = useCallback((t) => {
-    if (isAll || labelId !== 'INBOX' || q) return null;
+    if (!taggingMode || isAll || labelId !== 'INBOX' || q) return null;
     const sender = parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
     if (!sender || sender === mailbox) return null;
     // A colleague's email is *about* a client rather than from one, and which
@@ -686,12 +752,46 @@ export default function EmailView() {
       .filter(Boolean);
     if (!labelsFor.length) return null;
     return { labels: labelsFor, sender };
-  }, [isAll, labelId, q, suggestTag, labelById, userLabels, mailbox, ownDomain]);
+  }, [taggingMode, isAll, labelId, q, suggestTag, labelById, userLabels, mailbox, ownDomain]);
 
+  const sugById = useMemo(() => {
+    const m = new Map();
+    for (const t of threads) {
+      const sug = suggestionFor(t);
+      if (sug) m.set(t.id, sug);
+    }
+    return m;
+  }, [threads, suggestionFor]);
+
+  // Suggested tags with how many inbox emails each is offered for — the
+  // tagging-mode filter list.
+  const suggestedLabelCounts = useMemo(() => {
+    const m = new Map();
+    for (const sug of sugById.values()) {
+      for (const l of sug.labels) m.set(l.id, { label: l, n: (m.get(l.id)?.n || 0) + 1 });
+    }
+    return [...m.values()].sort((a, b) => b.n - a.n || a.label.name.localeCompare(b.label.name));
+  }, [sugById]);
+
+  const tagFilterOn = taggingMode && !isAll && labelId === 'INBOX' && !q;
+  const listThreads = useMemo(() => {
+    if (!tagFilterOn || tagFilter === 'all') return visibleThreads;
+    if (tagFilter === 'suggested') return visibleThreads.filter((t) => sugById.has(t.id));
+    if (tagFilter === 'none') return visibleThreads.filter((t) => !sugById.has(t.id));
+    return visibleThreads.filter((t) => sugById.get(t.id)?.labels.some((l) => l.id === tagFilter));
+  }, [tagFilterOn, tagFilter, visibleThreads, sugById]);
+
+  // "Approve" acts on what's on screen, so a filter is also the scope.
   const suggested = useMemo(
-    () => threads.map((t) => ({ t, sug: suggestionFor(t) })).filter((x) => x.sug),
-    [threads, suggestionFor],
+    () => listThreads.filter((t) => sugById.has(t.id)).map((t) => ({ t, sug: sugById.get(t.id) })),
+    [listThreads, sugById],
   );
+
+  // A filter on a tag that's just been cleared falls back to the rest.
+  useEffect(() => {
+    if (!['all', 'suggested', 'none'].includes(tagFilter)
+      && !suggestedLabelCounts.some((c) => c.label.id === tagFilter)) setTagFilter('suggested');
+  }, [tagFilter, suggestedLabelCounts]);
 
   // Applies the whole suggested set in one modify, then archives.
   const applySuggestion = useCallback(async (t, sug) => {
@@ -700,6 +800,7 @@ export default function EmailView() {
       removeLabelIds: ['INBOX'],
     });
     for (const l of sug.labels) recordTagRule(t.mailbox, sug.sender, l);
+    threadCache.current.delete(`${t.mailbox}:${t.id}`);
     setThreads((prev) => prev.filter((x) => x.id !== t.id));
     setSelected((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
     setThread((prev) => (prev?.id === t.id ? null : prev));
@@ -731,6 +832,35 @@ export default function EmailView() {
     flash(`Cleared ${done} conversation${done === 1 ? '' : 's'} as suggested${failed ? ` (${failed} failed)` : ''}.`);
   }, [suggested, applySuggestion]);
 
+  // "This suggestion is wrong": stored server-side so neither this inbox nor a
+  // re-learn offers sender→label again. Applied locally at once.
+  const rejectSuggested = useCallback(async (sender, label) => {
+    setTagRules((prev) => [...prev, { sender_email: sender, label_id: label.id, label_name: label.name, rejected: true, times_used: 0 }]);
+    try {
+      await gmail.rejectTag(mailbox, sender, label);
+    } catch (e) {
+      setError(`Couldn't save that correction: ${e.message}`);
+    }
+  }, [mailbox]);
+
+  // Tag a row with a label of your choosing (the fix for a wrong suggestion,
+  // or a tag for an email with none) and archive it. Any suggested label you
+  // passed over is marked wrong for this sender.
+  const tagRowAs = useCallback(async (t, label, sug) => {
+    try {
+      await gmail.modifyThread(t.mailbox, t.id, { addLabelIds: [label.id], removeLabelIds: ['INBOX'] });
+      const sender = sug?.sender || parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
+      if (sender && sender !== mailbox) recordTagRule(t.mailbox, sender, label);
+      for (const l of sug?.labels || []) if (l.id !== label.id) rejectSuggested(sug.sender, l);
+      threadCache.current.delete(`${t.mailbox}:${t.id}`);
+      setThreads((prev) => prev.filter((x) => x.id !== t.id));
+      setThread((prev) => (prev?.id === t.id ? null : prev));
+      flash(`Tagged “${label.name}” & archived.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [mailbox, rejectSuggested]);
+
   // Ensure a label path exists, creating each missing level ("Tax/VAT"
   // creates "Tax" then "Tax/VAT"). Returns the leaf label.
   const ensureLabel = useCallback(async (name) => {
@@ -761,30 +891,80 @@ export default function EmailView() {
   // ── Thread (preview pane) ──
   // Every thread carries the mailbox it came from, so a merged list can still
   // read, reply to and file each conversation against the right account.
+  //
+  // Speed: the pane used to show the PREVIOUS email until the new one arrived
+  // (a full round trip through comms-gmail to Gmail), so a click felt dead.
+  // Now the row's own summary paints the header at once, full threads are
+  // cached for the session, and hovering a row fetches it ahead of the click.
+  const threadCache = useRef(new Map()); // `${mailbox}:${id}` → thread
+  const inflight = useRef(new Map());    // same key → promise
+  const openGen = useRef(0);
+  const [pending, setPending] = useState(null); // summary being opened
+
+  const fetchThread = useCallback((mb, id) => {
+    const key = `${mb}:${id}`;
+    if (inflight.current.has(key)) return inflight.current.get(key);
+    const p = gmail.getThread(mb, id).then((res) => {
+      res.thread.messages = [...res.thread.messages].sort((a, b) => b.internalDate - a.internalDate);
+      const full = { ...res.thread, mailbox: mb };
+      threadCache.current.set(key, full);
+      return full;
+    }).finally(() => inflight.current.delete(key));
+    inflight.current.set(key, p);
+    return p;
+  }, []);
+
+  const prefetchThread = useCallback((summary) => {
+    const mb = summary.mailbox || mailbox;
+    if (threadCache.current.has(`${mb}:${summary.id}`)) return;
+    fetchThread(mb, summary.id).catch(() => { /* a click will retry and report */ });
+  }, [mailbox, fetchThread]);
+
   const openThread = useCallback(async (summary) => {
     const mb = summary.mailbox || mailbox;
-    setThreadLoading(true);
+    const gen = ++openGen.current;
     setError(null);
+    setComposer(null);
+    if (paneRef.current) paneRef.current.scrollTop = 0;
+    if (summary.unread) {
+      gmail.modifyThread(mb, summary.id, { removeLabelIds: ['UNREAD'] })
+        .then(() => setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t))))
+        .catch(() => { /* read-state is cosmetic */ });
+    }
+    // New mail on the thread since it was cached → fetch it fresh.
+    const cached = threadCache.current.get(`${mb}:${summary.id}`);
+    const fresh = cached
+      && (!summary.messageCount || cached.messages.length >= summary.messageCount)
+      && (cached.messages[0]?.internalDate || 0) >= (summary.internalDate || 0);
+    if (fresh) {
+      setPending(null);
+      setThread(cached);
+      return cached;
+    }
+    setThread(null);
+    setPending({ ...summary, mailbox: mb });
+    setThreadLoading(true);
     try {
-      const res = await gmail.getThread(mb, summary.id);
-      res.thread.messages = [...res.thread.messages].sort((a, b) => b.internalDate - a.internalDate);
-      const opened = { ...res.thread, mailbox: mb };
+      const opened = await fetchThread(mb, summary.id);
+      if (gen !== openGen.current) return opened; // another row was clicked since
       setThread(opened);
-      setComposer(null);
-      if (paneRef.current) paneRef.current.scrollTop = 0;
-      if (summary.unread) {
-        gmail.modifyThread(mb, summary.id, { removeLabelIds: ['UNREAD'] })
-          .then(() => setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t))))
-          .catch(() => { /* read-state is cosmetic */ });
-      }
       return opened;
     } catch (e) {
-      setError(e.message);
+      if (gen === openGen.current) setError(e.message);
       return null;
     } finally {
-      setThreadLoading(false);
+      if (gen === openGen.current) { setPending(null); setThreadLoading(false); }
     }
-  }, [mailbox]);
+  }, [mailbox, fetchThread]);
+
+  // A change made to a thread (label, archive…) makes its cached copy stale.
+  // Edits to the open thread are written back as they happen; anything that
+  // moves a thread out of view just drops it.
+  const hoverTimer = useRef(null);
+  const forgetThread = (mb, id) => threadCache.current.delete(`${mb}:${id}`);
+  useEffect(() => {
+    if (thread?.mailbox) threadCache.current.set(`${thread.mailbox}:${thread.id}`, thread);
+  }, [thread]);
 
   const latestMsg = thread?.messages?.[0] || null;
   const threadInTrash = !!thread && thread.messages.some((m) => m.labelIds.includes('TRASH'));
@@ -795,6 +975,7 @@ export default function EmailView() {
       await gmail.modifyThread(threadMailbox, threadId, restore
         ? { addLabelIds: ['INBOX'] }
         : { removeLabelIds: ['INBOX'] });
+      forgetThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
       flash(restore ? 'Moved back to inbox.' : 'Archived.');
@@ -809,6 +990,7 @@ export default function EmailView() {
   const trashThread = useCallback(async (threadId) => {
     try {
       await gmail.trashThread(threadMailbox, threadId);
+      forgetThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
       flash('Moved to bin.', async () => {
@@ -823,6 +1005,7 @@ export default function EmailView() {
   const restoreThread = useCallback(async (threadId) => {
     try {
       await gmail.untrashThread(threadMailbox, threadId);
+      forgetThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
       flash('Restored from bin.');
@@ -850,6 +1033,24 @@ export default function EmailView() {
     }
   }, [mailbox, thread]);
 
+  // Take a tag off the open thread — the fix for a tag applied by mistake.
+  // The learned rule is left alone: one wrong filing doesn't make the sender
+  // wrong for that client (tagging mode's × is where a rule is corrected).
+  const untagThread = useCallback(async (label) => {
+    if (!thread) return;
+    try {
+      await gmail.modifyThread(threadMailbox, thread.id, { removeLabelIds: [label.id] });
+      setThread((prev) => (prev ? {
+        ...prev,
+        messages: prev.messages.map((m) => ({ ...m, labelIds: m.labelIds.filter((x) => x !== label.id) })),
+      } : prev));
+      setThreads((prev) => prev.map((t) => (t.id === thread.id ? { ...t, labelIds: (t.labelIds || []).filter((x) => x !== label.id) } : t)));
+      flash(`Removed “${label.name}”.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [thread, threadMailbox]);
+
   // ── Bulk actions ──
   const toggleSelect = (id) => setSelected((prev) => {
     const next = new Set(prev);
@@ -872,6 +1073,7 @@ export default function EmailView() {
       } catch { failed++; }
     }
     setBulkBusy(false);
+    threadCache.current.clear();
     flash(`${verb} ${selected.size - failed} conversation${selected.size - failed === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}.`);
     setSelected(new Set());
     loadThreads();
@@ -886,6 +1088,7 @@ export default function EmailView() {
       try { await gmail.trashThread(mb, id); } catch { failed++; }
     }
     setBulkBusy(false);
+    threadCache.current.clear();
     setSelected(new Set());
     flash(`Binned ${ids.length - failed} conversation${ids.length - failed === 1 ? '' : 's'}.`, async () => {
       for (const [id, mb] of ids) await gmail.untrashThread(mb, id).catch(() => {});
@@ -946,6 +1149,7 @@ export default function EmailView() {
   const rowTrash = useCallback(async (t) => {
     try {
       await gmail.trashThread(t.mailbox, t.id);
+      forgetThread(t.mailbox, t.id);
       setThreads((prev) => prev.filter((x) => x.id !== t.id));
       setThread((prev) => (prev?.id === t.id ? null : prev));
       flash('Moved to bin.', async () => {
@@ -993,6 +1197,7 @@ export default function EmailView() {
       const wasReply = !!composer.threadId;
       setComposer(null);
       flash('Sent.');
+      if (wasReply && thread) forgetThread(threadMailbox, thread.id);
       if (wasReply && thread) openThread({ id: thread.id, mailbox: threadMailbox, unread: false });
     } catch (e) {
       setError(`Send failed: ${e.message}`);
@@ -1176,7 +1381,16 @@ export default function EmailView() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[...new Set(thread.messages.flatMap((m) => m.labelIds))]
               .filter((id) => labelById[id]?.type === 'user')
-              .map((id) => <span key={id} style={chipStyle('teal')}>{labelById[id].name}</span>)}
+              .map((id) => (
+                <span key={id} style={{ ...chipStyle('teal'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {labelById[id].name}
+                  {!isAll && (
+                    <button onClick={() => untagThread(labelById[id])} title={`Remove the “${labelById[id].name}” tag`} style={{ ...chipX, width: 14, height: 14 }}>
+                      <X size={10} />
+                    </button>
+                  )}
+                </span>
+              ))}
             {isAll && (
               <span style={chipStyle('neutral')}>{mailboxLabel[threadMailbox] || threadMailbox}</span>
             )}
@@ -1188,6 +1402,26 @@ export default function EmailView() {
         </>
       );
     }
+    // Opening: paint what the list row already knows straight away.
+    if (pending) {
+      const from = parseAddress(pending.from);
+      return (
+        <>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{pending.subject || '(no subject)'}</span>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '10px 14px' }}>
+              <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap' }}>{from.name}</span>
+              <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>to {pending.to}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(pending.internalDate)}</span>
+            </div>
+            <div style={{ padding: '4px 14px 14px', fontSize: 14, color: '#64748b' }}>
+              {decodeEntities(pending.snippet)}…
+              <div style={{ marginTop: 10, fontSize: 12.5, color: '#94a3b8' }}>Loading the full message…</div>
+            </div>
+          </div>
+        </>
+      );
+    }
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 14, border: '1px dashed #e2e8f0', borderRadius: 10, minHeight: 240 }}>
         {threadLoading ? 'Opening…' : 'Select an email to preview it here'}
@@ -1196,9 +1430,9 @@ export default function EmailView() {
   };
 
   return (
-    <div style={{ display: 'flex', gap: 14, height: '100%', minHeight: 0, fontFamily: font }}>
+    <div style={{ display: 'flex', gap: 3, height: '100%', minHeight: 0, fontFamily: font }}>
       {/* ── Left rail ── */}
-      <div style={{ width: 212, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+      <div style={{ width: railW, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
         <select
           value={mailbox}
           onChange={(e) => setMailbox(e.target.value)}
@@ -1297,11 +1531,11 @@ export default function EmailView() {
         </div>
       </div>
 
-      {/* ── Middle: thread list ── Wider than it was: one-line rows need room
-          for sender + subject + the hover actions, and the reading pane was
-          sprawling past a comfortable measure on a wide monitor. */}
-      {/* Thread list: 560px where there's room, narrowing to 340px on a laptop so the preview still fits. */}
-      <div style={{ flex: '0 1 560px', minWidth: 340, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
+      <Splitter width={railW} onChange={setRailW} min={160} max={380} onReset={() => setRailW(RAIL_W)} />
+
+      {/* ── Middle: thread list ── Width is draggable (saved per browser).
+          It still shrinks on a laptop so the preview keeps its 380px. */}
+      <div style={{ flex: `0 1 ${listW}px`, minWidth: 300, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
             <Search size={14} color="#94a3b8" />
@@ -1328,6 +1562,16 @@ export default function EmailView() {
           >
             <RefreshCw size={14} />
           </button>
+          {/* Labels and learned rules are per-account, so tagging needs one mailbox. */}
+          {!isAll && (
+            <button
+              onClick={() => { setTaggingMode((on) => !on); setTagFilter('suggested'); }}
+              title={taggingMode ? 'Leave tagging mode' : 'Tagging mode — see suggested tags and tag emails in bulk'}
+              style={{ ...btnIcon, ...(taggingMode ? { background: tones.teal.bg, borderColor: tones.teal.solid, color: tones.teal.fg } : {}) }}
+            >
+              <Tag size={13} /> {taggingMode ? 'Tagging on' : 'Tagging'}
+            </button>
+          )}
         </div>
 
         {/* Sort + inbox noise filter */}
@@ -1395,32 +1639,59 @@ export default function EmailView() {
           </span>
         </div>
 
-        {/* Auto-suggested tags: eyeball, then one-click clear */}
-        {!isAll && labelId === 'INBOX' && !q && (suggested.length > 0 || learnBusy || tagRules.length === 0) && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 13, flexWrap: 'wrap' }}>
-            <Sparkles size={13} color={tones.teal.solid} style={{ flexShrink: 0 }} />
-            {learnBusy ? (
-              <span style={{ color: tones.teal.fg }}>Learning from this mailbox&apos;s labelled history…</span>
-            ) : suggested.length > 0 ? (
-              <>
-                <span style={{ fontWeight: 700, color: tones.teal.fg }}>
-                  {suggested.length} suggested tag{suggested.length === 1 ? '' : 's'}
-                </span>
-                <button disabled={sweepBusy} onClick={acceptAllSuggestions} style={sweepBtn}>
-                  {sweepBusy ? 'Clearing…' : 'Tag + archive all'}
-                </button>
-              </>
+        {/* Tagging mode: filter to a suggested tag, eyeball, approve. */}
+        {taggingMode && !isAll && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 13 }}>
+            {labelId !== 'INBOX' || q ? (
+              <span style={{ color: tones.teal.fg }}>
+                Suggestions work on the Inbox. Here, tick emails and use <b>Tag + archive</b>, or tag one from its row.
+              </span>
             ) : (
-              <span style={{ color: tones.teal.fg }}>No tag suggestions yet.</span>
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Sparkles size={13} color={tones.teal.solid} style={{ flexShrink: 0 }} />
+                  {learnBusy ? (
+                    <span style={{ color: tones.teal.fg }}>Learning from this mailbox&apos;s labelled history…</span>
+                  ) : (
+                    <>
+                      <span style={{ fontWeight: 700, color: tones.teal.fg }}>Show</span>
+                      <select
+                        value={tagFilter}
+                        onChange={(e) => setTagFilter(e.target.value)}
+                        style={{ padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: `1px solid ${tones.teal.border}`, borderRadius: 6, background: '#fff', color: '#334155', maxWidth: 260 }}
+                      >
+                        <option value="suggested">With a suggestion ({sugById.size})</option>
+                        <option value="none">No suggestion ({visibleThreads.length - sugById.size})</option>
+                        <option value="all">Everything ({visibleThreads.length})</option>
+                        {suggestedLabelCounts.length > 0 && (
+                          <optgroup label="Suggested tag">
+                            {suggestedLabelCounts.map(({ label, n }) => (
+                              <option key={label.id} value={label.id}>{label.name} ({n})</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                      {suggested.length > 0 && (
+                        <button disabled={sweepBusy} onClick={acceptAllSuggestions} style={sweepBtn} title="Tag each email shown with its suggestion and archive it">
+                          <Check size={12} /> {sweepBusy ? 'Approving…' : `Approve ${suggested.length} shown`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <button
+                    disabled={learnBusy || sweepBusy}
+                    onClick={() => doLearnTags(false)}
+                    title="Learn tags from your existing labels"
+                    style={{ ...sweepBtn, marginLeft: 'auto', background: 'transparent' }}
+                  >
+                    {tagRules.length === 0 && !learnBusy ? 'Learn from my labels' : 'Re-learn'}
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: tones.teal.fg }}>
+                  <b>Approve</b> tags as suggested · <b>×</b> on a tag marks it wrong for that sender (never suggested again) · <b>Change</b> picks the right tag instead. All of these archive the email.
+                </div>
+              </>
             )}
-            <button
-              disabled={learnBusy || sweepBusy}
-              onClick={() => doLearnTags(false)}
-              title="Learn tags from your existing labels"
-              style={{ ...sweepBtn, marginLeft: 'auto', background: 'transparent' }}
-            >
-              {tagRules.length === 0 && !learnBusy ? 'Learn from my labels' : 'Re-learn'}
-            </button>
           </div>
         )}
 
@@ -1458,11 +1729,51 @@ export default function EmailView() {
               {q ? 'No results.' : 'Nothing here — inbox zero 🎉'}
             </div>
           )}
-          {visibleThreads.map((t) => {
+          {tagFilterOn && listThreads.length === 0 && threads.length > 0 && (
+            <div style={{ padding: 26, fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>Nothing matches this filter.</div>
+          )}
+          {listThreads.map((t) => {
             const party = rowParty(t, t.mailbox || mailbox, showRecipient);
             const isOpen = thread?.id === t.id;
             const userLabelChips = (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
-            const sug = suggestionFor(t);
+            const sug = sugById.get(t.id);
+            // Tagging mode's second line: the suggestion with approve / wrong /
+            // change, or a plain tag picker when there's nothing to suggest.
+            const tagLine = taggingMode && !isAll && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4, cursor: 'default' }}
+              >
+                {sug ? (
+                  <>
+                    <Sparkles size={11} color={tones.teal.solid} />
+                    {sug.labels.map((l) => (
+                      <span key={l.id} style={suggChip} title={l.name}>
+                        {l.name.split('/').pop()}
+                        <button
+                          onClick={() => rejectSuggested(sug.sender, l)}
+                          title={`Wrong — stop suggesting “${l.name}” for ${sug.sender}`}
+                          style={chipX}
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                    <button disabled={sweepBusy} onClick={() => acceptSuggestion(t, sug)} title="Approve — tag as suggested and archive" style={approveBtn}>
+                      <Check size={11} /> Approve
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 11.5, color: '#94a3b8' }}>No suggestion</span>
+                )}
+                <LabelPicker
+                  labels={userLabels}
+                  onPick={(label) => tagRowAs(t, label, sug)}
+                  onCreate={ensureLabel}
+                  trigger={<button style={changeBtn}><Tag size={10} /> {sug ? 'Change' : 'Tag'} ▾</button>}
+                />
+              </div>
+            );
             const sender = (
               <span style={{ fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: '0 0 150px' } : { flex: 1 }) }}>
                 {party.own && <Send size={10} color="#94a3b8" style={{ marginRight: 4, verticalAlign: -1 }} title="You sent the latest message" />}
@@ -1484,16 +1795,6 @@ export default function EmailView() {
                   </span>
                 )}
                 {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('teal'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
-                {sug && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); acceptSuggestion(t, sug); }}
-                    disabled={sweepBusy}
-                    title={`Tag ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} and archive`}
-                    style={suggChipBtn}
-                  >
-                    <Sparkles size={10} /> {sug.labels.map((l) => l.name.split('/').pop()).join(' + ')}
-                  </button>
-                )}
               </>
             );
             // Actions sit under the date and swap in on hover, so a dense list
@@ -1531,6 +1832,8 @@ export default function EmailView() {
               <div
                 key={t.id}
                 onClick={() => openThread(t)}
+                onMouseEnter={() => { clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(() => prefetchThread(t), 250); }}
+                onMouseLeave={() => clearTimeout(hoverTimer.current)}
                 className="group"
                 style={{ display: 'flex', gap: 8, padding: compact ? '5px 10px' : '8px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? tones.info.bg : t.unread ? '#fff' : '#fafbfc' }}
               >
@@ -1542,8 +1845,11 @@ export default function EmailView() {
                   style={{ marginTop: compact ? 1 : 3, cursor: 'pointer', flexShrink: 0 }}
                 />
                 {compact ? (
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
-                    {sender}{subject}{marks}{actions}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
+                      {sender}{subject}{marks}{actions}
+                    </div>
+                    {tagLine}
                   </div>
                 ) : (
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1551,6 +1857,7 @@ export default function EmailView() {
                       {sender}{marks}{actions}
                     </div>
                     <div style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</div>
+                    {tagLine}
                   </div>
                 )}
               </div>
@@ -1564,6 +1871,8 @@ export default function EmailView() {
           )}
         </div>
       </div>
+
+      <Splitter width={listW} onChange={setListW} min={300} max={1200} onReset={() => setListW(LIST_W)} />
 
       {/* ── Right: preview pane ── */}
       <div style={{ flex: 1, minWidth: 380, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
@@ -1653,11 +1962,25 @@ const sweepBtn = {
   fontFamily: font, color: tones.teal.fg,
 };
 
-// One-click "tag as suggested + archive" chip on an inbox row.
-const suggChipBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 11.5, fontWeight: 700,
+// Tagging mode, per row: a suggested tag (with × = wrong), Approve, Change.
+const suggChip = {
+  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 3px 1px 8px', fontSize: 11.5, fontWeight: 700,
   color: tones.teal.fg, background: tones.teal.bg, border: `1px dashed ${tones.teal.solid}`, borderRadius: 999,
-  cursor: 'pointer', fontFamily: font, flexShrink: 0, whiteSpace: 'nowrap',
+  fontFamily: font, whiteSpace: 'nowrap', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis',
+};
+const chipX = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, padding: 0,
+  border: 'none', borderRadius: 999, background: 'transparent', color: tones.teal.fg, cursor: 'pointer', flexShrink: 0,
+};
+const approveBtn = {
+  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', fontSize: 11.5, fontWeight: 700,
+  color: '#fff', background: tones.teal.solid, border: `1px solid ${tones.teal.solid}`, borderRadius: 6,
+  cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap',
+};
+const changeBtn = {
+  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', fontSize: 11.5, fontWeight: 600,
+  color: '#475569', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6,
+  cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap',
 };
 
 // Hover-revealed per-row action.

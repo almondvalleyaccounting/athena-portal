@@ -16,6 +16,8 @@
 //   learn_labels   { maxThreads? }     scan recent archived threads and
 //                    record sender→label stats into comms_tag_rules (feeds
 //                    the inbox's auto-suggested tags)
+//   reject_tag     { sender, labelId, labelName }   mark a sender→label
+//                    suggestion wrong so the inbox stops offering it
 //
 // Deployed with verify_jwt ON; additionally checks the caller is active staff
 // and may use the mailbox: personal mailboxes are owner-only (portal admins
@@ -460,6 +462,35 @@ Deno.serve(async (req) => {
           rules: rules.length,
           partial,
         });
+      }
+
+      // A wrong suggestion, corrected from the inbox. Kept as a rejected row
+      // rather than deleted so a history re-learn can't reinstate it (sql/363).
+      case "reject_tag": {
+        const sender = extractEmail(String(body.sender || ""));
+        const labelId = String(body.labelId || "").trim();
+        if (!sender || !labelId) {
+          return jsonResponse({ success: false, error: "sender and labelId required" }, 400);
+        }
+        const mb = tok.accountEmail.toLowerCase();
+        const { data: existing, error: selErr } = await service.from("comms_tag_rules")
+          .select("id").eq("mailbox_email", mb).eq("sender_email", sender).eq("label_id", labelId)
+          .maybeSingle();
+        if (selErr) throw new Error(selErr.message);
+        const { error: writeErr } = existing
+          ? await service.from("comms_tag_rules").update({ rejected: true }).eq("id", existing.id)
+          : await service.from("comms_tag_rules").insert({
+            mailbox_email: mb,
+            sender_email: sender,
+            sender_domain: sender.split("@")[1] || "",
+            label_id: labelId,
+            label_name: String(body.labelName || labelId).slice(0, 200),
+            times_used: 0,
+            source: "manual",
+            rejected: true,
+          });
+        if (writeErr) throw new Error(writeErr.message);
+        return jsonResponse({ success: true });
       }
 
       case "get_attachment": {

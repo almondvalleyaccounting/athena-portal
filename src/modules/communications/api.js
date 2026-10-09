@@ -103,6 +103,8 @@ export const gmail = {
   getAttachment: (mailbox, messageId, attachmentId) =>
     callGmail('get_attachment', { mailbox, messageId, attachmentId }),
   learnLabels: (mailbox) => callGmail('learn_labels', { mailbox }),
+  rejectTag: (mailbox, sender, label) =>
+    callGmail('reject_tag', { mailbox, sender, labelId: label.id, labelName: label.name }),
 };
 
 // ── Auto-suggested tags ───────────────────────────────────────────────
@@ -113,7 +115,7 @@ export const gmail = {
 export async function loadTagRules(mailbox) {
   const { data, error } = await supabase
     .from('comms_tag_rules')
-    .select('sender_email, sender_domain, label_id, label_name, times_used, last_used_at')
+    .select('sender_email, sender_domain, label_id, label_name, times_used, last_used_at, rejected')
     .eq('mailbox_email', mailbox)
     .limit(20000);
   if (error) throw error;
@@ -157,10 +159,15 @@ const FREEMAIL = new Set([
 // under (most-used first) and the caller tags them all; picking one would be
 // wrong more often than tagging the set. Falling back to the company domain is
 // a weaker signal, so that still only offers the one dominant label.
+//
+// A rule someone marked wrong (rejected, sql/363) is never offered — not for
+// that sender, and not via the domain fallback for that sender either.
 export function buildTagSuggester(rules) {
   const bySender = new Map();
   const domainAgg = new Map();
+  const rejected = new Set();
   for (const r of rules) {
+    if (r.rejected) { rejected.add(`${r.sender_email}|${r.label_id}`); continue; }
     const list = bySender.get(r.sender_email) || [];
     list.push(r);
     bySender.set(r.sender_email, list);
@@ -195,7 +202,7 @@ export function buildTagSuggester(rules) {
         .map((r) => ({ label_id: r.label_id, label_name: r.label_name }));
     }
     const dom = byDomain.get(email.split('@')[1] || '');
-    if (dom) return [{ label_id: dom.label_id, label_name: dom.label_name }];
+    if (dom && !rejected.has(`${email}|${dom.label_id}`)) return [{ label_id: dom.label_id, label_name: dom.label_name }];
     return [];
   };
 }
