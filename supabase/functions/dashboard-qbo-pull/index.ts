@@ -718,9 +718,11 @@ async function agedAsAt(sb: any, realmId: string, endpoint: "AgedReceivables" | 
   come from CompanyInfo, for the statement letterhead.
 */
 async function openItemsAsAt(sb: any, realmId: string, asAt: string) {
-  const cols = "tx_date,txn_type,doc_num,cust_name,due_date,subt_amount,subt_open_bal,term_name";
+  // The report's DEFAULT columns, not a `columns=` list: QuickBooks silently
+  // drops any named column it does not recognise for that company, and the
+  // money columns are named differently in a multi-currency file.
   const resp = await qboFetch(sb, realmId,
-    `reports/AgedReceivableDetail?report_date=${asAt}&columns=${cols}&minorversion=75`);
+    `reports/AgedReceivableDetail?report_date=${asAt}&minorversion=75`);
   if (!resp.ok) throw new Error(`AgedReceivableDetail ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
 
@@ -728,7 +730,10 @@ async function openItemsAsAt(sb: any, realmId: string, asAt: string) {
   const colDefs = report?.Columns?.Column || [];
   const keyAt: string[] = colDefs.map((c: any) => {
     const k = (c.MetaData || []).find((m: any) => m.Name === "ColKey")?.Value;
-    if (k) return String(k);
+    // A multi-currency company reports in home currency under different keys
+    // (subt_home_amount / subt_home_open_bal). Mac Recruit, 2026-10-09: the
+    // plain keys were simply absent, so every item read as £0 and vanished.
+    if (k) return String(k).replace(/^subt_home_/, "subt_");
     const t = String(c.ColTitle || "").toLowerCase();
     if (/^date$/.test(t)) return "tx_date";
     if (/type/.test(t)) return "txn_type";
