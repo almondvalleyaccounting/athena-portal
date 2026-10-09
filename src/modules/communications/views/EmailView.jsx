@@ -417,6 +417,15 @@ const readWidth = (key, fallback) => {
   try { return Number(localStorage.getItem(key)) || fallback; } catch { return fallback; }
 };
 
+// A composer holds typing once anything differs from how it was opened
+// (signature, quoted original) — only then is it worth keeping or confirming.
+const withStart = (c) => ({ ...c, start: { to: c.to, cc: c.cc, subject: c.subject, body: c.body } });
+function composerDirty(c) {
+  if (!c) return false;
+  const s = c.start || {};
+  return ['to', 'cc', 'subject', 'body'].some((k) => (c[k] || '') !== (s[k] || ''));
+}
+
 export default function EmailView() {
   const { profile } = useAuth();
   const isAdmin = profile?.is_portal_admin || profile?.can_manage_portal;
@@ -447,7 +456,11 @@ export default function EmailView() {
   const loadGen = useRef(0);
   const [thread, setThread] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  const [composer, setComposer] = useState(null);
+  // An unsent draft is kept in this browser as you type and comes back after a
+  // reload, a crash or a sign-out. Cleared on send or discard.
+  const [composer, setComposer] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('comms_draft') || 'null'); } catch { return null; }
+  });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // { text, undo? }
@@ -486,13 +499,15 @@ export default function EmailView() {
   );
   // Mailboxes the list is currently reading from, and a short label per address
   // for the per-row chip in merged mode.
-  const activeMailboxes = useMemo(() => {
-    if (isAll) return (mailboxes || []).map((m) => m.account_email);
-    return mailbox ? [mailbox] : [];
-  }, [isAll, mailboxes, mailbox]);
-  const mailboxLabel = useMemo(() => Object.fromEntries(
-    (mailboxes || []).map((m) => [m.account_email, m.display_name || m.account_email.split('@')[0]]),
-  ), [mailboxes]);
+  //
+  // Both are keyed on their CONTENT, not on the mailboxes array: that array is
+  // rebuilt whenever the list is re-read, and a new array with the same
+  // addresses used to re-run the whole inbox load — closing the open email
+  // and any reply half-written in it.
+  const activeKey = isAll ? (mailboxes || []).map((m) => m.account_email).join('|') : mailbox;
+  const activeMailboxes = useMemo(() => (activeKey ? activeKey.split('|') : []), [activeKey]);
+  const labelKey = JSON.stringify((mailboxes || []).map((m) => [m.account_email, m.display_name || m.account_email.split('@')[0]]));
+  const mailboxLabel = useMemo(() => Object.fromEntries(JSON.parse(labelKey)), [labelKey]);
   // Where a "New email" comes from when no single mailbox is selected.
   const sendFrom = isAll
     ? ((mailboxes || []).find((m) => m.kind === 'personal' && m.owner_staff_id === profile?.id)
@@ -518,29 +533,34 @@ export default function EmailView() {
   });
 
   // ── Mailboxes / contacts / signatures ──
+  // Keyed on who you are, not the profile object: AppShell re-reads the
+  // profile on every sign-in token refresh (about hourly, and when you come
+  // back to the tab), and that new object used to reload this whole screen.
+  const profileId = profile?.id;
+  const profileIsAdmin = !!profile?.is_portal_admin;
   const loadMailboxes = useCallback(async () => {
     try {
-      const rows = await listMailboxes(profile);
+      const rows = await listMailboxes({ id: profileId, is_portal_admin: profileIsAdmin });
       setMailboxes(rows);
       const stored = localStorage.getItem('comms_mailbox');
       if (stored === ALL_MAILBOXES && rows.length > 1) { setMailbox(ALL_MAILBOXES); return; }
       const preferred =
         rows.find((m) => m.account_email === stored) ||
-        rows.find((m) => m.kind === 'personal' && m.owner_staff_id === profile?.id) ||
+        rows.find((m) => m.kind === 'personal' && m.owner_staff_id === profileId) ||
         rows[0];
       if (preferred) setMailbox(preferred.account_email);
     } catch (e) {
       setError(`Could not load mailboxes: ${e.message}`);
       setMailboxes([]);
     }
-  }, [profile]);
+  }, [profileId, profileIsAdmin]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profileId) return;
     loadMailboxes();
     loadContacts().then(setContacts).catch(() => {});
-    loadSignatures(profile.id).then(setSignatures).catch(() => {});
-  }, [profile, loadMailboxes]);
+    loadSignatures(profileId).then(setSignatures).catch(() => {});
+  }, [profileId, loadMailboxes]);
   useEffect(() => { if (mailbox) localStorage.setItem('comms_mailbox', mailbox); }, [mailbox]);
 
   // ── Labels + threads ──
@@ -685,7 +705,16 @@ export default function EmailView() {
     return list;
   }, [threads, sort]);
 
-  useEffect(() => { setThread(null); setPending(null); setComposer(null); loadLabels(); }, [mailbox, loadLabels]);
+  // Switching mailbox closes what's open. Not on first load — that would throw
+  // away a draft restored from the last visit.
+  const prevMailbox = useRef(mailbox);
+  useEffect(() => {
+    if (prevMailbox.current && prevMailbox.current !== mailbox) {
+      setThread(null); setPending(null); setComposer(null);
+    }
+    prevMailbox.current = mailbox;
+    loadLabels();
+  }, [mailbox, loadLabels]);
   useEffect(() => { setThread(null); setPending(null); loadThreads(); }, [loadThreads]);
 
   // ── Auto-suggested tags ──
@@ -907,6 +936,18 @@ export default function EmailView() {
   // (a full round trip through comms-gmail to Gmail), so a click felt dead.
   // Now the row's own summary paints the header at once, full threads are
   // cached for the session, and hovering a row fetches it ahead of the click.
+  const composerRef = useRef(composer);
+  useEffect(() => {
+    composerRef.current = composer;
+    try {
+      if (composerDirty(composer)) localStorage.setItem('comms_draft', JSON.stringify(composer));
+      else localStorage.removeItem('comms_draft');
+    } catch { /* storage full or blocked — the draft still lives on screen */ }
+  }, [composer]);
+  // Anything that would close the composer asks first when it holds typing.
+  const okToDiscard = () => !composerDirty(composerRef.current)
+    || window.confirm('Discard your unsent email?');
+
   const threadCache = useRef(new Map()); // `${mailbox}:${id}` → thread
   const inflight = useRef(new Map());    // same key → promise
   const openGen = useRef(0);
@@ -932,6 +973,7 @@ export default function EmailView() {
   }, [mailbox, fetchThread]);
 
   const openThread = useCallback(async (summary) => {
+    if (!okToDiscard()) return null;
     const mb = summary.mailbox || mailbox;
     const gen = ++openGen.current;
     setError(null);
@@ -1115,12 +1157,13 @@ export default function EmailView() {
 
   // ── Composer ──
   const startComposer = useCallback((mode) => {
+    if (!okToDiscard()) return;
     setError(null);
     // Signature belongs to the account the mail actually leaves from.
     const sigBody = effectiveSignature(signatures, mode === 'new' ? sendFrom : threadMailbox);
     const sig = sigBody ? `\n\n${sigBody}` : '';
     if (mode === 'new') {
-      setComposer({ mode, to: '', cc: '', subject: '', body: `${sig}`, mailbox: sendFrom });
+      setComposer(withStart({ mode, to: '', cc: '', subject: '', body: `${sig}`, mailbox: sendFrom }));
       return;
     }
     if (!latestMsg) return;
@@ -1136,10 +1179,10 @@ export default function EmailView() {
           .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.id, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox });
+      setComposer(withStart({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.id, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer({ mode, to: '', cc: '', subject: fwdSubject, body: `${sig}\n\n${forwardBody(latestMsg)}`, mailbox: threadMailbox });
+      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: `${sig}\n\n${forwardBody(latestMsg)}`, mailbox: threadMailbox }));
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
@@ -1341,7 +1384,7 @@ export default function EmailView() {
           <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
             {composer.mode === 'new' ? 'New email' : composer.mode === 'forward' ? 'Forward' : composer.mode === 'replyAll' ? 'Reply all' : 'Reply'} — from {mailboxLabel[composer.mailbox] || composer.mailbox || mailbox}
           </span>
-          <button onClick={() => setComposer(null)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={14} /></button>
+          <button onClick={() => { if (okToDiscard()) setComposer(null); }} title="Discard" style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={14} /></button>
         </div>
         <AddressInput value={composer.to} onChange={(v) => setComposer((c) => ({ ...c, to: v }))} contacts={contacts} placeholder="To" />
         <AddressInput value={composer.cc} onChange={(v) => setComposer((c) => ({ ...c, cc: v }))} contacts={contacts} placeholder="Cc (optional)" />
@@ -1361,7 +1404,7 @@ export default function EmailView() {
   }
 
   const paneContent = () => {
-    if (composer?.mode === 'new' || composer?.mode === 'forward') {
+    if (composer && (composer.mode === 'new' || composer.mode === 'forward' || !thread || composer.threadId !== thread.id)) {
       return renderComposer();
     }
     if (thread) {
@@ -1391,7 +1434,7 @@ export default function EmailView() {
               {threadInTrash
                 ? <button onClick={() => restoreThread(thread.id)} title="Restore from bin" style={btnText}><ArchiveRestore size={14} /> Restore</button>
                 : <button onClick={() => trashThread(thread.id)} title="Move to bin (recoverable for ~30 days in Gmail)" style={{ ...BTN.danger.sm, display: 'flex', alignItems: 'center', gap: 5 }}><Trash2 size={14} /> Delete</button>}
-              <button onClick={() => setThread(null)} title="Close" style={btnIcon}><X size={14} /></button>
+              <button onClick={() => { if (okToDiscard()) { setComposer(null); setThread(null); } }} title="Close" style={btnIcon}><X size={14} /></button>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1451,7 +1494,7 @@ export default function EmailView() {
       <div style={{ width: railW, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
         <select
           value={mailbox}
-          onChange={(e) => setMailbox(e.target.value)}
+          onChange={(e) => { if (okToDiscard()) setMailbox(e.target.value); }}
           style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', fontWeight: 600, color: '#0f172a' }}
         >
           {mailboxes.length > 1 && (
@@ -1518,7 +1561,7 @@ export default function EmailView() {
         )}
 
         <button
-          onClick={() => { setThread(null); startComposer('new'); }}
+          onClick={() => { if (!okToDiscard()) return; composerRef.current = null; setThread(null); startComposer('new'); }}
           style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
         >
           <PenSquare size={14} /> New email
