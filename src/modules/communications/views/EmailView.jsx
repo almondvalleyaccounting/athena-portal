@@ -70,7 +70,11 @@ function HtmlBody({ html }) {
       const doc = ref.current?.contentDocument;
       if (!doc) return;
       const h = Math.max(doc.body?.scrollHeight || 0, doc.documentElement?.scrollHeight || 0);
-      if (h > 0) setHeight(Math.min(h + 24, 12000));
+      // Exact height, no padding: a body sized to the frame then measures the
+      // same as the frame and the observer settles, instead of growing it
+      // step by step. The CSS above stops emails sizing themselves to the
+      // window in the first place.
+      if (h > 0) setHeight((prev) => (Math.abs(prev - h) > 2 ? Math.min(h, 12000) : prev));
     } catch { /* leave as-is */ }
   }, []);
 
@@ -96,7 +100,7 @@ function HtmlBody({ html }) {
     return () => { cancelAnimationFrame(raf); observer?.disconnect(); };
   }, [html, measure]);
 
-  const srcDoc = `<!doctype html><html><head><base target="_blank"><style>body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;margin:8px;word-break:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
+  const srcDoc = `<!doctype html><html><head><base target="_blank"><style>html,body{height:auto!important;min-height:0!important}body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;margin:8px;word-break:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`;
   return (
     <iframe
       ref={ref}
