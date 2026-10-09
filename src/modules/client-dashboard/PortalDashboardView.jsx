@@ -11,7 +11,13 @@ import {
   mergeReportTrees, totalReportTree, comparativeColumns, COMPARATIVE_KINDS,
   rangeLabel, COMPARATIVES,
 } from './dashboardData';
-import { BucketChart, LineChart } from './DashboardCharts';
+import { BucketChart, LineChart, Sparkline } from './DashboardCharts';
+import {
+  AgeBar, TopAgedBars, Waterfall, StackedColumns, SeriesLegend, GapChart, SimpleBars, STACK_COLOURS,
+} from './InsightCharts';
+import {
+  priorYearBuckets, bsAt, creditorsAt, debtorDays, waterfallSteps, costStack, dueSchedule,
+} from './portalInsights';
 import {
   forecastByMonth, actualsByMonth, buildStatement, buildCashflow,
   totalRow, netRow, PL_ORDER, BS_ORDER,
@@ -368,6 +374,7 @@ export default function PortalDashboardView({
         {payload && active === 'overview' && <Overview payload={payload} ui={ui} />}
         {payload && active === 'pl' && <ProfitAndLoss payload={payload} ui={ui} currency={currency} loading={loading} />}
         {payload && active === 'bs' && <BalanceSheet payload={payload} ui={ui} currency={currency} loading={loading} />}
+        {payload && active === 'debtors' && <DebtorInsights payload={payload} currency={currency} />}
         {payload && active === 'debtors' && (
           <AgedSection
             title="Who owes you" data={payload.metrics?.ar_asat} currency={currency}
@@ -390,6 +397,7 @@ export default function PortalDashboardView({
             cardStyle={cardChrome}
           />
         )}
+        {payload && active === 'creditors' && <CreditorInsights payload={payload} currency={currency} />}
         {payload && active === 'creditors' && (
           <AgedSection
             title="Who you owe" data={payload.metrics?.ap_asat} currency={currency}
@@ -484,7 +492,29 @@ function Overview({ payload, ui }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload, buckets, view]);
 
+  // Last year's turnover for each bucket — the faint line behind the bars.
+  // The detail reaches twelve months further back than the buckets for this.
+  const priorIncome = useMemo(() => {
+    const detail = payload?.metrics?.detail;
+    if (!detail?.month_keys?.length || !buckets.length) return [];
+    const py = priorYearBuckets(buckets, detail.month_keys);
+    const agg = aggregate(detail, py, configFrom(payload));
+    return py.map((b, i) => (b.months.length ? seriesFor(agg[i], view).income : null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payload, buckets, view]);
+
   if (!latest) return <Muted>There aren't any figures for this period yet.</Muted>;
+
+  const series = payload?.metrics?.bs_series;
+  const atEnds = (fn) => buckets.map((b) => fn(b.endKey));
+  const sparks = {
+    income: chartRows.map((r) => seriesFor(r, view).income),
+    net: chartRows.map((r) => seriesFor(r, view).net_income),
+    cash: atEnds((k) => bsAt(series, 'cash', k)),
+    debtors: atEnds((k) => bsAt(series, 'debtors', k)),
+    creditors: atEnds((k) => creditorsAt(series, k)),
+  };
+  const hasPrior = priorIncome.some((v) => v != null);
 
   const cur = seriesFor(latest, view);
   const prv = seriesFor(previous, view);
@@ -511,11 +541,11 @@ function Overview({ payload, ui }) {
   );
 
   const tiles = [
-    <Tile key="inc" label="Turnover" value={cur.income} prev={prv.income} currency={currency} sub={latest.label} />,
-    <Tile key="net" label={isU ? 'Underlying profit' : 'Profit'} value={cur.net_income} prev={prv.net_income} currency={currency} sub={latest.label} />,
-    <Tile key="cash" label="Money in the bank" value={bs?.cash} prev={bs?.prev?.cash} currency={currency} sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />,
-    <Tile key="dr" label="Owed to you" value={bs?.debtors} prev={bs?.prev?.debtors} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />,
-    <Tile key="cr" label="You owe" value={creditors} prev={bs?.prev?.accounts_payable ?? bs?.prev?.creditors_within_1yr} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />,
+    <Tile key="inc" label="Turnover" value={cur.income} prev={prv.income} currency={currency} sub={latest.label} spark={sparks.income} />,
+    <Tile key="net" label={isU ? 'Underlying profit' : 'Profit'} value={cur.net_income} prev={prv.net_income} currency={currency} sub={latest.label} spark={sparks.net} />,
+    <Tile key="cash" label="Money in the bank" value={bs?.cash} prev={bs?.prev?.cash} currency={currency} sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} spark={sparks.cash} />,
+    <Tile key="dr" label="Owed to you" value={bs?.debtors} prev={bs?.prev?.debtors} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} spark={sparks.debtors} />,
+    <Tile key="cr" label="You owe" value={creditors} prev={bs?.prev?.accounts_payable ?? bs?.prev?.creditors_within_1yr} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} spark={sparks.creditors} />,
     ...kpiTiles.map((k) => <KpiTile key={k.definition.id} row={k} currency={currency} sub={latest.label} />),
   ];
 
@@ -529,9 +559,9 @@ function Overview({ payload, ui }) {
             <BucketChart
               width={w}
               height={layout === 'wide' ? 330 : layout === 'compact' ? 220 : 260}
-              points={chartRows.map((r) => {
+              points={chartRows.map((r, i) => {
                 const s = seriesFor(r, view);
-                return { label: r.label, income: s.income, net: s.net_income };
+                return { label: r.label, income: s.income, net: s.net_income, priorIncome: priorIncome[i] ?? null };
               })}
               currency={currency}
               netLabel={isU ? 'underlying profit' : 'profit'}
@@ -539,7 +569,28 @@ function Overview({ payload, ui }) {
           )}
         </FitChart>
       </div>
-      <Legend />
+      <Legend prior={hasPrior} />
+    </Card>
+  );
+
+  // Profit is not cash. The bank balance at each bucket end, under the chart
+  // of what was earned, shows whether the one is turning into the other.
+  const cashVals = sparks.cash;
+  const cashChart = layout !== 'compact' && cashVals.filter((v) => v != null).length >= 2 && (
+    <Card>
+      <CardTitle>Money in the bank</CardTitle>
+      <Muted small>At the end of each {grain === 'month' ? 'month' : grain === 'quarter' ? 'quarter' : 'year'}</Muted>
+      <div style={{ marginTop: 10 }}>
+        <FitChart>
+          {(w) => (
+            <LineChart
+              width={w} height={layout === 'wide' ? 190 : 170} colour="#0e7490"
+              points={buckets.map((b, i) => ({ label: b.label, value: cashVals[i] }))}
+              currency={currency}
+            />
+          )}
+        </FitChart>
+      </div>
     </Card>
   );
 
@@ -559,6 +610,7 @@ function Overview({ payload, ui }) {
         <div>
           {sentence}
           {chart}
+          {cashChart}
           {note}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
@@ -573,6 +625,7 @@ function Overview({ payload, ui }) {
       {sentence}
       <Tiles>{tiles}</Tiles>
       {chart}
+      {cashChart}
       {note}
     </>
   );
@@ -613,6 +666,19 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
     return bucketReportTree(parsed.rows, monthKeys, buckets, 'sum');
   }, [isTrend, parsed, monthKeys, buckets]);
 
+  // Costs by heading for the stacked chart, rolled into the grain's buckets
+  // whichever Compare setting the table is showing.
+  const costSeries = useMemo(() => {
+    if (!parsed || !buckets?.length || !monthKeys.some(Boolean)) return [];
+    // Five named overheads at most: with cost of sales and "everything else"
+    // that is seven series, one colour each, the last always grey.
+    return costStack(bucketReportTree(parsed.rows, monthKeys, buckets, 'sum'), 5)
+      .map((x, i) => ({
+        ...x,
+        colour: x.name === 'Everything else' ? STACK_COLOURS[STACK_COLOURS.length - 1] : STACK_COLOURS[i],
+      }));
+  }, [parsed, monthKeys, buckets]);
+
   const merged = useMemo(() => {
     if (isTrend || !parsed) return null;
     const cur = totalReportTree(parsed.rows, monthKeys);
@@ -631,7 +697,40 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
     : bucketed ? buckets.map((b) => b.label) : parsed.columns;
   const rows = merged || bucketed || parsed.rows;
 
+  // The charts. The cost stack drops buckets the period does not reach (a
+  // quarterly view of a twelve-month period has eight buckets, four of them
+  // before it), so it never draws an empty stretch that reads as no costs.
+  const steps = waterfallSteps(pl);
+  const live = buckets.map((_, i) => costSeries.some((x) => x.values[i] != null));
+  const stackLabels = buckets.filter((_, i) => live[i]).map((b) => b.label);
+  const stackSeries = costSeries.map((x) => ({ ...x, values: x.values.filter((_, i) => live[i]) }));
+  const charts = layout !== 'compact' && (steps.length > 1 || stackLabels.length > 0) && (
+    <div style={layout === 'wide' ? TWO_COL : undefined}>
+      {steps.length > 1 && (
+        <Card>
+          <CardTitle>From turnover to profit</CardTitle>
+          <Muted small>{rangeLabel(p?.start, p?.end)}</Muted>
+          <div style={{ marginTop: 10 }}>
+            <FitChart>{(w) => <Waterfall width={w} height={270} steps={steps} currency={currency} />}</FitChart>
+          </div>
+        </Card>
+      )}
+      {stackLabels.length > 0 && stackSeries.length > 0 && (
+        <Card>
+          <CardTitle>Where the money goes</CardTitle>
+          <Muted small>Costs by heading, {ui.grain === 'month' ? 'month' : ui.grain === 'quarter' ? 'quarter' : 'year'} by {ui.grain === 'month' ? 'month' : ui.grain === 'quarter' ? 'quarter' : 'year'}</Muted>
+          <div style={{ marginTop: 10 }}>
+            <FitChart>{(w) => <StackedColumns width={w} height={240} labels={stackLabels} series={stackSeries} currency={currency} />}</FitChart>
+          </div>
+          <SeriesLegend series={stackSeries} />
+        </Card>
+      )}
+    </div>
+  );
+
   return (
+    <>
+    {charts}
     <Card pad={false}>
       <div style={{ padding: '16px 18px 6px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
@@ -659,6 +758,7 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
         palette={tablePalette(layout)} startExpanded
       />
     </Card>
+    </>
   );
 }
 
@@ -709,6 +809,56 @@ function BalanceSheet({ payload, ui, currency, loading }) {
     : bucketed ? buckets.map((b) => b.label) : (fallback?.columns || []);
   const rows = merged || bucketed || fallback?.rows || [];
 
+  // Month-end positions across the grain's buckets: what it owns against what
+  // it owes, and working capital. Buckets with no balance sheet are dropped.
+  const series = payload.metrics?.bs_series;
+  const ends = buckets.filter((b) => bsAt(series, 'total_assets', b.endKey) != null);
+  const owns = ends.map((b) => bsAt(series, 'total_assets', b.endKey));
+  const owes = ends.map((b) => bsAt(series, 'total_liabilities', b.endKey));
+  const working = ends.map((b) => {
+    const c = bsAt(series, 'cash', b.endKey);
+    const d = bsAt(series, 'debtors', b.endKey);
+    const cr = bsAt(series, 'creditors_within_1yr', b.endKey);
+    return c == null && d == null ? null : (c || 0) + (d || 0) - (cr || 0);
+  });
+  const OWN_OWE = [
+    { name: 'What it owns', colour: '#1E4560', line: true },
+    { name: 'What it owes', colour: '#f87171', line: true },
+  ];
+  const bsCharts = layout !== 'compact' && ends.length >= 2 && (
+    <div style={layout === 'wide' ? TWO_COL : undefined}>
+      <Card>
+        <CardTitle>What it owns and what it owes</CardTitle>
+        <Muted small>At each period end — the shaded gap is what the business is worth</Muted>
+        <div style={{ marginTop: 10 }}>
+          <FitChart>
+            {(w) => (
+              <GapChart
+                width={w} height={240} labels={ends.map((b) => b.label)} currency={currency}
+                a={{ ...OWN_OWE[0], values: owns }} b={{ ...OWN_OWE[1], values: owes }}
+              />
+            )}
+          </FitChart>
+        </div>
+        <SeriesLegend series={OWN_OWE} />
+      </Card>
+      <Card>
+        <CardTitle>Working capital</CardTitle>
+        <Muted small>Money in the bank plus what customers owe, less what is due to be paid within a year</Muted>
+        <div style={{ marginTop: 10 }}>
+          <FitChart>
+            {(w) => (
+              <LineChart
+                width={w} height={240} colour="#0e7490" currency={currency}
+                points={ends.map((b, i) => ({ label: b.label, value: working[i] }))}
+              />
+            )}
+          </FitChart>
+        </div>
+      </Card>
+    </div>
+  );
+
   return (
     <>
       <Tiles>
@@ -720,6 +870,8 @@ function BalanceSheet({ payload, ui, currency, loading }) {
             : null} />
         <Tile label="What it comes to" value={bs.net_assets ?? bs.equity} prev={cmp?.net_assets ?? cmp?.equity} currency={currency} />
       </Tiles>
+
+      {bsCharts}
 
       <Card pad={false}>
         <div style={{ padding: '16px 18px 6px' }}>
@@ -787,6 +939,7 @@ function Measures({ payload, ui, currency }) {
   if (!model || !model.rows.length) return <Muted>There aren't any measures set up for you yet.</Muted>;
 
   return (
+    <>
     <Card pad={false}>
       <div style={{ padding: '16px 18px 6px' }}>
         <CardTitle>Measures</CardTitle>
@@ -806,6 +959,33 @@ function Measures({ payload, ui, currency }) {
         currency={currency}
       />
     </Card>
+
+    {/* One small chart per measure. A target line appears where a measure has
+        one set; months with no figure are left out rather than drawn as zero. */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0 14px' }}>
+      {model.rows.map((r) => {
+        const pts = buckets.map((b, i) => ({ label: b.label, value: r.total?.[i] }))
+          .filter((x) => x.value != null);
+        if (pts.length < 2) return null;
+        return (
+          <Card key={r.definition.id}>
+            <CardTitle>{r.definition.label}</CardTitle>
+            <div style={{ marginTop: 8 }}>
+              <FitChart>
+                {(w) => (
+                  <LineChart
+                    width={w} height={160} colour="#0e7490" points={pts} currency={currency}
+                    format={(v) => formatKpi(v, r.definition.unit, r.definition.decimals, currency)}
+                    target={r.definition.target ?? null}
+                  />
+                )}
+              </FitChart>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+    </>
   );
 }
 
@@ -852,7 +1032,15 @@ function Projection({ payload, ui }) {
     const pl = buildStatement({ buckets, actual: act.categories, forecast: fc.categories, cutoff, order: PL_ORDER });
     const bsSt = buildStatement({ buckets, actual: act.categories, forecast: fc.categories, cutoff, order: BS_ORDER });
     const cf = buildCashflow({ buckets, actualCf: act.cf, forecastCf: fc.cf, cutoff });
-    return { buckets, pl, bs: bsSt, cf, cutoff };
+    // The other scenarios on this forecast (a downside, an upside), run
+    // through the same engine, for the cash chart's range band.
+    const alts = (p.alternatives || []).map((a) => {
+      const fa = forecastByMonth(a.rows || [], p.opening_period, overrides);
+      const ca = buildCashflow({ buckets, actualCf: act.cf, forecastCf: fa.cf, cutoff });
+      const close = ca.find((r) => r.category === 'closing');
+      return close ? { name: a.name, values: close.values } : null;
+    }).filter(Boolean);
+    return { buckets, pl, bs: bsSt, cf, cutoff, alts };
   }, [p, payload.accounts, grain, basis, fyIdx]);
 
   if (!model) return <Muted>Your projection isn't ready yet — we're still building it.</Muted>;
@@ -862,6 +1050,13 @@ function Projection({ payload, ui }) {
   const net = netRow(pl.rows, 'Profit');
   const forecastFrom = pl.status.findIndex((s) => s !== 'actual');
   const closing = cf.find((r) => r.category === 'closing');
+  const fcFrom = forecastFrom < 0 ? null : forecastFrom;
+  const band = closing && model.alts.length && fcFrom != null
+    ? {
+        lo: closing.values.map((v, i) => (i < fcFrom || v == null ? null : Math.min(v, ...model.alts.map((a) => a.values[i] ?? v)))),
+        hi: closing.values.map((v, i) => (i < fcFrom || v == null ? null : Math.max(v, ...model.alts.map((a) => a.values[i] ?? v)))),
+      }
+    : null;
 
   return (
     <>
@@ -897,6 +1092,11 @@ function Projection({ payload, ui }) {
         {closing && (
           <Card>
             <CardTitle>Cash, looking forward</CardTitle>
+            <Muted small>
+              {band
+                ? `The shaded range runs across your other scenarios (${model.alts.map((a) => a.name).join(', ')}). The ring marks the lowest point.`
+                : 'The ring marks the lowest point in the plan.'}
+            </Muted>
             <div style={{ marginTop: 10 }}>
               <FitChart>
                 {(w) => (
@@ -905,7 +1105,9 @@ function Projection({ payload, ui }) {
                     height={layout === 'compact' ? 200 : 280}
                     points={buckets.map((b, i) => ({ label: b.label, value: closing.values[i] ?? null }))}
                     currency={currency}
-                    forecastFrom={forecastFrom < 0 ? null : forecastFrom}
+                    forecastFrom={fcFrom}
+                    band={band}
+                    markMin
                   />
                 )}
               </FitChart>
@@ -934,6 +1136,86 @@ function Projection({ payload, ui }) {
     </>
   );
 }
+
+/* ─── Who owes you / who you owe ─────────────────────────────── */
+/*
+  Charts above the aged tables. Debtors: where the money owed sits by age, who
+  owes the most (each bar split by age), and days-to-get-paid month by month.
+  Creditors: the same age split, and when the bills open on the date fall due.
+*/
+function DebtorInsights({ payload, currency }) {
+  const { layout } = useLayout();
+  const ar = payload.metrics?.ar_asat;
+  if (!ar) return null;
+  const series = payload.metrics?.bs_series;
+  const dso = debtorDays(payload.metrics?.detail, series, (series?.month_keys || []).slice(-12))
+    .filter((d) => d.value != null);
+  return (
+    <>
+      <div style={layout === 'wide' ? TWO_COL : undefined}>
+        <Card>
+          <AgeBar title="How old the money owed to you is" buckets={ar.buckets} currency={currency} note={`at ${shortDate(ar.period?.end)}`} />
+        </Card>
+        {layout !== 'compact' && (ar.top || []).length > 0 && (
+          <Card>
+            <TopAgedBars title="Who owes you the most" rows={ar.top} currency={currency} />
+          </Card>
+        )}
+      </div>
+      {layout !== 'compact' && dso.length >= 3 && (
+        <Card>
+          <CardTitle>Days to get paid</CardTitle>
+          <Muted small>What you are owed at each month end, against the last three months of turnover — lower is better</Muted>
+          <div style={{ marginTop: 10 }}>
+            <FitChart>
+              {(w) => (
+                <LineChart
+                  width={w} height={200} colour="#7c3aed" points={dso}
+                  format={(v) => `${Math.round(v)} days`}
+                />
+              )}
+            </FitChart>
+          </div>
+        </Card>
+      )}
+    </>
+  );
+}
+
+function CreditorInsights({ payload, currency }) {
+  const { layout } = useLayout();
+  const ap = payload.metrics?.ap_asat;
+  if (!ap) return null;
+  const bills = payload.metrics?.open_bills;
+  const schedule = dueSchedule(bills);
+  const hasSchedule = schedule.some((x) => x.value > 0.5);
+  // Credits and payments on account reduce the balance but are not bills to
+  // pay, so the chart leaves them out — and says so, or its bars would add up
+  // to more than the total above it with no explanation.
+  const credits = (bills?.items || []).reduce((sum, i) => sum + Math.min(0, Number(i.open) || 0), 0);
+  return (
+    <div style={layout === 'wide' ? TWO_COL : undefined}>
+      <Card>
+        <AgeBar title="How old your unpaid bills are" buckets={ap.buckets} currency={currency} note={`at ${shortDate(ap.period?.end)}`} />
+      </Card>
+      {layout !== 'compact' && hasSchedule && (
+        <Card>
+          <CardTitle>When your bills fall due</CardTitle>
+          <Muted small>
+            Bills unpaid at {shortDate(bills.as_at)}, by the week they are due
+            {credits < -0.5 && ` — not counting ${money(-credits, currency)} of supplier credits and payments on account, which reduce what you owe`}
+          </Muted>
+          <div style={{ marginTop: 10 }}>
+            <FitChart>{(w) => <SimpleBars width={w} height={200} points={schedule} currency={currency} />}</FitChart>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// Two charts side by side on a desktop. Cards keep their own bottom margin.
+const TWO_COL = { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0 14px', alignItems: 'start' };
 
 /* ─── Bits ─────────────────────────────────────────────────────── */
 /*
@@ -1040,14 +1322,23 @@ const Tiles = ({ children }) => (
   </div>
 );
 
-function Tile({ label, value, prev, currency, sub, goodWhenDown }) {
+function Tile({ label, value, prev, currency, sub, goodWhenDown, spark = null }) {
   const diff = (value != null && prev != null) ? value - prev : null;
   const good = diff == null ? null : (goodWhenDown ? diff < 0 : diff > 0);
+  // The tile's recent values as a line, so the number has a direction.
+  const trail = (spark || []).filter((v) => v != null);
   return (
     <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: 14, padding: '13px 15px' }}>
       <div style={{ fontSize: 12.5, color: t.faint, marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: 19, fontWeight: 700, color: (value ?? 0) < 0 ? '#b91c1c' : t.navy }}>
-        {money(value, currency)}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ fontSize: 19, fontWeight: 700, color: (value ?? 0) < 0 ? '#b91c1c' : t.navy }}>
+          {money(value, currency)}
+        </div>
+        {trail.length >= 3 && (
+          <div title="Recent periods" style={{ flexShrink: 0, marginBottom: 3 }}>
+            <Sparkline values={trail} width={56} height={20} zeroBase={false} stroke={(value ?? 0) < 0 ? '#f87171' : '#38bdf8'} />
+          </div>
+        )}
       </div>
       <div style={{ minHeight: 15, fontSize: 12, color: t.faint, marginTop: 2 }}>
         {diff != null && Math.abs(diff) > 0.005 && (
@@ -1089,10 +1380,11 @@ function KpiTile({ row, currency, sub }) {
   );
 }
 
-const Legend = ({ forecast }) => (
+const Legend = ({ forecast, prior }) => (
   <div style={{ fontSize: 12, color: t.faint, marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
     <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#bae6fd', borderRadius: 2, marginRight: 4, verticalAlign: -1 }} />turnover</span>
     <span><span style={{ display: 'inline-block', width: 10, height: 2, background: '#0f172a', margin: '0 4px 0 0', verticalAlign: 3 }} />profit</span>
+    {prior && <span><span style={{ display: 'inline-block', width: 12, height: 0, borderTop: '2px dashed #7dd3fc', margin: '0 4px 0 0', verticalAlign: 3 }} />turnover a year earlier</span>}
     {forecast && <span style={{ fontStyle: 'italic' }}>hatched bars and the dashed line are projected</span>}
   </div>
 );

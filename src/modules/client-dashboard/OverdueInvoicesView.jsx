@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   overdueInvoices, sortByDue, groupByCustomer, summarise, buildStatement,
-  money2, dateGB,
+  money2, dateGB, withAge,
 } from './openItems';
+import { AgeBar } from './InsightCharts';
+import { ageBandsFromItems } from './portalInsights';
 import { downloadStatements, letterhead } from './statementPdf';
 import StatementSettingsForm from './StatementSettingsForm';
 
@@ -71,6 +73,12 @@ export default function OverdueInvoicesView({
   const byDate = useMemo(() => sortByDue(rows), [rows]);
   const groups = useMemo(() => groupByCustomer(rows), [rows]);
   const sum = useMemo(() => summarise(rows), [rows]);
+  // Every open item by age — not-yet-due included — so the overdue list sits
+  // in the context of the whole ledger.
+  const bands = useMemo(
+    () => (data?.items ? ageBandsFromItems(withAge(data.items, data.as_at)) : null),
+    [data],
+  );
 
   const toggle = (key) => setSelected((s) => {
     const n = new Set(s);
@@ -157,6 +165,12 @@ export default function OverdueInvoicesView({
         <Tile label="Customers" value={sum.customers} />
         <Tile label="Over 60 days" value={money2(sum.over60, currency)} tone={sum.over60 > 0 ? p.overdue : p.strong} />
       </div>
+
+      {bands && (
+        <div style={card}>
+          <AgeBar title="Everything unpaid, by age" buckets={bands} currency={currency} note={`on ${dateGB(data.as_at)}`} />
+        </div>
+      )}
 
       {showSettings && loadSettings && saveSettings && (
         <StatementSettingsForm

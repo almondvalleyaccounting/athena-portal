@@ -469,14 +469,25 @@ Deno.serve(async (req) => {
     const wantsAr = !!grant.show_debtors;
     const wantsAp = !!grant.show_creditors;
 
+    /*
+      Charts (2026-10-09). The Overview draws last year's turnover behind this
+      year's, so the P&L detail reaches TWELVE MONTHS further back than the
+      bucket window — still one QuickBooks call, still bounded by the release.
+      The month-end balance-sheet series over the same run feeds the tile
+      sparklines, the cash and working-capital lines and days-to-get-paid.
+    */
+    const detailStart = boundDate(shiftMonthsBack(win.chartStart, 12));
+    const wantsSeries = !!grant.show_overview || !!grant.show_balance || !!grant.show_debtors;
+
     const pullBody: Record<string, unknown> = {
       window: {
         kind: isPreset ? "preset" : "custom",
         period: {
           plStart: period.start, plEnd: period.end,
           priorStart: prior.start, priorEnd: prior.end,
-          chartStart: win.chartStart, chartEnd: win.chartEnd,
+          chartStart: detailStart, chartEnd: win.chartEnd,
           chartDetail: true,
+          ...(wantsSeries ? { bsSeriesStart: detailStart, bsSeriesEnd: win.chartEnd } : {}),
           bsAsAt: asAtDate,
           ...(plCmpRange ? { cmpStart: plCmpRange.start, cmpEnd: plCmpRange.end } : {}),
         },
@@ -486,6 +497,7 @@ Deno.serve(async (req) => {
                 date: asAtDate,
                 ...(grant.show_balance && !bsCmp ? { gridStart: win.chartStart } : {}),
                 ...(grant.show_balance && bsCmpDate ? { cmpDate: bsCmpDate } : {}),
+                ...(wantsAp ? { bills: true } : {}),
               },
             }
           : {}),
@@ -617,6 +629,29 @@ Deno.serve(async (req) => {
     }
     if (wantsAr) metrics.ar_asat = aged(m.ar_asat);
     if (wantsAp) metrics.ap_asat = aged(m.ap_asat);
+    // Month-end positions for the charts: the lines only, never the report tree.
+    if (wantsSeries && m.bs_series) {
+      const L = m.bs_series.lines || {};
+      metrics.bs_series = {
+        month_keys: m.bs_series.month_keys,
+        lines: {
+          cash: L.cash, debtors: L.debtors, accounts_payable: L.accounts_payable,
+          creditors_within_1yr: L.creditors_within_1yr, total_assets: L.total_assets,
+          total_liabilities: L.total_liabilities, net_assets: L.net_assets,
+        },
+      };
+    }
+    // Supplier bills by due date — the client's own purchase ledger.
+    if (wantsAp && m.open_bills) {
+      metrics.open_bills = {
+        as_at: m.open_bills.as_at,
+        currency: m.open_bills.currency,
+        items: (m.open_bills.items || []).map((i: any) => ({
+          type: i.type, date: i.date, number: i.number, supplier: i.customer,
+          due_date: i.due_date, amount: i.amount, open: i.open,
+        })),
+      };
+    }
 
     // Owner-cost tags, so the portal can compute the underlying view with the
     // same arithmetic staff see. Ids only — no notes, no who-tagged-it.
@@ -756,7 +791,32 @@ Deno.serve(async (req) => {
           }
         }
 
+        /*
+          Other scenarios on the same forecast version (a downside, an upside)
+          make the cash chart's range band. Only real scenarios staff built:
+          with none, the chart shows the one line and no band, rather than a
+          band invented from nothing.
+        */
+        const alternatives: unknown[] = [];
+        const { data: scRow } = await sb.from("fc_scenario").select("version_id").eq("id", link.scenario_id).maybeSingle();
+        if (scRow?.version_id) {
+          const { data: sibs } = await sb.from("fc_scenario")
+            .select("id, name, kind").eq("version_id", scRow.version_id).neq("id", link.scenario_id).limit(4);
+          for (const sib of sibs || []) {
+            const sibRows: unknown[] = [];
+            for (let from = 0; from < 60000; from += PAGE) {
+              const { data: page } = await sb.from("fc_output")
+                .select("period, nominal_type, amount_p").eq("scenario_id", sib.id)
+                .order("period").range(from, from + PAGE - 1);
+              sibRows.push(...(page || []));
+              if (!page || page.length < PAGE) break;
+            }
+            alternatives.push({ name: sib.name, kind: sib.kind, rows: sibRows });
+          }
+        }
+
         projection = {
+          alternatives,
           scenario_name: sc?.name || null,
           forecast_name: forecast?.name || null,
           opening_period: forecast?.opening_period || null,

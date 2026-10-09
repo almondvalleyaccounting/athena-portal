@@ -717,13 +717,14 @@ async function agedAsAt(sb: any, realmId: string, endpoint: "AgedReceivables" | 
   that appear are fetched (100 per query); the business's own name and address
   come from CompanyInfo, for the statement letterhead.
 */
-async function openItemsAsAt(sb: any, realmId: string, asAt: string) {
+async function openItemsAsAt(sb: any, realmId: string, asAt: string, side: "receivable" | "payable" = "receivable") {
+  const payable = side === "payable";
   // The report's DEFAULT columns, not a `columns=` list: QuickBooks silently
   // drops any named column it does not recognise for that company, and the
   // money columns are named differently in a multi-currency file.
   const resp = await qboFetch(sb, realmId,
-    `reports/AgedReceivableDetail?report_date=${asAt}&minorversion=75`);
-  if (!resp.ok) throw new Error(`AgedReceivableDetail ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    `reports/${payable ? "AgedPayableDetail" : "AgedReceivableDetail"}?report_date=${asAt}&minorversion=75`);
+  if (!resp.ok) throw new Error(`Aged${payable ? "Payable" : "Receivable"}Detail ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
   const report = await resp.json();
 
   // Columns by ColKey where QBO gives one, else by title.
@@ -733,12 +734,16 @@ async function openItemsAsAt(sb: any, realmId: string, asAt: string) {
     // A multi-currency company reports in home currency under different keys
     // (subt_home_amount / subt_home_open_bal). Mac Recruit, 2026-10-09: the
     // plain keys were simply absent, so every item read as £0 and vanished.
-    if (k) return String(k).replace(/^subt_home_/, "subt_");
+    // The payables report names its party column vend_name; both sides are
+    // read as one shape, with the party under cust_name.
+    // Payables also say subt_neg_amount / subt_neg_open_bal (2026-10-09), and
+    // a multi-currency payables file may say subt_neg_home_… — all one shape.
+    if (k) return String(k).replace(/^subt_(neg_)?(home_)?/, "subt_").replace(/^vend_name$/, "cust_name");
     const t = String(c.ColTitle || "").toLowerCase();
     if (/^date$/.test(t)) return "tx_date";
     if (/type/.test(t)) return "txn_type";
     if (/num/.test(t)) return "doc_num";
-    if (/customer|name/.test(t)) return "cust_name";
+    if (/customer|supplier|vendor|name/.test(t)) return "cust_name";
     if (/due/.test(t)) return "due_date";
     if (/open/.test(t)) return "subt_open_bal";
     if (/amount/.test(t)) return "subt_amount";
@@ -774,6 +779,11 @@ async function openItemsAsAt(sb: any, realmId: string, asAt: string) {
     }
   };
   walk(report?.Rows?.Row || []);
+
+  // Bills feed a due-date chart, not a letter: no addresses, no letterhead.
+  if (payable) {
+    return { period: { start: null, end: asAt }, as_at: asAt, currency: report?.Header?.Currency || null, items };
+  }
 
   // Customers on the ledger, with what a statement needs to address them.
   const ids = [...new Set(items.map((i) => i.customer_id).filter(Boolean))] as string[];
@@ -1353,6 +1363,15 @@ Deno.serve(async (req) => {
         // Account-level P&L detail for the Underlying Performance tab (owner-cost
         // add-backs matched by account id over the selected range) — current and
         // prior period, so the underlying tiles can show a vs-prior delta.
+        // Month-end balance-sheet lines over a range (cash, debtors, creditors,
+        // assets, liabilities) — the client dashboard's sparklines, the cash
+        // and working-capital lines and days-to-get-paid. Same QBO call and
+        // cache key as the Balance Sheet grid and the projection actuals.
+        if (p.bsSeriesStart && p.bsSeriesEnd) {
+          const ss = String(p.bsSeriesStart), se = String(p.bsSeriesEnd);
+          await windowMetric(`bs_monthly#${ss}_${se}`, ss, se, "bs_series",
+            () => bsMonthlySeries(sb, realmId, ss, se));
+        }
         await windowMetric(`pl_detail#${p.plStart}_${p.plEnd}`, p.plStart, p.plEnd, "pl_detail",
           () => plAccountDetail(sb, realmId, p.plStart, p.plEnd));
         await windowMetric(`pl_detail#${p.priorStart}_${p.priorEnd}`, p.priorStart, p.priorEnd, "pl_detail_prior",
@@ -1447,6 +1466,12 @@ Deno.serve(async (req) => {
           () => agedAsAt(sb, realmId, "AgedReceivables", d));
         await windowMetric(`ap_asat#${d}`, null, d, "ap_asat",
           () => agedAsAt(sb, realmId, "AgedPayables", d));
+        // Supplier bills open at the date, each with its due date, for the
+        // "when bills fall due" chart.
+        if (win.asat.bills) {
+          await windowMetric(`open_bills#${d}`, null, d, "open_bills",
+            () => openItemsAsAt(sb, realmId, d, "payable"));
+        }
       }
 
       // Open sales-ledger items, invoice by invoice, as at a date: the Overdue
