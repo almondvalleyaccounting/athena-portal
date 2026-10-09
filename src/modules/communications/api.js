@@ -84,6 +84,7 @@ async function callGmail(action, payload = {}) {
   if (data && data.success === false) {
     const err = new Error(data.error || 'Unknown error');
     err.code = data.code || null;
+    err.warnings = data.warnings || null; // needs_confirmation: what to confirm
     throw err;
   }
   return data;
@@ -105,6 +106,10 @@ export const gmail = {
   trashMessage: (mailbox, messageId) => callGmail('trash_message', { mailbox, messageId }),
   untrashMessage: (mailbox, messageId) => callGmail('untrash_message', { mailbox, messageId }),
   send: (mailbox, opts) => callGmail('send', { mailbox, ...opts }),
+  // The outbox (sql/364): undo send + send later.
+  queueSend: (mailbox, opts) => callGmail('queue_send', { mailbox, ...opts }),
+  sendQueued: (mailbox, id) => callGmail('send_queued', { mailbox, id }),
+  cancelQueued: (mailbox, id) => callGmail('cancel_queued', { mailbox, id }),
   modifyThread: (mailbox, threadId, { addLabelIds, removeLabelIds }) =>
     callGmail('modify_thread', { mailbox, threadId, addLabelIds, removeLabelIds }),
   trashThread: (mailbox, threadId) => callGmail('trash_thread', { mailbox, threadId }),

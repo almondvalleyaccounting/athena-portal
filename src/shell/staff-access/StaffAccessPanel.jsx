@@ -635,6 +635,26 @@ function DevView({ users, data, busy, run }) {
           />
         </div>
       </Card>
+
+      <Card title="Email">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '6px 0' }}>
+          <div>
+            <div style={{ fontSize: 14.5, color: ink, fontWeight: 500 }}>Most outside recipients per email</div>
+            <div style={{ fontSize: 12.5, color: faint, marginTop: 2 }}>
+              An email sent from Athena to more people outside the firm than this (To + Cc + Bcc) is refused.
+              Mailings to clients go through Client Tax Reminders.
+            </div>
+          </div>
+          <select
+            value={data.emailCap}
+            disabled={busy === 'emailCap'}
+            onChange={(e) => run('emailCap', 'set_setting', { key: 'email_max_external_recipients', value: Number(e.target.value) })}
+            style={{ padding: '5px 8px', fontSize: 14, fontFamily: font, border: `1px solid ${line}`, borderRadius: 7, background: '#fff', color: ink }}
+          >
+            {[...new Set([1, 2, 3, 5, 8, 10, 15, 20, data.emailCap])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+      </Card>
     </div>
   );
 }

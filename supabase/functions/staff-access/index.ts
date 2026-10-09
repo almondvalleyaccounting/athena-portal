@@ -199,10 +199,21 @@ Deno.serve(async (req) => {
       }
 
       case "set_setting": {
-        if (p.key !== "new_client_figures_default") throw new BadRequest("Unknown setting");
+        // Each setting this page may write, with its own validation.
+        let value: unknown;
+        if (p.key === "new_client_figures_default") {
+          value = bool(p.value, "value");
+        } else if (p.key === "email_max_external_recipients") {
+          // Most outside recipients on one email sent from Athena (sql/364).
+          const n = Number(p.value);
+          if (!Number.isInteger(n) || n < 1 || n > 50) throw new BadRequest("value must be a whole number from 1 to 50");
+          value = n;
+        } else {
+          throw new BadRequest("Unknown setting");
+        }
         const { error } = await db.from("app_settings")
-          .update({ setting_value: bool(p.value, "value"), updated_at: now, updated_by: me })
-          .eq("setting_key", "new_client_figures_default");
+          .update({ setting_value: value, updated_at: now, updated_by: me })
+          .eq("setting_key", p.key);
         if (error) throw new Error(error.message);
         return json({ success: true });
       }

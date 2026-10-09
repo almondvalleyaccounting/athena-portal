@@ -18,11 +18,12 @@ export async function staffAccess(action, body = {}) {
 }
 
 export async function loadAccessData() {
-  const [meta, access, counts, setting] = await Promise.all([
+  const [meta, access, counts, setting, emailCap] = await Promise.all([
     supabase.from('app_modules').select('key, parent_key, grantable, status'),
     fetchAllRows(() => supabase.from('staff_module_access').select('staff_id, module_key, level').order('staff_id').order('module_key')),
     supabase.from('v_staff_client_access_counts').select('staff_id, clients_on, clients_total'),
     supabase.from('app_settings').select('setting_value').eq('setting_key', 'new_client_figures_default').maybeSingle(),
+    supabase.from('app_settings').select('setting_value').eq('setting_key', 'email_max_external_recipients').maybeSingle(),
   ]);
   if (meta.error) throw meta.error;
   if (counts.error) throw counts.error;
@@ -33,6 +34,7 @@ export async function loadAccessData() {
     access: byStaff,
     counts: Object.fromEntries((counts.data || []).map((r) => [r.staff_id, r])),
     newClientDefault: setting.data ? setting.data.setting_value !== false : true,
+    emailCap: Number(emailCap.data?.setting_value) || 5,
   };
 }
 

@@ -10,6 +10,15 @@
 //                    one row per EMAIL rather than per conversation
 //   get_message    { messageId }       one email, parsed body + attachments
 //   rename_label   { labelId, name }   rename / move a label (and its children)
+//   queue_send     { …send fields, sendAt?, mode?, contextMessageId?, acknowledged? }
+//                    every composer email: checked (sql/364), then held in
+//                    comms_outbox — 20s for undo, or until a Send later time
+//   send_queued    { id }   send one of my queued emails now
+//   cancel_queued  { id }   take it back (returns it, to reopen as a draft)
+//
+//   send and queue_send run the send controls: too many outside recipients is
+//   refused; a cross-client warning comes back as code needs_confirmation with
+//   the warnings, and is sent only when re-sent with acknowledged: true.
 //   modify_message / trash_message / untrash_message  { messageId, … }
 //                    the per-email versions of the thread actions
 //   send           { to, cc?, bcc?, subject, bodyText, bodyHtml?, threadId?,
@@ -32,37 +41,14 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  getValidGmailToken, base64UrlEncode, jsonResponse, corsHeaders, getServiceClient, formatSender,
+  getValidGmailToken, jsonResponse, corsHeaders, getServiceClient,
 } from "../_shared/gmail-client.ts";
+import {
+  gmailFetch, GmailApiError, header, extractEmail, sendEmail, checkSend, type SendPayload,
+} from "../_shared/gmail-send.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
-
-async function gmailFetch(accessToken: string, path: string, init?: RequestInit) {
-  const resp = await fetch(`${GMAIL}${path}`, {
-    ...init,
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers || {}),
-    },
-  });
-  if (!resp.ok) {
-    const txt = await resp.text();
-    throw new GmailApiError(resp.status, txt);
-  }
-  return resp.json();
-}
-
-class GmailApiError extends Error {
-  status: number;
-  constructor(status: number, body: string) {
-    super(`Gmail API ${status}: ${body.slice(0, 500)}`);
-    this.status = status;
-  }
-}
 
 function base64UrlDecode(data: string): string {
   const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
@@ -71,17 +57,6 @@ function base64UrlDecode(data: string): string {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new TextDecoder("utf-8").decode(bytes);
-}
-
-function header(headers: Array<{ name: string; value: string }> | undefined, name: string): string {
-  return headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
-}
-
-// "Almond Valley <info@av.co.uk>" → "info@av.co.uk" (lowercased, "" if unparseable).
-function extractEmail(raw: string): string {
-  const m = String(raw || "").match(/<([^>]+)>/);
-  const e = (m ? m[1] : String(raw || "")).trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : "";
 }
 
 // Walks a message payload tree collecting the best text/html and text/plain
@@ -125,64 +100,6 @@ function parseMessage(msg: any) {
     bodyText: out.text,
     attachments: out.attachments.map((a) => ({ ...a, messageId: msg.id })),
   };
-}
-
-function encodeSubject(s: string): string {
-  if (/^[\x20-\x7e]*$/.test(s)) return s;
-  const b64 = base64UrlEncode(s).replace(/-/g, "+").replace(/_/g, "/");
-  const padded = b64 + "=".repeat((4 - b64.length % 4) % 4);
-  return `=?UTF-8?B?${padded}?=`;
-}
-
-function buildMime(opts: {
-  from: string; to: string; cc?: string; bcc?: string; subject: string;
-  text: string; html?: string; inReplyTo?: string; references?: string;
-  reaction?: string;
-}): string {
-  const boundary = `=_athena_${crypto.randomUUID()}`;
-  const headers = [
-    `From: ${opts.from}`,
-    `To: ${opts.to}`,
-    ...(opts.cc ? [`Cc: ${opts.cc}`] : []),
-    ...(opts.bcc ? [`Bcc: ${opts.bcc}`] : []),
-    `Subject: ${encodeSubject(opts.subject)}`,
-    ...(opts.inReplyTo ? [`In-Reply-To: ${opts.inReplyTo}`] : []),
-    ...(opts.references ? [`References: ${opts.references}`] : []),
-    `MIME-Version: 1.0`,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-  ].join("\r\n");
-  const html = opts.html || opts.text
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\r?\n/g, "<br>\r\n");
-  // Gmail emoji reaction: an extra alternative part Gmail renders as a
-  // reaction under the original; other clients fall back to the plain/HTML
-  // parts (just the emoji). Needs In-Reply-To pointing at the email reacted to.
-  const reactionPart = opts.reaction
-    ? [
-      `--${boundary}`,
-      `Content-Type: text/vnd.google.email-reaction+json; charset="UTF-8"`,
-      `Content-Transfer-Encoding: 8bit`,
-      "",
-      JSON.stringify({ emoji: opts.reaction, version: 1 }),
-    ]
-    : [];
-  const body = [
-    "",
-    `--${boundary}`,
-    `Content-Type: text/plain; charset="UTF-8"`,
-    `Content-Transfer-Encoding: 8bit`,
-    "",
-    opts.text,
-    ...reactionPart,
-    `--${boundary}`,
-    `Content-Type: text/html; charset="UTF-8"`,
-    `Content-Transfer-Encoding: 8bit`,
-    "",
-    html,
-    `--${boundary}--`,
-    "",
-  ].join("\r\n");
-  return `${headers}\r\n${body}`;
 }
 
 // Fetch thread summaries in small batches to stay inside Gmail's per-user
@@ -338,6 +255,31 @@ Deno.serve(async (req) => {
     return jsonResponse({ success: false, error: "This is a personal mailbox." }, 403);
   }
 
+  // The send controls for a send/queue_send body. Returns a response to send
+  // back instead (blocked, or warnings not yet acknowledged), or null to go on.
+  // deno-lint-ignore no-explicit-any
+  const gateSend = async (t: any, b: any): Promise<Response | null> => {
+    let context = null;
+    if (b.contextMessageId) {
+      try {
+        const m = await gmailFetch(t.accessToken,
+          `/messages/${b.contextMessageId}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc`);
+        const h = m.payload?.headers;
+        context = { from: header(h, "From"), to: header(h, "To"), cc: header(h, "Cc") };
+      } catch { /* original gone: check the recipients alone */ }
+    }
+    const check = await checkSend(service, {
+      mailbox: t.accountEmail, to: b.to, cc: b.cc, bcc: b.bcc, mode: b.mode, context,
+    });
+    if (check.blocked) {
+      return jsonResponse({ success: false, error: check.blocked, code: "too_many_recipients" }, 400);
+    }
+    if (check.warnings.length && !b.acknowledged) {
+      return jsonResponse({ success: false, code: "needs_confirmation", error: check.warnings.join(" "), warnings: check.warnings });
+    }
+    return null;
+  };
+
   try {
     switch (action) {
       case "list_labels": {
@@ -475,21 +417,85 @@ Deno.serve(async (req) => {
         if (!to || !subject || !bodyText) {
           return jsonResponse({ success: false, error: "to, subject, bodyText required" }, 400);
         }
-        const mime = buildMime({
-          from: formatSender(tok.displayName, tok.accountEmail), to, cc, bcc, subject,
-          text: bodyText, html: bodyHtml, inReplyTo, references, reaction,
-        });
-        const sent = await gmailFetch(tok.accessToken, "/messages/send", {
-          method: "POST",
-          body: JSON.stringify({ raw: base64UrlEncode(mime), ...(threadId ? { threadId } : {}) }),
-        });
-        await service.from("audit_log").insert({
-          user_id: user.id,
-          action: "comms_email_sent",
-          entity_type: "gmail_connections",
-          detail: { mailbox: tok.accountEmail, to, subject: String(subject).slice(0, 200), thread_id: sent.threadId, reply: !!threadId },
-        });
+        const gate = await gateSend(tok, body);
+        if (gate) return gate;
+        const sent = await sendEmail(tok, service, user.id,
+          { to, cc, bcc, subject, bodyText, bodyHtml, threadId, inReplyTo, references, reaction });
         return jsonResponse({ success: true, id: sent.id, threadId: sent.threadId });
+      }
+
+      case "queue_send": {
+        const p: SendPayload = {
+          to: String(body.to || "").trim(), cc: body.cc || undefined, bcc: body.bcc || undefined,
+          subject: String(body.subject || "").trim(), bodyText: String(body.bodyText || ""),
+          bodyHtml: body.bodyHtml || undefined, threadId: body.threadId || undefined,
+          inReplyTo: body.inReplyTo || undefined, references: body.references || undefined,
+        };
+        if (!p.to || !p.subject || !p.bodyText) {
+          return jsonResponse({ success: false, error: "to, subject, bodyText required" }, 400);
+        }
+        let sendAt = new Date(Date.now() + 20_000);
+        let kind = "undo";
+        if (body.sendAt) {
+          const t = new Date(String(body.sendAt));
+          if (isNaN(t.getTime())) return jsonResponse({ success: false, error: "sendAt is not a date" }, 400);
+          if (t.getTime() > Date.now() + 366 * 86400_000) {
+            return jsonResponse({ success: false, error: "Send later is limited to a year ahead." }, 400);
+          }
+          if (t.getTime() > Date.now() + 30_000) { sendAt = t; kind = "later"; }
+        }
+        const gate = await gateSend(tok, body);
+        if (gate) return gate;
+        // The composer as written (text without the quote, the quote apart), so
+        // cancelling reopens a clean draft. Not used for sending.
+        const draft = body.draft && JSON.stringify(body.draft).length < 400_000 ? body.draft : null;
+        const { data: row, error: insErr } = await service.from("comms_outbox").insert({
+          staff_id: user.id,
+          mailbox: tok.accountEmail.toLowerCase(),
+          payload: { ...p, draft },
+          subject: p.subject.slice(0, 300),
+          to_summary: [p.to, p.cc].filter(Boolean).join(", ").slice(0, 300),
+          send_at: sendAt.toISOString(),
+          kind,
+          warnings: body.acknowledged && Array.isArray(body.acknowledgedWarnings) ? body.acknowledgedWarnings : [],
+        }).select("id, send_at, kind").single();
+        if (insErr) throw new Error(insErr.message);
+        return jsonResponse({ success: true, id: row.id, sendAt: row.send_at, kind: row.kind });
+      }
+
+      case "send_queued": {
+        if (!body.id) return jsonResponse({ success: false, error: "id required" }, 400);
+        // Claim it: only a queued email of mine, from this mailbox, and only once.
+        const { data: row } = await service.from("comms_outbox")
+          .update({ status: "sending", claimed_at: new Date().toISOString() })
+          .eq("id", body.id).eq("staff_id", user.id).eq("status", "queued")
+          .eq("mailbox", tok.accountEmail.toLowerCase())
+          .select("id, payload").maybeSingle();
+        if (!row) return jsonResponse({ success: true, already: true }); // sent by the cron, or cancelled
+        try {
+          const sent = await sendEmail(tok, service, user.id, row.payload as SendPayload);
+          await service.from("comms_outbox").update({
+            status: "sent", sent_at: new Date().toISOString(),
+            gmail_message_id: sent.id, gmail_thread_id: sent.threadId,
+          }).eq("id", row.id);
+          return jsonResponse({ success: true, id: sent.id, threadId: sent.threadId });
+        } catch (e) {
+          await service.from("comms_outbox").update({ status: "failed", error: (e as Error).message.slice(0, 500) })
+            .eq("id", row.id);
+          throw e;
+        }
+      }
+
+      case "cancel_queued": {
+        if (!body.id) return jsonResponse({ success: false, error: "id required" }, 400);
+        const { data: row } = await service.from("comms_outbox")
+          .update({ status: "cancelled" })
+          .eq("id", body.id).eq("staff_id", user.id).eq("status", "queued")
+          .select("id, payload, mailbox").maybeSingle();
+        if (!row) {
+          return jsonResponse({ success: false, error: "Too late — it has already been sent.", code: "already_sent" }, 409);
+        }
+        return jsonResponse({ success: true, payload: row.payload, mailbox: row.mailbox });
       }
 
       case "modify_thread": {

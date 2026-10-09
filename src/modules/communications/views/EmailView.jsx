@@ -3,9 +3,10 @@ import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Check, Keyboard, Search, Send, Settings2, Smile, Sparkles, Tag, Trash2, X,
+  Check, Clock, Keyboard, Search, Send, Settings2, Smile, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
+import { supabase } from '../../../lib/supabase';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { decodeEntities } from '../../../lib/decodeEntities';
 import {
@@ -575,6 +576,31 @@ const readWidth = (key, fallback) => {
   try { return Number(localStorage.getItem(key)) || fallback; } catch { return fallback; }
 };
 
+// Send later: when it's on, every email you write waits until this time.
+// Per browser, like the other view preferences. A time that has passed
+// counts as off (and says so) — a stale setting must never hold mail back
+// silently or, worse, send something written at 2am the moment you look.
+function loadSendLater() {
+  try {
+    const v = JSON.parse(localStorage.getItem('comms_send_later') || 'null');
+    return v && typeof v.at === 'string' ? { on: !!v.on, at: v.at } : { on: false, at: '' };
+  } catch { return { on: false, at: '' }; }
+}
+// <input type="datetime-local"> wants local "YYYY-MM-DDTHH:MM".
+const toLocalInput = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+// Next working morning at 08:00 (tomorrow, or Monday from Fri/Sat).
+function nextMorning(hour = 8) {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+const fmtWhen = (iso) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
 // A composer holds typing once anything differs from how it was opened
 // (signature, quoted original) — only then is it worth keeping or confirming.
 const withStart = (c) => ({ ...c, start: { to: c.to, cc: c.cc, subject: c.subject, body: c.body } });
@@ -642,6 +668,19 @@ export default function EmailView() {
   });
   const [sending, setSending] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  const [sendLater, setSendLaterState] = useState(loadSendLater);
+  const [sendLaterOpen, setSendLaterOpen] = useState(false);
+  const setSendLater = (v) => {
+    setSendLaterState(v);
+    try { localStorage.setItem('comms_send_later', JSON.stringify(v)); } catch { /* cosmetic */ }
+  };
+  // Re-evaluated each render: the mode lapses by itself once the time passes.
+  const sendLaterActive = sendLater.on && !!sendLater.at && new Date(sendLater.at).getTime() > Date.now() + 60_000;
+  const sendLaterLapsed = sendLater.on && !!sendLater.at && !sendLaterActive;
+  const [sendWarn, setSendWarn] = useState(null);   // { warnings, retry }
+  const [pendingSend, setPendingSend] = useState(null); // { id, mailbox, until, draft, reopen }
+  const [scheduled, setScheduled] = useState([]);   // my queued 'later' + recent failures
+  const [scheduledOpen, setScheduledOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null); // { text, undo? }
@@ -1492,10 +1531,10 @@ export default function EmailView() {
           .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply', optionsRef.current.includeOriginal), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply', optionsRef.current.includeOriginal), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox, contextId: latestMsg.id }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox, contextId: latestMsg.id }));
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
@@ -1568,12 +1607,78 @@ ${sigBody}` : '', mailbox: from }));
     window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank', 'noopener');
   }, []);
 
-  const sendComposer = useCallback(async () => {
+  // ── Sending: everything goes through the outbox (sql/364) ──
+  // Checked on the server first (too many outside recipients is refused;
+  // a cross-client warning needs your go-ahead), then held: 20 seconds to
+  // undo, or until the Send later time. This tab sends it at 20s; if the tab
+  // closes first, the every-minute outbox job does.
+  const refreshScheduled = useCallback(async () => {
+    if (!profileId) return;
+    const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+    const { data } = await supabase
+      .from('comms_outbox')
+      .select('id, mailbox, subject, to_summary, send_at, kind, status, error, payload, created_at')
+      .eq('staff_id', profileId)
+      .or(`and(status.eq.queued,kind.eq.later),and(status.eq.failed,created_at.gte.${since})`)
+      .order('send_at');
+    setScheduled(data || []);
+  }, [profileId]);
+  useEffect(() => { refreshScheduled(); }, [refreshScheduled]);
+
+  const sendNowFromOutbox = useCallback(async (item) => {
+    try {
+      await gmail.sendQueued(item.mailbox, item.id);
+    } catch (e) {
+      setError(`Send failed: ${e.message}`);
+    }
+  }, []);
+
+  // The 20-second undo window, counted down in the notice bar.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!pendingSend) return undefined;
+    const tick = setInterval(() => setTick((n) => n + 1), 1000);
+    const fire = setTimeout(async () => {
+      const ps = pendingSend;
+      setPendingSend(null);
+      await sendNowFromOutbox(ps);
+      flash('Sent.');
+      if (ps.reopen) { forgetThread(ps.reopen.mailbox, ps.reopen.id); openThread({ ...ps.reopen, unread: false }); }
+    }, Math.max(0, pendingSend.until - Date.now()));
+    return () => { clearInterval(tick); clearTimeout(fire); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSend]);
+
+  const undoSend = useCallback(async () => {
+    const ps = pendingSend;
+    if (!ps) return;
+    setPendingSend(null);
+    try {
+      await gmail.cancelQueued(ps.mailbox, ps.id);
+      setComposer(ps.draft);
+      flash('Not sent — back in the composer.');
+    } catch (e) {
+      setError(e.code === 'already_sent' ? 'Too late — it had already gone.' : e.message);
+    }
+  }, [pendingSend]);
+
+  const sendComposer = useCallback(async ({ acknowledged = false, warnings = [] } = {}) => {
     if (!composer?.to?.trim() || !composer?.subject?.trim()) { setError('To and subject are required.'); return; }
+    // Composer's own choice wins ('now' or a time); otherwise the Send later mode.
+    const sendAt = composer.sendAt === 'now' ? null
+      : composer.sendAt ? new Date(composer.sendAt).toISOString()
+        : sendLaterActive ? new Date(sendLater.at).toISOString() : null;
+    if (sendAt && new Date(sendAt).getTime() <= Date.now() + 30_000) {
+      setError('That send time has passed — pick a new one or send now.');
+      return;
+    }
+    // A send already counting down goes now, so two never overlap.
+    if (pendingSend) { const ps = pendingSend; setPendingSend(null); sendNowFromOutbox(ps); }
     setSending(true);
     setError(null);
+    const draft = { ...composer };
     try {
-      await gmail.send(composer.mailbox || mailbox, {
+      const res = await gmail.queueSend(composer.mailbox || mailbox, {
         to: composer.to.trim().replace(/,\s*$/, ''),
         cc: composer.cc?.trim().replace(/,\s*$/, '') || undefined,
         subject: composer.subject.trim(),
@@ -1581,22 +1686,52 @@ ${sigBody}` : '', mailbox: from }));
         threadId: composer.threadId || undefined,
         inReplyTo: composer.inReplyTo || undefined,
         references: composer.references || undefined,
+        mode: composer.mode,
+        contextMessageId: composer.contextId || undefined,
+        sendAt: sendAt || undefined,
+        acknowledged,
+        acknowledgedWarnings: warnings,
+        draft,
       });
-      const wasReply = !!composer.threadId;
-      // Sent: the composer is empty NOW. Without this the reopen below read
-      // the old draft through the ref (it updates after render) and asked
-      // "Discard your unsent email?" about an email already gone.
+      // Gone from the composer NOW (the ref updates after render, and the
+      // reopen below would otherwise ask "Discard your unsent email?").
       composerRef.current = null;
       setComposer(null);
-      flash('Sent.');
-      if (wasReply && thread) forgetThread(threadMailbox, thread.id);
-      if (wasReply && thread) openThread({ id: thread.id, mailbox: threadMailbox, unread: false });
+      if (res.kind === 'later') {
+        flash(`Scheduled for ${fmtWhen(res.sendAt)}.`);
+        refreshScheduled();
+      } else {
+        const reopen = draft.threadId && thread ? { id: thread.id, mailbox: threadMailbox } : null;
+        setPendingSend({ id: res.id, mailbox: draft.mailbox || mailbox, until: Date.now() + 20_000, draft, reopen });
+      }
     } catch (e) {
-      setError(`Send failed: ${e.message}`);
+      if (e.code === 'needs_confirmation') {
+        setSendWarn({ warnings: e.warnings || [e.message] });
+      } else {
+        setError(e.code === 'too_many_recipients' ? e.message : `Send failed: ${e.message}`);
+      }
     } finally {
       setSending(false);
     }
-  }, [composer, mailbox, thread, threadMailbox, openThread]);
+  }, [composer, mailbox, thread, threadMailbox, sendLater, sendLaterActive, pendingSend, sendNowFromOutbox, refreshScheduled]);
+
+  // Cancel a scheduled email and reopen it as a draft.
+  const reopenScheduled = useCallback(async (item) => {
+    if (!okToDiscard()) return;
+    try {
+      if (item.status === 'queued') await gmail.cancelQueued(item.mailbox, item.id);
+      const d = item.payload?.draft;
+      setComposer(d ? { ...d, sendAt: undefined } : withStart({
+        mode: 'new', to: item.payload?.to || '', cc: item.payload?.cc || '', subject: item.payload?.subject || '',
+        body: item.payload?.bodyText || '', mailbox: item.mailbox,
+      }));
+      setScheduledOpen(false);
+      refreshScheduled();
+    } catch (e) {
+      setError(e.code === 'already_sent' ? 'Too late — it has already been sent.' : e.message);
+      refreshScheduled();
+    }
+  }, [refreshScheduled]);
 
   // ── Keyboard ──
   // Ignored while typing in any box, and with Ctrl/Cmd/Alt held (so browser
@@ -1845,10 +1980,39 @@ ${sigBody}` : '', mailbox: from }));
             )}
           </div>
         )}
+        {(() => {
+          // When it will go: the composer's own choice, else the Send later mode.
+          const custom = composer.sendAt && composer.sendAt !== 'now' ? composer.sendAt : null;
+          const when = custom || (composer.sendAt !== 'now' && sendLaterActive ? sendLater.at : null);
+          const setAt = (v) => setComposer((c) => ({ ...c, sendAt: v }));
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: '#64748b' }}>
+              {when ? (
+                <>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: tones.warning?.bg || '#fef3c7', color: tones.warning?.fg || '#92400e', fontWeight: 600 }}>
+                    <Clock size={12} /> Will send {fmtWhen(when)}
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={toLocalInput(new Date(when))}
+                    onChange={(e) => setAt(e.target.value || undefined)}
+                    style={{ padding: '2px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }}
+                  />
+                  <button onClick={() => setAt('now')} style={linkBtn}>Send now instead</button>
+                </>
+              ) : (
+                <button onClick={() => setAt(toLocalInput(nextMorning()))} style={linkBtn}>
+                  <Clock size={12} style={{ verticalAlign: -2 }} /> Schedule…
+                </button>
+              )}
+            </div>
+          );
+        })()}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={sendComposer} disabled={sending} title="Send — Ctrl+Enter"
+          <button onClick={() => sendComposer()} disabled={sending} title="Send — Ctrl+Enter"
             style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 8, opacity: sending ? 0.45 : 1, cursor: sending ? 'not-allowed' : 'pointer' }}>
-            <Send size={13} /> {sending ? 'Sending…' : 'Send'}
+            <Send size={13} /> {sending ? 'Checking…'
+              : (composer.sendAt && composer.sendAt !== 'now') || (composer.sendAt !== 'now' && sendLaterActive) ? 'Schedule' : 'Send'}
           </button>
           {composer.mode === 'forward' && <span style={{ fontSize: 12, color: '#94a3b8' }}>Attachments aren&apos;t carried over on forwards yet.</span>}
         </div>
@@ -2061,6 +2225,55 @@ ${sigBody}` : '', mailbox: from }));
         >
           <PenSquare size={14} /> New email
         </button>
+
+        {/* Send later mode: everything written while it's on waits until then. */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setSendLaterOpen((o) => !o)}
+            title="Send later — hold every email you write until a set time"
+            style={{
+              ...railBtn, width: '100%', justifyContent: 'flex-start',
+              ...(sendLaterActive ? { background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', fontWeight: 700 } : {}),
+              ...(sendLaterLapsed ? { border: '1px dashed #f59e0b', color: '#92400e' } : {}),
+            }}
+          >
+            <Clock size={12} />
+            {sendLaterActive ? `Send later: ${fmtWhen(sendLater.at)}` : sendLaterLapsed ? 'Send later: time passed' : 'Send later: off'}
+          </button>
+          {sendLaterOpen && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 40, padding: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: '#334155' }}>
+              <div style={{ fontWeight: 700, color: '#0f172a' }}>Send later</div>
+              <div style={{ color: '#64748b' }}>While on, every email you write is scheduled for this time instead of sending. You can still send one now from the composer.</div>
+              <input
+                type="datetime-local"
+                value={sendLater.at ? toLocalInput(new Date(sendLater.at)) : ''}
+                onChange={(e) => setSendLater({ ...sendLater, at: e.target.value ? new Date(e.target.value).toISOString() : '' })}
+                style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }}
+              />
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[['Next morning 8:00', nextMorning(8)], ['Next morning 9:00', nextMorning(9)]].map(([label, d]) => (
+                  <button key={label} onClick={() => setSendLater({ on: true, at: d.toISOString() })} style={{ ...railBtn, fontSize: 12 }}>{label}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => { setSendLater({ ...sendLater, on: !sendLaterActive && !!sendLater.at }); setSendLaterOpen(false); }}
+                  disabled={!sendLater.at}
+                  style={{ ...BTN.primary.sm, flex: 1, cursor: 'pointer' }}
+                >
+                  {sendLaterActive ? 'Turn off' : 'Turn on'}
+                </button>
+                <button onClick={() => setSendLaterOpen(false)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Close</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {scheduled.length > 0 && (
+          <button onClick={() => { refreshScheduled(); setScheduledOpen(true); }} style={{ ...railBtn, width: '100%', justifyContent: 'flex-start' }}>
+            <Clock size={12} /> Scheduled ({scheduled.filter((x) => x.status === 'queued').length})
+            {scheduled.some((x) => x.status === 'failed') && <span style={{ color: '#b91c1c', fontWeight: 700 }}> · failed</span>}
+          </button>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {/* System label ids are identical in every Gmail account, so the
@@ -2410,7 +2623,10 @@ ${sigBody}` : '', mailbox: from }));
                     elsewhere or Esc does. */}
                 <span
                   className={pickerRow === t.id ? 'visible' : 'invisible group-hover:visible'}
-                  style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 2, background: isOpen ? tones.info.bg : '#fff', paddingLeft: 6, borderRadius: 6 }}
+                  // The transform makes this its own layer, which trapped the Tag
+                  // picker's z-index inside the row — later rows (and their
+                  // dates) drew over it. Lift the whole toolbar while it's open.
+                  style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 2, background: isOpen ? tones.info.bg : '#fff', paddingLeft: 6, borderRadius: 6, zIndex: pickerRow === t.id ? 50 : 1 }}
                 >
                   {[
                     { key: 'reply', title: 'Reply', Icon: ReplyIcon, run: () => rowCompose(t, 'reply') },
@@ -2506,6 +2722,14 @@ ${sigBody}` : '', mailbox: from }));
             <button onClick={() => setError(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c' }}><X size={13} /></button>
           </div>
         )}
+        {pendingSend && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#eff6ff', border: `1px solid ${tones.info.border}`, borderRadius: 8, fontSize: 13, color: tones.info.fg }}>
+            <span style={{ flex: 1 }}>Sending in {Math.max(0, Math.ceil((pendingSend.until - Date.now()) / 1000))}s…</span>
+            <button onClick={undoSend} style={{ fontSize: 13, fontWeight: 700, color: tones.info.fg, background: '#fff', border: `1px solid ${tones.info.border}`, borderRadius: 6, padding: '3px 12px', cursor: 'pointer', fontFamily: font }}>
+              Undo
+            </button>
+          </div>
+        )}
         {notice && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 13, color: '#166534' }}>
             <span style={{ flex: 1 }}>{notice.text}</span>
@@ -2523,6 +2747,58 @@ ${sigBody}` : '', mailbox: from }));
           {paneContent()}
         </div>
       </div>
+
+      {/* ── Send check: the server's warnings, before anything goes ── */}
+      {sendWarn && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div style={{ width: 500, maxWidth: '92vw', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font, borderTop: '4px solid #f59e0b' }}>
+            <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Check before this goes</span>
+            <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14, color: '#334155' }}>
+              {sendWarn.warnings.map((w) => <li key={w}>{w}</li>)}
+            </ul>
+            <div style={{ fontSize: 12.5, color: '#94a3b8' }}>Clients must never see each other&apos;s emails or addresses.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button autoFocus onClick={() => setSendWarn(null)} style={{ ...BTN.primary.md, cursor: 'pointer' }}>Go back and fix</button>
+              <button
+                onClick={() => { const w = sendWarn.warnings; setSendWarn(null); sendComposer({ acknowledged: true, warnings: w }); }}
+                style={{ ...BTN.secondary.md, cursor: 'pointer', color: '#b91c1c' }}
+              >
+                Send anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Scheduled emails ── */}
+      {scheduledOpen && (
+        <div onMouseDown={(e) => { if (e.target === e.currentTarget) setScheduledOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ width: 620, maxWidth: '94vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 10, fontFamily: font }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Scheduled emails</span>
+              <button onClick={() => setScheduledOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+            </div>
+            {scheduled.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Nothing scheduled.</div>}
+            {scheduled.map((it) => (
+              <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.subject || '(no subject)'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>To {it.to_summary}</div>
+                  {it.status === 'failed'
+                    ? <div style={{ fontSize: 12, color: '#b91c1c' }}>Didn&apos;t send: {it.error}</div>
+                    : <div style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>{fmtWhen(it.send_at)}</div>}
+                </div>
+                {it.status === 'queued' && (
+                  <button onClick={async () => { await sendNowFromOutbox(it); flash('Sent.'); refreshScheduled(); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Send now</button>
+                )}
+                <button onClick={() => reopenScheduled(it)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>
+                  {it.status === 'queued' ? 'Cancel & edit' : 'Open as draft'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Move / rename a label ── */}
       {moveLabel && (
@@ -2698,6 +2974,11 @@ const tagIconBtn = {
 const approveIconBtn = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, padding: 0,
   border: `1px solid ${tones.teal.solid}`, borderRadius: 5, background: '#fff', color: tones.teal.solid, cursor: 'pointer',
+};
+
+const linkBtn = {
+  border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: tones.info.solid,
+  fontSize: 12.5, fontWeight: 600, fontFamily: font,
 };
 
 // Options dialog pieces.
