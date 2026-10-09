@@ -3,7 +3,7 @@ import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Check, Keyboard, Search, Send, Sparkles, Tag, Trash2, X,
+  Check, Keyboard, Search, Send, Settings2, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
@@ -21,7 +21,34 @@ const font = "'Outfit', sans-serif";
 // summarise in one call (Gmail's own threads.list ceiling).
 const PAGE_SIZES = [50, 100, 250, 500];
 const SERVER_PAGE = 100;
-const AUTO_REFRESH_MS = 5 * 60 * 1000;
+// Options (the rail's Options button). Per browser, like the other view
+// preferences here. Older separate keys are read once as the starting point.
+const AUTO_CHECK_MINUTES = [0, 1, 5, 15, 30];
+const OPTION_DEFAULTS = {
+  markRead: 'open',       // open | delay | never
+  afterRemove: 'next',    // next | prev | none — after delete / archive
+  confirmDelete: false,
+  remoteImages: true,     // false = pictures from the web wait for a click
+  includeOriginal: true,  // quote the original on replies / forwards
+  autoCheckMins: 5,
+};
+function loadOptions() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('comms_options') || '{}'); } catch { /* defaults */ }
+  if (saved.autoCheckMins === undefined && localStorage.getItem('comms_auto') === '0') saved.autoCheckMins = 0;
+  return { ...OPTION_DEFAULTS, ...saved };
+}
+
+// Pictures from the web, held back until asked for (they can tell the sender
+// you opened the email). Attached/inline images (cid:, data:) still show.
+function holdRemoteImages(html) {
+  let held = 0;
+  const out = html.replace(/(<img\b[^>]*?)\ssrc\s*=\s*(["'])(https?:[^"']*)\2/gi, (m, pre, q, url) => {
+    held++;
+    return `${pre} data-held-src=${q}${url}${q}`;
+  });
+  return { html: out, held };
+}
 
 // Pseudo-mailbox: merge every mailbox this person can see into one list.
 // Gmail's system label ids (INBOX, SENT, …) are the same in every account, so
@@ -113,8 +140,13 @@ function HtmlBody({ html }) {
   );
 }
 
-function MessageCard({ msg, mailbox, defaultOpen }) {
+function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [showImages, setShowImages] = useState(false);
+  const held = useMemo(
+    () => (msg.bodyHtml && !remoteImages && !showImages ? holdRemoteImages(msg.bodyHtml) : null),
+    [msg.bodyHtml, remoteImages, showImages],
+  );
   const from = parseAddress(msg.from);
   return (
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
@@ -129,8 +161,16 @@ function MessageCard({ msg, mailbox, defaultOpen }) {
       </div>
       {open && (
         <div style={{ borderTop: '1px solid #f1f5f9' }}>
+          {held?.held > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px', fontSize: 12.5, color: '#64748b', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+              Pictures from the web are hidden.
+              <button onClick={() => setShowImages(true)} style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: tones.info.solid, fontSize: 12.5, fontWeight: 600, fontFamily: font }}>
+                Show pictures
+              </button>
+            </div>
+          )}
           {msg.bodyHtml
-            ? <HtmlBody html={msg.bodyHtml} />
+            ? <HtmlBody html={held ? held.html : msg.bodyHtml} />
             : <div style={{ padding: 14, fontSize: 14, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.bodyText || decodeEntities(msg.snippet)}</div>}
           {msg.attachments.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
@@ -334,14 +374,14 @@ function buildLabelTree(userLabels) {
 // The original email on a reply/forward. Kept OUT of the box you type in —
 // pasting it there as "> " lines is what put the chevrons on screen — and
 // attached at send time as a real quote, the way Gmail does it.
-function originalOf(msg, kind) {
+function originalOf(msg, kind, include = true) {
   const from = parseAddress(msg.from);
   const when = msg.internalDate ? new Date(msg.internalDate).toLocaleString('en-GB') : msg.date;
   const header = kind === 'forward'
     ? `---------- Forwarded message ---------\nFrom: ${msg.from}\nDate: ${msg.date}\nSubject: ${msg.subject}\nTo: ${msg.to}`
     : `On ${when}, ${from.name} <${from.email}> wrote:`;
   return {
-    kind, header, include: true,
+    kind, header, include,
     fromName: from.name, when: msg.internalDate,
     text: msg.bodyText || decodeEntities(msg.snippet),
     html: msg.bodyHtml || '',
@@ -475,7 +515,15 @@ export default function EmailView() {
   // so widening to the whole account is always a conscious choice.
   const [searchAll, setSearchAll] = useState(false);
   const [compact, setCompact] = useState(() => localStorage.getItem('comms_compact') === '1');
-  const [autoRefresh, setAutoRefresh] = useState(() => localStorage.getItem('comms_auto') !== '0');
+  const [options, setOptions] = useState(loadOptions);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  useEffect(() => {
+    try { localStorage.setItem('comms_options', JSON.stringify(options)); } catch { /* cosmetic */ }
+  }, [options]);
+  const setOption = (k, v) => setOptions((o) => ({ ...o, [k]: v }));
+  const autoRefresh = options.autoCheckMins > 0;
   const [lastChecked, setLastChecked] = useState(null);
   const [sort, setSort] = useState(() => localStorage.getItem('comms_email_sort') || 'date');
   const [hideOwn, setHideOwn] = useState(() => localStorage.getItem('comms_hide_own') !== '0');
@@ -712,9 +760,9 @@ export default function EmailView() {
     if (!autoRefresh) return undefined;
     const id = setInterval(() => {
       if (!document.hidden) checkForMail();
-    }, AUTO_REFRESH_MS);
+    }, options.autoCheckMins * 60 * 1000);
     return () => clearInterval(id);
-  }, [autoRefresh, checkForMail]);
+  }, [autoRefresh, options.autoCheckMins, checkForMail]);
 
   // Gmail can only return newest-first per mailbox, so ordering is applied here
   // over the conversations loaded so far ("Load more" extends the pool) — which
@@ -854,7 +902,10 @@ export default function EmailView() {
     if (openIdRef.current !== id) return; // something else was open — leave it
     const l = listRef.current;
     const i = l.findIndex((x) => x.id === id);
-    const next = i < 0 ? null : (l[i + 1] || l[i - 1] || null);
+    const way = optionsRef.current.afterRemove;
+    const next = i < 0 || way === 'none' ? null
+      : way === 'prev' ? (l[i - 1] || l[i + 1] || null)
+        : (l[i + 1] || l[i - 1] || null);
     if (next) openThreadRef.current?.(next);
     else setThread(null);
   };
@@ -1032,10 +1083,18 @@ export default function EmailView() {
     setError(null);
     setComposer(null);
     if (paneRef.current) paneRef.current.scrollTop = 0;
-    if (summary.unread) {
-      gmail.modifyMessage(mb, summary.id, { removeLabelIds: ['UNREAD'] })
-        .then(() => setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t))))
+    // Options → "Mark as read": at once, after 3 seconds still open, or never
+    // (then u / the Mark read button does it).
+    const how = optionsRef.current.markRead;
+    if (summary.unread && how !== 'never') {
+      const markIt = () => gmail.modifyMessage(mb, summary.id, { removeLabelIds: ['UNREAD'] })
+        .then(() => {
+          setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t)));
+          setThread((prev) => (prev?.id === summary.id ? { ...prev, messages: prev.messages.map((m) => ({ ...m, labelIds: m.labelIds.filter((l) => l !== 'UNREAD') })) } : prev));
+        })
         .catch(() => { /* read-state is cosmetic */ });
+      if (how === 'delay') setTimeout(() => { if (openIdRef.current === summary.id) markIt(); }, 3000);
+      else markIt();
     }
     // New mail on the thread since it was cached → fetch it fresh.
     const cached = threadCache.current.get(`${mb}:${summary.id}`);
@@ -1074,6 +1133,7 @@ export default function EmailView() {
 
   const latestMsg = thread?.messages?.[0] || null;
   const threadInTrash = !!thread && thread.messages.some((m) => m.labelIds.includes('TRASH'));
+  const threadUnread = !!thread && thread.messages.some((m) => m.labelIds.includes('UNREAD'));
   const threadMailbox = thread?.mailbox || mailbox;
 
   const archiveThread = useCallback(async (threadId, restore = false) => {
@@ -1094,6 +1154,7 @@ export default function EmailView() {
 
   // Delete = Gmail bin (recoverable ~30 days), never permanent.
   const trashThread = useCallback(async (threadId) => {
+    if (optionsRef.current.confirmDelete && !window.confirm('Move this email to the bin?')) return;
     try {
       await gmail.trashMessage(threadMailbox, threadId);
       forgetThread(threadMailbox, threadId);
@@ -1162,6 +1223,20 @@ export default function EmailView() {
     }
   }, [thread, threadMailbox, rejectSuggested]);
 
+  // Read ↔ unread on the open email (button, or u).
+  const setReadState = useCallback(async (id, unread) => {
+    try {
+      await gmail.modifyMessage(threadMailbox, id, unread ? { addLabelIds: ['UNREAD'] } : { removeLabelIds: ['UNREAD'] });
+      setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, unread } : t)));
+      setThread((prev) => (prev?.id === id ? {
+        ...prev,
+        messages: prev.messages.map((m) => ({ ...m, labelIds: unread ? [...new Set([...m.labelIds, 'UNREAD'])] : m.labelIds.filter((l) => l !== 'UNREAD') })),
+      } : prev));
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [threadMailbox]);
+
   // ── Bulk actions ──
   const toggleSelect = (id) => setSelected((prev) => {
     const next = new Set(prev);
@@ -1191,6 +1266,7 @@ export default function EmailView() {
   }, [selected, boxOf, loadThreads]);
 
   const bulkTrash = useCallback(async () => {
+    if (optionsRef.current.confirmDelete && !window.confirm(`Move ${selected.size} email${selected.size === 1 ? '' : 's'} to the bin?`)) return;
     setBulkBusy(true);
     setError(null);
     const ids = [...selected].map((id) => [id, boxOf(id)]);
@@ -1232,10 +1308,10 @@ export default function EmailView() {
           .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply'), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply', optionsRef.current.includeOriginal), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward'), mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox }));
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
@@ -1244,21 +1320,25 @@ export default function EmailView() {
   // Reply/forward from a list row needs the full latest message (for the quote)
   // and the thread's own mailbox, so it opens the thread first and lets the
   // normal composer run once it's there — one code path for both entry points.
-  const pendingCompose = useRef(null);
+  //
+  // It waits for a request rather than for the thread to change: replying from
+  // the row of the email ALREADY open left the thread unchanged, the old
+  // trigger never fired, and the hover Reply / Reply all did nothing.
+  const [composeReq, setComposeReq] = useState(null); // { id, mode }
   useEffect(() => {
-    if (!thread || !pendingCompose.current) return;
-    const mode = pendingCompose.current;
-    pendingCompose.current = null;
-    startComposer(mode);
-  }, [thread, startComposer]);
+    if (!composeReq || thread?.id !== composeReq.id) return;
+    setComposeReq(null);
+    startComposer(composeReq.mode);
+  }, [composeReq, thread, startComposer]);
 
   const rowCompose = useCallback(async (t, mode) => {
-    pendingCompose.current = mode;
+    if (thread?.id === t.id) { startComposer(mode); return; }
     const opened = await openThread(t);
-    if (!opened) pendingCompose.current = null; // don't fire on the next open
-  }, [openThread]);
+    if (opened) setComposeReq({ id: opened.id, mode });
+  }, [openThread, thread, startComposer]);
 
   const rowTrash = useCallback(async (t) => {
+    if (optionsRef.current.confirmDelete && !window.confirm('Move this email to the bin?')) return;
     try {
       await gmail.trashMessage(t.mailbox, t.id);
       forgetThread(t.mailbox, t.id);
@@ -1345,6 +1425,7 @@ export default function EmailView() {
         a: () => thread && startComposer('replyAll'),
         f: () => thread && startComposer('forward'),
         x: () => thread && toggleSelect(thread.id),
+        u: () => thread && setReadState(thread.id, !threadUnread),
         Escape: () => { if (keysOpen) setKeysOpen(false); else if (thread && okToDiscard()) { setComposer(null); setThread(null); } },
         '?': () => setKeysOpen((o) => !o),
       }[e.key];
@@ -1554,8 +1635,15 @@ export default function EmailView() {
                 />
               )}
               {thread.messages.some((m) => m.labelIds.includes('INBOX'))
-                ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox)" style={btnText}><Archive size={14} /> Archive</button>
+                ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox) — e" style={btnText}><Archive size={14} /> Archive</button>
                 : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnText}><ArchiveRestore size={14} /> To inbox</button>}
+              <button
+                onClick={() => setReadState(thread.id, !threadUnread)}
+                title={threadUnread ? 'Mark as read — u' : 'Mark as unread — u'}
+                style={btnText}
+              >
+                {threadUnread ? <MailOpen size={14} /> : <Mail size={14} />} {threadUnread ? 'Mark read' : 'Unread'}
+              </button>
               {threadInTrash
                 ? <button onClick={() => restoreThread(thread.id)} title="Restore from bin" style={btnText}><ArchiveRestore size={14} /> Restore</button>
                 : <button onClick={() => trashThread(thread.id)} title="Move to bin (recoverable for ~30 days in Gmail)" style={{ ...BTN.danger.sm, display: 'flex', alignItems: 'center', gap: 5 }}><Trash2 size={14} /> Delete</button>}
@@ -1581,7 +1669,7 @@ export default function EmailView() {
           </div>
           {composer && renderComposer()}
           {thread.messages.map((m, i) => (
-            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} />
+            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} remoteImages={options.remoteImages} />
           ))}
         </>
       );
@@ -1643,10 +1731,18 @@ export default function EmailView() {
               <Plus size={12} /> Add mailbox
             </button>
           )}
+          <button onClick={() => setOptionsOpen(true)} style={railBtn}>
+            <Settings2 size={12} /> Options
+          </button>
           {!isAll && (
             <a
-              href="#" onClick={(e) => { e.preventDefault(); reconnect(); }}
-              onClick={(e) => { if (!window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions.`)) e.preventDefault(); }}
+              // One handler: two onClick props meant the second replaced the
+              // first, so OK on the confirm did nothing.
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                if (window.confirm(`Reconnect ${mailboxObj?.account_email}? You'll be sent to Google to re-approve — sign in as that account. This refreshes the mailbox's permissions.`)) reconnect();
+              }}
               style={{ ...railBtn, textDecoration: 'none', ...(needsReconnect ? { border: `1px solid ${tones.info.border}`, background: tones.info.bg, color: tones.info.fg } : {}) }}
             >
               <RefreshCw size={12} /> Reconnect{needsReconnect ? ' ⚠' : ''}
@@ -1672,8 +1768,11 @@ export default function EmailView() {
             )}
             {isAdmin && (
               <a
-                href="#" onClick={(e) => { e.preventDefault(); connectShared(); }}
-                onClick={(e) => { if (!window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. accounts@ or payroll@), not your own account. Continue?')) e.preventDefault(); }}
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (window.confirm('You’ll be sent to Google — sign in as the SHARED mailbox you want to add (e.g. accounts@ or payroll@), not your own account. Continue?')) connectShared();
+                }}
                 style={addOptionStyle}
               >
                 <InboxIcon size={13} /> Add shared mailbox
@@ -1772,6 +1871,7 @@ export default function EmailView() {
                   ['a', 'Reply all'],
                   ['f', 'Forward'],
                   ['x', 'Tick / untick the open email'],
+                  ['u', 'Mark read / unread'],
                   ['Esc', 'Close the email'],
                   ['?', 'Show / hide this list'],
                 ].map(([k, what]) => (
@@ -1786,7 +1886,7 @@ export default function EmailView() {
           </div>
         </div>
 
-        {/* Sort + inbox noise filter */}
+        {/* Sort + count. The rest of the view settings live in Options. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: '#64748b', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             Sort
@@ -1799,48 +1899,6 @@ export default function EmailView() {
               <option value="recipient">Recipient email (A–Z)</option>
               <option value="sender">Sender email (A–Z)</option>
             </select>
-          </label>
-          {labelId === 'INBOX' && !q && (
-            <label
-              style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-              title="Hide threads that are only your own sent mail"
-            >
-              <input
-                type="checkbox"
-                checked={hideOwn}
-                onChange={(e) => { setHideOwn(e.target.checked); localStorage.setItem('comms_hide_own', e.target.checked ? '1' : '0'); }}
-                style={{ cursor: 'pointer' }}
-              />
-              Hide my own sent mail
-            </label>
-          )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Emails per page">
-            Load
-            <select
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); localStorage.setItem('comms_page_size', e.target.value); }}
-              style={{ padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', color: '#334155' }}
-            >
-              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }} title="One line per email">
-            <input
-              type="checkbox"
-              checked={compact}
-              onChange={(e) => { setCompact(e.target.checked); localStorage.setItem('comms_compact', e.target.checked ? '1' : '0'); }}
-              style={{ cursor: 'pointer' }}
-            />
-            Compact
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }} title="Check for new mail every 5 minutes (first page only)">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => { setAutoRefresh(e.target.checked); localStorage.setItem('comms_auto', e.target.checked ? '1' : '0'); }}
-              style={{ cursor: 'pointer' }}
-            />
-            Auto 5m
           </label>
           <span style={{ color: '#94a3b8', marginLeft: 'auto' }}>
             {listLoading && threads.length > 0
@@ -1928,6 +1986,7 @@ export default function EmailView() {
             )}
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['INBOX'], verb: 'Archived' })} style={bulkBtn}><Archive size={12} /> Archive</button>
             <button disabled={bulkBusy} onClick={() => bulkModify({ removeLabelIds: ['UNREAD'], verb: 'Marked read' })} style={bulkBtn}><MailOpen size={12} /> Read</button>
+            <button disabled={bulkBusy} onClick={() => bulkModify({ addLabelIds: ['UNREAD'], verb: 'Marked unread' })} style={bulkBtn}><Mail size={12} /> Unread</button>
             <button disabled={bulkBusy} onClick={bulkTrash} style={{ ...BTN.danger.sm, display: 'flex', alignItems: 'center', gap: 5 }}><Trash2 size={12} /> Delete</button>
             <button disabled={bulkBusy} onClick={() => setSelected(new Set())} style={{ ...bulkBtn, marginLeft: 'auto' }}>Clear</button>
             {bulkBusy && <span style={{ color: tones.info.fg }}>Working…</span>}
@@ -2122,6 +2181,68 @@ export default function EmailView() {
         </div>
       </div>
 
+      {/* ── Options ── */}
+      {optionsOpen && (
+        <div onMouseDown={(e) => { if (e.target === e.currentTarget) setOptionsOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ width: 520, maxWidth: '92vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 4, fontFamily: font }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Email options</span>
+              <button onClick={() => setOptionsOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+            </div>
+
+            <div style={optSection}>Reading</div>
+            <OptionRow label="Mark an email as read" hint="When you open it in the preview.">
+              <select value={options.markRead} onChange={(e) => setOption('markRead', e.target.value)} style={optSelect}>
+                <option value="open">As soon as I open it</option>
+                <option value="delay">After 3 seconds open</option>
+                <option value="never">Never — I&apos;ll mark it myself (u)</option>
+              </select>
+            </OptionRow>
+            <OptionRow label="After delete or archive" hint="What the preview shows next.">
+              <select value={options.afterRemove} onChange={(e) => setOption('afterRemove', e.target.value)} style={optSelect}>
+                <option value="next">Open the next email</option>
+                <option value="prev">Open the previous email</option>
+                <option value="none">Nothing — back to the list</option>
+              </select>
+            </OptionRow>
+            <OptionRow label="Show pictures from the web" hint="Off: pictures wait for a click, so senders can't tell you've opened it.">
+              <YesNo value={options.remoteImages} onChange={(v) => setOption('remoteImages', v)} />
+            </OptionRow>
+
+            <div style={optSection}>List</div>
+            <OptionRow label="Compact rows" hint="One line per email.">
+              <YesNo value={compact} onChange={(v) => { setCompact(v); localStorage.setItem('comms_compact', v ? '1' : '0'); }} />
+            </OptionRow>
+            <OptionRow label="Hide my own sent mail in the Inbox" hint="Mail you sent that also lands in the Inbox (e.g. to a group you're in).">
+              <YesNo value={hideOwn} onChange={(v) => { setHideOwn(v); localStorage.setItem('comms_hide_own', v ? '1' : '0'); }} />
+            </OptionRow>
+            <OptionRow label="Emails to load" hint="More takes longer to load.">
+              <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); localStorage.setItem('comms_page_size', e.target.value); }} style={optSelect}>
+                {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </OptionRow>
+            <OptionRow label="Check for new mail" hint="In the background, while this screen is open.">
+              <select value={options.autoCheckMins} onChange={(e) => setOption('autoCheckMins', Number(e.target.value))} style={optSelect}>
+                {AUTO_CHECK_MINUTES.map((m) => <option key={m} value={m}>{m === 0 ? 'Off — refresh button only' : `Every ${m} minute${m === 1 ? '' : 's'}`}</option>)}
+              </select>
+            </OptionRow>
+
+            <div style={optSection}>Writing</div>
+            <OptionRow label="Include the original email in replies" hint="You can still tick or untick it per email.">
+              <YesNo value={options.includeOriginal} onChange={(v) => setOption('includeOriginal', v)} />
+            </OptionRow>
+            <OptionRow label="Ask before moving an email to the bin" hint="Delete is always recoverable from Bin for about 30 days.">
+              <YesNo value={options.confirmDelete} onChange={(v) => setOption('confirmDelete', v)} />
+            </OptionRow>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>Saved in this browser as you change them.</span>
+              <button onClick={() => setOptionsOpen(false)} style={{ ...BTN.primary.md, marginLeft: 'auto', cursor: 'pointer' }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Signature editor ── */}
       {sigOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
@@ -2196,6 +2317,33 @@ const changeBtn = {
   color: '#475569', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6,
   cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap',
 };
+
+// Options dialog pieces.
+function OptionRow({ label, hint, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{label}</div>
+        {hint && <div style={{ fontSize: 12, color: '#94a3b8' }}>{hint}</div>}
+      </div>
+      <div style={{ flexShrink: 0 }}>{children}</div>
+    </div>
+  );
+}
+function YesNo({ value, onChange }) {
+  const seg = (on) => ({
+    padding: '4px 12px', fontSize: 12.5, fontWeight: 600, fontFamily: font, cursor: 'pointer', border: 'none',
+    background: on ? tones.info.solid : '#fff', color: on ? '#fff' : '#475569',
+  });
+  return (
+    <div style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 7, overflow: 'hidden' }}>
+      <button onClick={() => onChange(true)} style={seg(value)}>Yes</button>
+      <button onClick={() => onChange(false)} style={{ ...seg(!value), borderLeft: '1px solid #cbd5e1' }}>No</button>
+    </div>
+  );
+}
+const optSection = { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em', marginTop: 10 };
+const optSelect = { padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', color: '#334155' };
 
 // Hover-revealed per-row action.
 // A 22px square icon button, not a text button — deliberately not BTN.
