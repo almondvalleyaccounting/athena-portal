@@ -9,6 +9,7 @@ import {
 import { useAuth } from '../../../shell/AppShell';
 import { supabase } from '../../../lib/supabase';
 import { openCreate, setCreateContext } from '../../../shell/create/createBus';
+import { callJobPlan } from '../../work-planner/plan/planQueries';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { decodeEntities } from '../../../lib/decodeEntities';
 import {
@@ -334,6 +335,99 @@ function SenderCard({ name, email, at, contacts, onEmail, onClose }) {
         <button onClick={() => copy('all', allText)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>{copied === 'all' ? 'Copied' : 'Copy all'}</button>
         {onEmail && <button onClick={() => { onClose(); onEmail({ to: addr }); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>New email</button>}
       </div>
+    </div>
+  );
+}
+
+// ── "Records received" from an email (sql/366) ─────────────────────────────
+// For a client email, their jobs still waiting on records (BrightManager
+// short of Records Received, workflow's records stage open). One click marks
+// it: workflow updated (made if needed), preparer told, and an Admin Task List
+// item to set the status in BrightManager (Athena only reads BM).
+function RecordsStrip({ ctx, onDone }) {
+  const [jobs, setJobs] = useState([]);
+  const [asking, setAsking] = useState(null); // job key awaiting confirm
+  const [busy, setBusy] = useState(false);
+  const [doneMsg, setDoneMsg] = useState({}); // job key → result line
+  const [hidden, setHidden] = useState(false);
+  const [error, setError] = useState('');
+  const keyOf = (j) => `${j.entity_id}|${j.period_end}|${j.template_key}`;
+
+  useEffect(() => {
+    let live = true;
+    callJobPlan({ action: 'records_candidates', emails: ctx.emails })
+      .then((r) => { if (live) setJobs(r.jobs || []); })
+      .catch(() => { /* a hint, not essential */ });
+    return () => { live = false; };
+  }, [ctx.emails]);
+
+  if (hidden || !jobs.length) return null;
+
+  const confirm = async (j) => {
+    setBusy(true); setError('');
+    try {
+      const link = ctx.mailbox && ctx.threadId ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(ctx.mailbox)}#all/${ctx.threadId}` : '';
+      const r = await callJobPlan({
+        action: 'records_received', entity_id: j.entity_id, period_end: j.period_end, template: j.template_key,
+        email: { subject: ctx.subject, from: ctx.fromName || ctx.fromEmail, date: ctx.date, link },
+      });
+      const parts = [
+        r.created ? (r.committed ? 'workflow set up' : 'workflow drafted (needs owners)') : 'workflow updated',
+        r.preparer ? (r.notified ? `${r.preparer} told` : `${r.preparer}'s job`) : null,
+        r.bm_request ? 'BrightManager update added to the Admin Task List' : null,
+      ].filter(Boolean).join(' · ');
+      setDoneMsg((m) => ({ ...m, [keyOf(j)]: `Records received — ${parts}.` }));
+      setAsking(null);
+      onDone?.(`${j.client}: records received.`);
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ border: `1px solid ${tones.teal.border}`, background: tones.teal.bg, borderRadius: 10, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+      {jobs.map((j) => {
+        const k = keyOf(j);
+        return (
+          <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13.5, color: tones.teal.fg }}>
+              <InboxIcon size={14} />
+              {doneMsg[k] ? (
+                <span style={{ fontWeight: 600 }}>{j.client} · {j.label}: {doneMsg[k]}</span>
+              ) : (
+                <>
+                  <span><b>{j.client}</b> · {j.label} is waiting on records{j.bm_status ? ` (BrightManager: ${j.bm_status})` : ''}.</span>
+                  {asking !== k && (
+                    <button onClick={() => setAsking(k)} style={{ ...BTN.primary.sm, cursor: 'pointer', marginLeft: 'auto' }}>
+                      Mark records received
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            {asking === k && !doneMsg[k] && (
+              <div style={{ background: '#fff', border: `1px solid ${tones.teal.border}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, color: '#334155', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span>This will:</span>
+                <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.55 }}>
+                  <li>mark records received on the {j.label} workflow{j.plan_status ? '' : ' (setting one up from the default, as there isn’t one yet)'} and stop any chasers;</li>
+                  <li>tell {j.preparer_name || 'the preparer'} they can start, with a link to this email;</li>
+                  <li>add “Set BrightManager status to Records Received” to the Admin Task List — it clears itself once the import shows it.</li>
+                </ul>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setAsking(null)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={() => confirm(j)} disabled={busy} style={{ ...BTN.primary.sm, cursor: 'pointer' }}>{busy ? 'Saving…' : 'Confirm'}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {error && <span style={{ fontSize: 12.5, color: '#b91c1c' }}>{error}</span>}
+      {!Object.keys(doneMsg).length && (
+        <button onClick={() => setHidden(true)} style={{ alignSelf: 'flex-start', border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 12, color: tones.teal.fg, textDecoration: 'underline', fontFamily: font }}>
+          Not records — hide
+        </button>
+      )}
     </div>
   );
 }
@@ -2845,6 +2939,8 @@ export default function EmailView() {
               <span style={chipStyle('neutral')}>{mailboxLabel[threadMailbox] || threadMailbox}</span>
             )}
           </div>
+          {/* Only on email FROM outside the firm — records arrive, they aren't sent. */}
+          {createCtx?.emails?.includes(String(createCtx.fromEmail || '').toLowerCase()) && <RecordsStrip key={thread.id} ctx={createCtx} onDone={flash} />}
           {(() => {
             const a = latestMsg ? answeredFor(threadMailbox, latestMsg.messageIdHeader) : {};
             const items = [

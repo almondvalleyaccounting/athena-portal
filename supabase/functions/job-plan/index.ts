@@ -48,6 +48,8 @@
 //   progress_reports  {}                                      delay/stuck reports still open (sql/350)
 //   report_dealt_with { id, note? }                           close a report
 //   set_deprioritised { entity_id, reason | null }            the client-level flag (Ready Now, Job Selector, Priority)
+//   records_candidates { emails[] }                           an email's clients → jobs still waiting on records (sql/366)
+//   records_received { entity_id, period_end, template, email } records in from an email: workflow, preparer told, BM status asked for
 //   company_directors { entity_id }                           directors with their next self assessment (sql/351)
 //   income_items / income_item_add / income_item_received / income_item_remove   directors' other income
 //
@@ -127,6 +129,22 @@ function taskRef(v: unknown): { type: string; id: string; occurrence_date: strin
   return { type, id, occurrence_date: occ };
 }
 const PORTAL_URL = Deno.env.get("PORTAL_PUBLIC_URL") || "https://portal.almondvalleyaccounting.co.uk";
+// BrightManager's status ladder — the same as job-plan-tick's BM_RANK
+// (mirrors bm_status_rank() in sql/089): how far a job has got.
+const RECORDS_LADDER: Record<string, number> = {
+  "No Latest Action": 0, "No Progress": 0, "Records Requested": 1, "Part Records Received": 2,
+  "Records Received": 3, "In Progress": 4, "Queries Requested": 5, "Queries Received": 6,
+  "To Review": 7, "Reviewed": 8, "To Send to Client to Approve": 9, "Awaiting Approval": 10,
+};
+function recordsRank(status: string | null | undefined): number {
+  if (!status) return 0;
+  return RECORDS_LADDER[status] ?? 99; // a status off the ladder (filed, approved…) is past records
+}
+// "2025/26" for a tax year ending 5 April 2026.
+function saYear(taxYearEnd: string): string {
+  const y = Number(String(taxYearEnd).slice(0, 4));
+  return Number.isFinite(y) ? `${y - 1}/${String(y).slice(2)}` : String(taxYearEnd);
+}
 function taskUrl(t: { type: string; id: string; occurrence_date: string | null }): string {
   return `${PORTAL_URL}/planner/day?task=${t.type}:${t.id}${t.occurrence_date ? `:${t.occurrence_date}` : ""}`;
 }
@@ -1139,6 +1157,149 @@ Deno.serve(async (req) => {
 
       // A client reply or upload (sql/319): the owner says whether the
       // records are in. Either way the chases are released.
+      // ── Records received, from an email (sql/366) ───────────────────────
+      // The open email's client(s) → their jobs still waiting on records.
+      // "Waiting" = BrightManager short of Records Received AND, if there is
+      // a workflow, its records_in stage still open. Year must have ended.
+      case "records_candidates": {
+        const emails = (Array.isArray(p.emails) ? p.emails : []).map((e: unknown) => String(e).toLowerCase().trim())
+          .filter((e: string) => e.includes("@")).slice(0, 20);
+        if (!emails.length) return json({ success: true, jobs: [] });
+        const { data: hits, error: hErr } = await db.rpc("comms_recipient_entities", { p_emails: emails });
+        if (hErr) throw new Error(hErr.message);
+        const ids = [...new Set((hits || []).map((h: { entity_id: string }) => h.entity_id))];
+        if (!ids.length) return json({ success: true, jobs: [] });
+        const today = now.slice(0, 10);
+        const [sa, acc] = await Promise.all([
+          db.from("v_sa_jobs").select("entity_id, client, period_end, tax_year_end, prep_job_id, preparer_id, preparer_name, bm_status, plan_id, plan_status, template_key").in("entity_id", ids).lte("period_end", today),
+          db.from("v_accounts_jobs").select("entity_id, client, period_end, prep_job_id, preparer_id, preparer_name, bm_status, plan_id, plan_status").in("entity_id", ids).lte("period_end", today),
+        ]);
+        if (sa.error) throw new Error(sa.error.message);
+        if (acc.error) throw new Error(acc.error.message);
+        const rows = [
+          ...(sa.data || []).map((r) => ({ ...r, template_key: r.template_key || "self_assessment" })),
+          ...(acc.data || []).map((r) => ({ ...r, template_key: "annual_accounts" })),
+        ].filter((r) => recordsRank(r.bm_status) < recordsRank("Records Received"));
+        // Drop jobs whose workflow already has records in.
+        const planIds = rows.map((r) => r.plan_id).filter(Boolean);
+        const doneIn = new Set<string>();
+        if (planIds.length) {
+          const { data: ms } = await db.from("job_milestones").select("plan_id, status").in("plan_id", planIds).eq("stage_key", "records_in");
+          (ms || []).forEach((m) => { if (m.status !== "pending") doneIn.add(m.plan_id); });
+        }
+        const jobs = rows.filter((r) => !r.plan_id || !doneIn.has(r.plan_id)).map((r) => ({
+          entity_id: r.entity_id, client: r.client, period_end: r.period_end, template_key: r.template_key,
+          label: r.template_key === "self_assessment"
+            ? `Self Assessment ${saYear((r as { tax_year_end?: string }).tax_year_end || r.period_end)}`
+            : `Accounts, year end ${new Date(`${r.period_end}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`,
+          preparer_name: r.preparer_name, bm_status: r.bm_status, plan_status: r.plan_status,
+        }));
+        return json({ success: true, jobs });
+      }
+
+      case "records_received": {
+        const entityId = uuid(p.entity_id, "entity_id");
+        const periodEnd = isoDate(p.period_end, "period_end");
+        const templateKey = p.template === "self_assessment" ? "self_assessment" : "annual_accounts";
+        const em = (p.email && typeof p.email === "object" ? p.email : {}) as Record<string, unknown>;
+        const emSubject = String(em.subject || "").slice(0, 300);
+        const emFrom = String(em.from || "").slice(0, 200);
+        const emLink = String(em.link || "").startsWith("https://mail.google.com/") ? String(em.link).slice(0, 500) : "";
+        const emDate = em.date ? new Date(Number(em.date)).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+        const job = await accountsJob(entityId, periodEnd, templateKey);
+        const t = await template(job.template_key as string);
+        const jobLabel = job.template_key === "self_assessment"
+          ? `Self Assessment ${saYear((job as { tax_year_end?: string }).tax_year_end || periodEnd)}`
+          : "year-end accounts";
+
+        // 1. The workflow: the existing one, else the default chain — committed
+        //    if every stage has an owner, otherwise left as a draft.
+        let created = false;
+        let committed = false;
+        let { data: plan } = await db.from("job_plans").select("*")
+          .eq("entity_id", entityId).eq("period_end", periodEnd).eq("template_id", t.id).maybeSingle();
+        if (!plan) {
+          const out = await propose(entityId, periodEnd, null, null, false, job.template_key as string);
+          plan = out.plan; created = true;
+          try { await commit(plan.id); committed = true; } catch { /* unowned stage: stays a draft */ }
+        } else committed = plan.status === "committed";
+
+        const ms = await milestonesOf(plan.id);
+        const rec = ms.find((m) => m.stage_key === "records_in");
+        const note = `Records received by email${emDate ? ` ${emDate}` : ""}: “${emSubject}”${emFrom ? ` from ${emFrom}` : ""}`;
+        if (rec && rec.status === "pending") {
+          await db.from("job_milestones").update({ status: "done", done_at: now, done_signal: "client", note: rec.note ? `${rec.note}\n${note}` : note, updated_at: now }).eq("id", rec.id);
+        }
+        await db.from("job_plans").update({
+          client_signal_at: now, client_signal_kind: "email", signal_handled_at: now, chases_held: false, updated_at: now,
+        }).eq("id", plan.id);
+
+        // 2. Tell the preparer: a note on the prepare stage (so it sits on the
+        //    job's thread), the bell, and an email — unless that's me.
+        const prep = ms.find((m) => m.stage_key === "prepare");
+        const preparerId: string | null = prep?.owner_id || (job.preparer_id as string | null) || null;
+        const [{ data: meRow }, { data: preparer }] = await Promise.all([
+          db.from("staff_profiles").select("name").eq("id", me).maybeSingle(),
+          preparerId ? db.from("staff_profiles").select("id, name, email, is_active").eq("id", preparerId).maybeSingle() : Promise.resolve({ data: null }),
+        ]);
+        const myFirst = String(meRow?.name || "").split(" ")[0] || "A colleague";
+        const client = String(job.client || "the client");
+        const body = `${client} has sent their records for the ${jobLabel} — ${note}.${emLink ? `\nEmail: ${emLink}` : ""}\nYou can make a start.`;
+        if (prep) {
+          await db.from("task_comments").insert({
+            task_type: "ms", task_id: prep.id, entity_id: entityId, task_label: prep.label, author_id: me, body, kind: "comment",
+            to_staff_id: preparerId && preparerId !== me ? preparerId : null, mentions: [],
+          });
+        }
+        let notified = false;
+        if (preparer?.is_active && preparer.id !== me) {
+          const link = `/planner/plan/${entityId}/${periodEnd}${job.template_key === "self_assessment" ? "?template=self_assessment" : ""}`;
+          await db.from("notifications").insert({
+            recipient_id: preparer.id, kind: "records_received",
+            title: `${client}: records received`, body: `${myFirst} marked the ${jobLabel} records received${emSubject ? ` (“${emSubject}”)` : ""}. You can start.`,
+            link_path: link, source_key: `records_received:${plan.id}`,
+          });
+          if (preparer.email) {
+            const { data: settings } = await db.from("job_plan_settings").select("comms_mailbox").eq("id", true).maybeSingle();
+            try {
+              await sendGeneric(db, {
+                entityId: null, to: preparer.email, ownerId: me, mailbox: settings?.comms_mailbox || null,
+                subject: `${client}: records received — ${jobLabel}`,
+                text: `Hi ${String(preparer.name || "").split(" ")[0]},\n\n${body}\n\n—\nThe workflow in Athena: ${PORTAL_URL}${link}${prep ? `\nThe task: ${taskUrl({ type: "ms", id: prep.id, occurrence_date: null })}` : ""}`,
+              });
+              notified = true;
+            } catch (e) { console.error("[job-plan] records notify", (e as Error).message); }
+          }
+        }
+
+        // 3. BrightManager's status, which Athena can't set: an Admin Task List
+        //    item, confirmed by the tick once the import shows it.
+        let bmRequest = false;
+        const prepJob = job.prep_job_id as string | null;
+        if (prepJob && recordsRank(job.bm_status as string | null) < recordsRank("Records Received")) {
+          const { data: open } = await db.from("bm_status_requests").select("id")
+            .eq("bm_task_schedule_id", prepJob).eq("wanted_status", "Records Received").is("confirmed_at", null).maybeSingle();
+          if (!open) {
+            const { data: task, error: tErr } = await db.from("admin_tasks").insert({
+              kind: "manual", stage: "todo", entity_id: entityId, created_by: me, source: "Records received (email)",
+              title: `Set BrightManager status to Records Received — ${jobLabel}`,
+              detail: [`${client}: ${note}.`, emLink ? `Email: ${emLink}` : null, "Clears itself once the BrightManager import shows Records Received."].filter(Boolean).join("\n"),
+            }).select("id").single();
+            if (tErr) throw new Error(tErr.message);
+            await db.from("bm_status_requests").insert({
+              bm_task_schedule_id: prepJob, entity_id: entityId, wanted_status: "Records Received",
+              admin_task_id: task.id, plan_id: plan.id, requested_by: me, source_ref: emLink || null,
+            });
+          }
+          bmRequest = true;
+        }
+
+        return json({
+          success: true, plan_id: plan.id, created, committed,
+          preparer: preparer?.name || null, notified, bm_request: bmRequest, label: jobLabel,
+        });
+      }
+
       case "records_signal_handle": {
         const planId = uuid(p.plan_id, "plan_id");
         const outcome = p.outcome === "records_in" ? "records_in" : "still_waiting";

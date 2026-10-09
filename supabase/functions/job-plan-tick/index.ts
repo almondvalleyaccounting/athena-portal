@@ -242,6 +242,30 @@ Deno.serve(async (req) => {
       }
     } catch (e) { stats.errors.push(`completions: ${(e as Error).message}`); }
 
+    // ── BrightManager status requests (sql/366) ────────────────────────────
+    // "Set BM status to Records Received" asked of a person (Athena only reads
+    // BM): confirmed — and its Admin Task List item cleared — once the import
+    // shows the job at or past that status, or gone.
+    try {
+      const { data: reqs } = await db.from("bm_status_requests").select("id, bm_task_schedule_id, wanted_status, admin_task_id").is("confirmed_at", null).limit(1000);
+      if (reqs?.length) {
+        const { data: rows } = await db.from("bm_task_schedule").select("id, state, bm_status").in("id", reqs.map((r) => r.bm_task_schedule_id));
+        const byId = new Map((rows || []).map((r) => [r.id, r]));
+        const reqRank = (st: string | null) => (st ? (BM_RANK[st] ?? 99) : 0);
+        const done = reqs.filter((r) => {
+          const row = byId.get(r.bm_task_schedule_id);
+          return !row || row.state === "completed" || reqRank(row.bm_status) >= reqRank(r.wanted_status);
+        });
+        if (done.length) {
+          const at = new Date().toISOString();
+          await db.from("bm_status_requests").update({ confirmed_at: at }).in("id", done.map((r) => r.id));
+          const taskIds = done.map((r) => r.admin_task_id).filter(Boolean);
+          if (taskIds.length) await db.from("admin_tasks").update({ confirmed_at: at }).in("id", taskIds).is("done_at", null).is("confirmed_at", null);
+          (stats as Record<string, unknown>).bmStatusConfirmed = done.length;
+        }
+      }
+    } catch (e) { stats.errors.push(`bm status requests: ${(e as Error).message}`); }
+
     // ── Records-in signals from the client (sql/319) ─────────────────────
     // A reply on the request/chase thread (or from the address we wrote
     // to), or a portal upload, after we sent. It holds the chases and asks
