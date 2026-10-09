@@ -538,7 +538,15 @@ export default function EmailView() {
   // up by a second Athena tab, and discarding there deleted the first tab's.
   // Cleared on send or discard.
   const [composer, setComposer] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('comms_draft') || 'null'); } catch { return null; }
+    try {
+      const own = sessionStorage.getItem('comms_draft');
+      if (own) return JSON.parse(own);
+      // One-off hand-over from the old browser-wide copy, so a draft written
+      // before this change still comes back; then it's gone from the shared spot.
+      const legacy = localStorage.getItem('comms_draft');
+      localStorage.removeItem('comms_draft');
+      return legacy ? JSON.parse(legacy) : null;
+    } catch { return null; }
   });
   const [sending, setSending] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
