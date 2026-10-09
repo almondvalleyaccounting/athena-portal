@@ -377,7 +377,7 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
 
   return (
     <div onMouseDown={(e) => { if (e.target === e.currentTarget && !editing) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-      <div style={{ width: 720, maxWidth: '94vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, fontFamily: font }}>
+      <div style={{ width: 900, maxWidth: '94vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, fontFamily: font }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{editing ? (editing.id ? 'Edit signature' : 'New signature') : 'Signatures'}</span>
           <button onClick={() => (editing ? setEditing(null) : onClose())} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
