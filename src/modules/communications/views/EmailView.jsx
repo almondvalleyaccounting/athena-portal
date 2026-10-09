@@ -1197,14 +1197,27 @@ export default function EmailView() {
     }
   }, [threadMailbox]);
 
+  // Tagging an email in the Inbox files it: tag + archive, like Tagging mode
+  // — a tagged email is dealt with and shouldn't sit in the Inbox. Elsewhere
+  // (Sent, a label, All mail) it just adds the tag.
   const tagThread = useCallback(async (label) => {
     if (!thread) return;
+    const fileIt = labelId === 'INBOX' && thread.messages.some((m) => m.labelIds.includes('INBOX'));
     try {
-      await gmail.modifyMessage(threadMailbox, thread.id, { addLabelIds: [label.id] });
+      await gmail.modifyMessage(threadMailbox, thread.id, fileIt
+        ? { addLabelIds: [label.id], removeLabelIds: ['INBOX'] }
+        : { addLabelIds: [label.id] });
       const sender = thread.messages
         .map((m) => parseAddress(m.from).email.toLowerCase())
         .find((e) => e && e !== threadMailbox);
       recordTagRule(threadMailbox, sender, label);
+      if (fileIt) {
+        forgetThread(threadMailbox, thread.id);
+        advanceFrom(thread.id);
+        setThreads((prev) => prev.filter((t) => t.id !== thread.id));
+        flash(`Tagged “${label.name}” & archived.`);
+        return;
+      }
       setThread((prev) => (prev ? {
         ...prev,
         messages: prev.messages.map((m) => ({ ...m, labelIds: [...new Set([...m.labelIds, label.id])] })),
@@ -1214,15 +1227,25 @@ export default function EmailView() {
     } catch (e) {
       setError(e.message);
     }
-  }, [mailbox, thread]);
+  }, [labelId, thread, threadMailbox]);
 
   // Tag one email from its row (hover → Tag). Same as Tag on the open email,
   // without opening it first.
   const tagRow = useCallback(async (t, label) => {
+    const fileIt = labelId === 'INBOX' && (t.labelIds || []).includes('INBOX');
     try {
-      await gmail.modifyMessage(t.mailbox, t.id, { addLabelIds: [label.id] });
+      await gmail.modifyMessage(t.mailbox, t.id, fileIt
+        ? { addLabelIds: [label.id], removeLabelIds: ['INBOX'] }
+        : { addLabelIds: [label.id] });
       const sender = parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
       if (sender && sender !== t.mailbox) recordTagRule(t.mailbox, sender, label);
+      if (fileIt) {
+        forgetThread(t.mailbox, t.id);
+        advanceFrom(t.id);
+        setThreads((prev) => prev.filter((x) => x.id !== t.id));
+        flash(`Tagged “${label.name}” & archived.`);
+        return;
+      }
       const add = (ids) => [...new Set([...(ids || []), label.id])];
       setThreads((prev) => prev.map((x) => (x.id === t.id ? { ...x, labelIds: add(x.labelIds) } : x)));
       setThread((prev) => (prev?.id === t.id ? { ...prev, messages: prev.messages.map((m) => ({ ...m, labelIds: add(m.labelIds) })) } : prev));
@@ -1230,7 +1253,7 @@ export default function EmailView() {
     } catch (e) {
       setError(e.message);
     }
-  }, []);
+  }, [labelId]);
 
   // Take a tag off the open thread — the fix for a tag applied by mistake.
   // It also stops the inbox suggesting that tag for the people on the thread:
@@ -1689,7 +1712,7 @@ export default function EmailView() {
                   onPick={tagThread}
                   onCreate={ensureLabel}
                   align="right"
-                  trigger={<button title="Tag with a label" style={btnText}><Tag size={13} /> Tag</button>}
+                  trigger={<button title={labelId === 'INBOX' ? 'Tag and archive' : 'Tag with a label'} style={btnText}><Tag size={13} /> Tag</button>}
                 />
               )}
               {thread.messages.some((m) => m.labelIds.includes('INBOX'))
@@ -2170,7 +2193,7 @@ export default function EmailView() {
                         onPick={(label) => tagRow(t, label)}
                         onCreate={ensureLabel}
                         align="right"
-                        trigger={<button title="Tag" style={rowActionBtn}><Tag size={12} /></button>}
+                        trigger={<button title={labelId === 'INBOX' ? 'Tag (and archive)' : 'Tag'} style={rowActionBtn}><Tag size={12} /></button>}
                       />
                     </span>
                   )}
