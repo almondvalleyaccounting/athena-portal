@@ -2012,9 +2012,11 @@ export default function EmailView() {
             // Tagging mode's second line: the suggestion with approve / wrong /
             // change, or a plain tag picker when there's nothing to suggest.
             const tagLine = taggingMode && !isAll && (
+              // Only the controls keep their clicks; the empty part of the line
+              // opens the email like the rest of the row.
               <div
-                onClick={(e) => e.stopPropagation()}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4, cursor: 'default' }}
+                onClick={(e) => { if (e.target.closest('button, [data-picker]')) e.stopPropagation(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}
               >
                 {sug ? (
                   <>
@@ -2038,12 +2040,14 @@ export default function EmailView() {
                 ) : (
                   <span style={{ fontSize: 11.5, color: '#94a3b8' }}>No suggestion</span>
                 )}
-                <LabelPicker
-                  labels={userLabels}
-                  onPick={(label) => tagRowAs(t, label, sug)}
-                  onCreate={ensureLabel}
-                  trigger={<button style={changeBtn}><Tag size={10} /> {sug ? 'Change' : 'Tag'} ▾</button>}
-                />
+                <span data-picker>
+                  <LabelPicker
+                    labels={userLabels}
+                    onPick={(label) => tagRowAs(t, label, sug)}
+                    onCreate={ensureLabel}
+                    trigger={<button style={changeBtn}><Tag size={10} /> {sug ? 'Change' : 'Tag'} ▾</button>}
+                  />
+                </span>
               </div>
             );
             const sender = (
