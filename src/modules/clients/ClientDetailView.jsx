@@ -661,7 +661,7 @@ export default function ClientDetailView() {
 
       {tab === 'comms' && <ClientCommsTab entityId={id} />}
 
-      {tab === 'drive' && <ClientDriveTab entityId={id} entityName={entity?.name} />}
+      {tab === 'drive' && <ClientDriveTab entityId={id} entityName={entity?.name} entityType={entity?.type} />}
       </div>
 
       {/* Right rail — the same on every tab */}

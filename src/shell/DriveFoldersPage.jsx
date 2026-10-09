@@ -4,7 +4,7 @@ import { useAuth } from './AppShell';
 import { supabase } from '../lib/supabase';
 import { BTN } from '../lib/buttonStyles';
 import { callDrive, folderLink } from '../modules/drive/driveApi';
-import FolderPicker from '../modules/drive/FolderPicker';
+import FolderExplorerModal from '../modules/drive/FolderExplorerModal';
 import { startDriveConnect } from '../modules/onboarding/api';
 
 const font = "'Outfit', sans-serif";
@@ -81,6 +81,13 @@ export default function DriveFoldersPage() {
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
+  // The explorer reports its own errors, so a failed link keeps it open.
+  const link = async (client, folderId) => {
+    await callDrive({ action: 'set_folder', entity_id: client.id, folder_id: folderId });
+    setPicking(null);
+    await load();
+    setInfo(`${client.name} linked.`);
+  };
 
   if (profile?.can_manage_portal !== true) {
     return <div style={{ padding: '40px 24px', fontFamily: font, color: '#64748b' }}>You need the System admin permission to manage Drive folders.</div>;
@@ -117,6 +124,16 @@ export default function DriveFoldersPage() {
         </button>
       </div>
 
+      {picking && (
+        <FolderExplorerModal
+          title={`Drive folder for ${picking.name}`}
+          clientType={picking.type}
+          currentFolderId={maps[picking.id]?.folder_id || null}
+          confirmLabel={`Link to ${picking.name}`}
+          onPick={(fid) => link(picking, fid)}
+          onClose={() => setPicking(null)} />
+      )}
+
       {error && <div style={{ fontSize: 13, color: '#991b1b', background: '#fee2e2', borderRadius: 8, padding: '8px 10px' }}>{error}</div>}
       {info && <div style={{ fontSize: 13, color: '#166534', background: '#dcfce7', borderRadius: 8, padding: '8px 10px' }}>{info}</div>}
 
@@ -148,16 +165,9 @@ export default function DriveFoldersPage() {
                       <td style={{ ...td, fontSize: 12.5, color: m?.status === 'suggested' ? '#92400e' : '#64748b' }}>{m ? `${METHOD[m.match_method]}${m.status === 'suggested' ? ' · suggested' : ''}` : ''}</td>
                       <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {m?.status === 'suggested' && <button disabled={busy} onClick={() => run({ action: 'confirm', entity_ids: [c.id] }, `${c.name} confirmed.`)} style={{ ...BTN.primary.sm, marginRight: 6 }}>Confirm</button>}
-                        <button disabled={busy} onClick={() => setPicking(picking === c.id ? null : c.id)} style={BTN.secondary.sm}>{m ? 'Change' : 'Set'}</button>
+                        <button disabled={busy} onClick={() => setPicking(c)} style={BTN.secondary.sm}>{m ? 'Change' : 'Set'}</button>
                       </td>
                     </tr>
-                    {picking === c.id && (
-                      <tr><td colSpan={5} style={{ ...td, background: '#f8fafc' }}>
-                        <FolderPicker initial={c.name.split(' ')[0]} busy={busy}
-                          onPick={(fid) => run({ action: 'set_folder', entity_id: c.id, folder_id: fid }, `${c.name} set.`)}
-                          onCancel={() => setPicking(null)} />
-                      </td></tr>
-                    )}
                   </React.Fragment>
                 );
               })}

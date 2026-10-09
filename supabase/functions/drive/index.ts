@@ -16,7 +16,8 @@
 //   set_folder   { entity_id, folder_id }        pin a client's folder (confirmed)
 //   set_accounts_folder { entity_id, folder_id|null }  where its year-end folders live
 //   clear        { entity_id }                   forget the mapping
-//   browse       { entity_id?, folder_id? }      a folder's contents
+//   roots                                        the top-level folders of AV.Shared
+//   browse       { entity_id?, folder_id?, folders_only? }  a folder's contents
 //   year_end     { entity_id, period_end, create? }  the year end's folder
 //   notes_get    { entity_id, period_end }       the notes Doc + its text now
 //   notes_create { entity_id, period_end, job_plan_id? }
@@ -223,6 +224,13 @@ Deno.serve(async (req) => {
         return json({ success: true });
       }
 
+      // The top of AV.Shared, for the folder explorer.
+      case "roots": {
+        const { token } = await getDriveToken(db);
+        const top = await listChildren(token, SHARED_DRIVE_ID, { foldersOnly: true });
+        return json({ success: true, folders: top.map((f) => ({ id: f.id, name: f.name, link: f.webViewLink })) });
+      }
+
       case "browse": {
         const { token } = await getDriveToken(db);
         let folderId: string;
@@ -233,7 +241,7 @@ Deno.serve(async (req) => {
           folderId = map.folder_id;
         }
         const folder = await assertInSharedDrive(token, folderId);
-        const items = await listChildren(token, folder.id, { max: 2000 });
+        const items = await listChildren(token, folder.id, { max: 2000, foldersOnly: p.folders_only === true });
         return json({
           success: true,
           folder: { id: folder.id, name: folder.name, link: folder.webViewLink, parent: folder.parents?.[0] ?? null },

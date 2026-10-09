@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BTN } from '../../lib/buttonStyles';
 import { callDrive, fetchClientFolder, folderLink } from '../drive/driveApi';
 import DriveFolderBrowser from '../drive/DriveFolderBrowser';
-import FolderPicker from '../drive/FolderPicker';
+import FolderExplorerModal from '../drive/FolderExplorerModal';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '18px 22px' };
@@ -11,7 +11,7 @@ const METHOD = { name: 'matched on name', company_number: 'matched on company nu
 
 // The client's Google Drive folder (sql/362): which folder is theirs, and its
 // contents. A scan only suggests; a person confirms before Athena writes there.
-export default function ClientDriveTab({ entityId, entityName }) {
+export default function ClientDriveTab({ entityId, entityName, entityType }) {
   const [map, setMap] = useState(undefined);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -56,11 +56,16 @@ export default function ClientDriveTab({ entityId, entityName }) {
         {error && <div style={{ marginTop: 10, fontSize: 13, color: '#991b1b', background: '#fee2e2', borderRadius: 8, padding: '8px 10px' }}>{error}</div>}
         {info && <div style={{ marginTop: 10, fontSize: 13, color: '#166534', background: '#dcfce7', borderRadius: 8, padding: '8px 10px' }}>{info}</div>}
         {picking && (
-          <div style={{ marginTop: 12 }}>
-            <FolderPicker initial={(entityName || '').split(' ')[0]} busy={busy}
-              onPick={(fid) => run({ action: 'set_folder', entity_id: entityId, folder_id: fid }, 'Folder set.')}
-              onCancel={() => setPicking(false)} />
-          </div>
+          <FolderExplorerModal
+            title={`Drive folder for ${entityName || 'this client'}`}
+            clientType={entityType}
+            currentFolderId={map?.folder_id || null}
+            confirmLabel="Link to this client"
+            onPick={async (fid) => {
+              await callDrive({ action: 'set_folder', entity_id: entityId, folder_id: fid });
+              setPicking(false); await reload(); setInfo('Folder linked.');
+            }}
+            onClose={() => setPicking(false)} />
         )}
       </div>
 
