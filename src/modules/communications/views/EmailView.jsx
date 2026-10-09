@@ -2816,14 +2816,14 @@ export default function EmailView() {
               </span>
             );
             const sender = (
-              <span style={{ fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: '0 0 150px' } : { flex: 1 }) }}>
+              <span style={{ fontWeight: t.unread ? 700 : 500, color: t.unread ? '#0f172a' : READ_INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: '0 0 150px' } : { flex: 1 }) }}>
                 {party.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
                 {party.to && <span style={{ fontWeight: 400, color: '#94a3b8' }}> → {party.to}</span>}
               </span>
             );
             const subject = (
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: 1, minWidth: 0 } : {}) }}>
-                <span style={{ fontWeight: t.unread ? 700 : 500, color: '#1e293b' }}>{t.subject}</span>
+                <span style={{ fontWeight: t.unread ? 700 : 500, color: t.unread ? '#1e293b' : READ_INK }}>{t.subject}</span>
                 <span style={{ color: '#94a3b8' }}> — {decodeEntities(t.snippet)}</span>
               </span>
             );
@@ -3265,6 +3265,10 @@ const approveIconBtn = {
 // Send later "on" colour — solid turquoise, used on the rail button and the
 // composer's "Will send …" pill so the two read as the same thing.
 const SEND_LATER_ON = { bg: '#14A396', border: '#0F7F75', fg: '#fff' };
+
+// Read rows: dark grey sender + subject — lighter than unread's near-black,
+// darker than the snippet's #94a3b8 — so read vs unread shows at a glance.
+const READ_INK = '#475569';
 
 const linkBtn = {
   border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: tones.info.solid,
