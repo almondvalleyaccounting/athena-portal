@@ -381,6 +381,7 @@ export default function PortalDashboardView({
             sameLabel="The same customers" palette={tablePalette(layout)} cardStyle={cardChrome}
           />
         )}
+        {payload && active === 'debtors' && <DebtorDays payload={payload} />}
         {payload && active === 'overdue' && (
           <OverdueInvoicesView
             data={ui.invoices}
@@ -1139,17 +1140,15 @@ function Projection({ payload, ui }) {
 
 /* ─── Who owes you / who you owe ─────────────────────────────── */
 /*
-  Charts above the aged tables. Debtors: where the money owed sits by age, who
-  owes the most (each bar split by age), and days-to-get-paid month by month.
+  Charts around the aged tables. Debtors: where the money owed sits by age and
+  who owes the most (each bar split by age) above the table; days-to-get-paid
+  month by month below it (DebtorDays).
   Creditors: the same age split, and when the bills open on the date fall due.
 */
 function DebtorInsights({ payload, currency }) {
   const { layout } = useLayout();
   const ar = payload.metrics?.ar_asat;
   if (!ar) return null;
-  const series = payload.metrics?.bs_series;
-  const dso = debtorDays(payload.metrics?.detail, series, (series?.month_keys || []).slice(-12))
-    .filter((d) => d.value != null);
   return (
     <>
       <div style={layout === 'wide' ? TWO_COL : undefined}>
@@ -1162,6 +1161,18 @@ function DebtorInsights({ payload, currency }) {
           </Card>
         )}
       </div>
+    </>
+  );
+}
+
+// Days to get paid — below the debtors table, so the table comes first.
+function DebtorDays({ payload }) {
+  const { layout } = useLayout();
+  const series = payload.metrics?.bs_series;
+  const dso = debtorDays(payload.metrics?.detail, series, (series?.month_keys || []).slice(-12))
+    .filter((d) => d.value != null);
+  return (
+    <>
       {layout !== 'compact' && dso.length >= 3 && (
         <Card>
           <CardTitle>Days to get paid</CardTitle>
