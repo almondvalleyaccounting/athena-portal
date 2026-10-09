@@ -1,8 +1,9 @@
 // drive-auth-init — Athena Portal
 //
 // Returns the Google OAuth consent URL for the Drive connection. Active staff only.
-// Uses the drive.file scope (app-created files and folders only — no access to the
-// rest of the Drive) and its own gdrive_connections row.
+// Asks for the full `drive` scope (sql/362) so Athena can read and write the client
+// folders it did not create; _shared/drive.ts confines every call to AV.Shared.
+// Uses its own gdrive_connections row.
 //
 // It used to be an unauthenticated GET that 302'd anyone who asked, taking `staff_id`
 // from the query string into an unsigned `state`. The callback then revoked the live
@@ -15,7 +16,9 @@ import { createSignedState, safeReturnTo } from "../_shared/oauth-state.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/drive-auth-callback`;
-const SCOPE = "https://www.googleapis.com/auth/drive.file openid email";
+// Full `drive` (sql/362): Athena reads and writes the client folders in AV.Shared,
+// which it did not create. _shared/drive.ts keeps every call inside AV.Shared.
+const SCOPE = "https://www.googleapis.com/auth/drive openid email";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

@@ -59,6 +59,7 @@ import { computeChain, type StageRule, type JobContext } from "../_shared/workfl
 import { renderForMilestone, sendForMilestone, renderGeneric, sendGeneric, loadPrefs, cleanPrefs } from "../_shared/job-comms.ts";
 import { sendEmail } from "../_shared/resend.ts";
 import { buildBoard as buildBoardShared, PRIORITY_TEMPLATES, jobKey } from "../_shared/priority-board.ts";
+import { appendYearEndNote } from "../_shared/drive-notes.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1039,6 +1040,24 @@ Deno.serve(async (req) => {
         }).select("id").single();
         if (error) throw new Error(error.message);
 
+        // A comment on a workflow stage also lands in that year end's notes Doc in
+        // Drive (sql/362), when the Doc has been started. Best effort: Drive being
+        // down must not lose the comment, which is already saved above.
+        let driveSaved: boolean | null = null;
+        if (task.type === "ms") {
+          const { data: ms } = await db.from("job_milestones").select("label, plan:job_plans!inner(entity_id, period_end)").eq("id", task.id).maybeSingle();
+          const plan = ms?.plan as { entity_id: string; period_end: string } | undefined;
+          if (plan) {
+            const { data: doc } = await db.from("drive_documents").select("id").eq("entity_id", plan.entity_id).eq("kind", "year_end_notes").eq("period_end", plan.period_end).maybeSingle();
+            if (doc) {
+              try {
+                await appendYearEndNote(db, { entityId: plan.entity_id, periodEnd: plan.period_end, text: body, label: ms?.label || label, by: me, createIfMissing: false });
+                driveSaved = true;
+              } catch (e) { console.error("[job-plan] drive notes append", (e as Error).message); driveSaved = false; }
+            }
+          }
+        }
+
         const { data: thread } = await db.from("task_comments").select("author_id, to_staff_id, mentions").eq("task_type", task.type).eq("task_id", task.id);
         const others = new Set<string>();
         (thread || []).forEach((c) => {
@@ -1069,7 +1088,7 @@ Deno.serve(async (req) => {
           }
           if (notified) await db.from("task_comments").update({ notified_at: now }).eq("id", row.id);
         }
-        return json({ success: true, id: row.id, notified });
+        return json({ success: true, id: row.id, notified, drive_saved: driveSaved });
       }
 
       // The client's answer to a review-meeting proposal (sql/321).

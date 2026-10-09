@@ -133,6 +133,8 @@ export default function TaskModal({ task, staffMap, staffList, entityMap, profil
       setText(''); setMentions([]); setMentionQ(null);
       await load();
       if (res.notified) setError(null);
+      // The comment is saved either way; only the copy in the Drive notes Doc failed (sql/362).
+      if (res.drive_saved === false) setError('Comment saved, but it could not be added to the year-end notes in Drive.');
     } catch (e) { setError(e.message || String(e)); }
     finally { setBusy(false); }
   };

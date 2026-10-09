@@ -30,6 +30,7 @@ const SUBPAGES = [
   { prefix: '/admin/kpi-packs', label: 'KPI packs' },
   { prefix: '/kpis/outstanding', label: 'KPI entry outstanding' },
   { prefix: '/admin/connections', label: 'Connections' },
+  { prefix: '/admin/drive', label: 'Drive folders' },
   { prefix: '/admin/schedules', label: 'Scheduled jobs' },
   { prefix: '/settings/me', label: 'My settings' },
   { prefix: '/settings/shortcuts', label: 'Keyboard shortcuts' },

@@ -169,6 +169,7 @@ export default function Sidebar() {
     isOwner && { id: 'admin-dashboard-access', label: 'Client dashboard access', route: '/admin/dashboard-access' },
     isOwner && { id: 'admin-kpi-packs', label: 'KPI packs', route: '/admin/kpi-packs' },
     isOwner && { id: 'admin-connections', label: 'Connections', route: '/admin/connections' },
+    isOwner && { id: 'admin-drive', label: 'Drive folders', route: '/admin/drive' },
     isOwner && { id: 'admin-schedules', label: 'Scheduled jobs', route: '/admin/schedules' },
     canImport && { id: 'admin-import', label: 'Data import', route: '/admin/import' },
     // Workflow consolidated into the Work Planner module's Setup area

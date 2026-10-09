@@ -7,6 +7,7 @@ import { clientFiguresHidden } from '../../modules.config';
 import { Btn } from '../../components/ui';
 import { approvedServicesOf, feeTotals, underBillingOf, yearlyFeeOf } from './feeRollup';
 import ClientCommsTab from './ClientCommsTab';
+import ClientDriveTab from './ClientDriveTab';
 import ClientAgendaCard from './ClientAgendaCard';
 import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
 import { BTN } from '../../lib/buttonStyles';
@@ -306,6 +307,7 @@ export default function ClientDetailView() {
     ...(showBillingTab ? [{ id: 'billing', label: canSeeFees && canSeeQuotes ? 'Billing & quotes' : canSeeFees ? 'Billing' : 'Quotes' }] : []),
     { id: 'people', label: 'People', count: peopleGrouped.length },
     { id: 'comms', label: 'Communications' },
+    { id: 'drive', label: 'Drive' },
   ];
   const tab = CLIENT_TABS.some((t) => t.id === activeTab) ? activeTab : 'overview';
 
@@ -658,6 +660,8 @@ export default function ClientDetailView() {
       )}
 
       {tab === 'comms' && <ClientCommsTab entityId={id} />}
+
+      {tab === 'drive' && <ClientDriveTab entityId={id} entityName={entity?.name} />}
       </div>
 
       {/* Right rail — the same on every tab */}

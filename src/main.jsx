@@ -20,6 +20,7 @@ import KpiPacksPage from './modules/client-dashboard/KpiPacksPage';
 import KpiOutstandingPage from './modules/client-dashboard/KpiOutstandingPage';
 import ConnectionsPage from './shell/ConnectionsPage';
 import SchedulesPage from './shell/SchedulesPage';
+import DriveFoldersPage from './shell/DriveFoldersPage';
 import ShortcutsPage from './shell/ShortcutsMap';
 import DataImportModule from './modules/data-import/DataImportModule';
 import SetupModule from './modules/work-planner/setup/SetupModule';
@@ -110,6 +111,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/admin/kpi-packs" element={<KpiPacksPage />} />
           <Route path="/kpis/outstanding" element={<KpiOutstandingPage />} />
           <Route path="/admin/connections" element={<ConnectionsPage />} />
+          {/* Client ↔ Google Drive folder map (sql/362). */}
+          <Route path="/admin/drive" element={<DriveFoldersPage />} />
           {/* What runs on a timer, and when it next fires (sql/223). */}
           <Route path="/admin/schedules" element={<SchedulesPage />} />
           {/* Settings — personal pages, available to all staff */}

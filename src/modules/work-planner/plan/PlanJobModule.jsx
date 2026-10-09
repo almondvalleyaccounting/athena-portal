@@ -8,6 +8,7 @@ import {
   fetchAccountsJobs, fetchAccountsJob, fetchPlan, fetchActiveStaff, callJobPlan,
 } from './planQueries';
 import EmailModal from '../components/EmailModal';
+import YearEndDrivePanel from './YearEndDrivePanel';
 
 // Workflows (was Plan the Job) — docs/WORKFLOW_TEMPLATE_ACCOUNTS_2026-09-25.md §5.
 //
@@ -689,6 +690,10 @@ function PlanEditor() {
           placeholder="Anything the next person should know about this job's timeline"
           style={{ ...selStyle, width: '100%', resize: 'vertical', fontFamily: font }} />
       </div>
+
+      {job?.template_key !== 'self_assessment' && (
+        <YearEndDrivePanel entityId={entityId} periodEnd={periodEnd} planId={plan?.id} />
+      )}
 
       <div style={{ fontSize: 12, color: '#94a3b8' }}>
         A date or owner you change is pinned automatically, so a recompute or the nightly pass leaves it alone. Removing a stage takes it out of this job only.

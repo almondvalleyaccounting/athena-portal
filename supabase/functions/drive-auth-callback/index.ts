@@ -11,7 +11,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/drive-auth-callback`;
-const SCOPE = "https://www.googleapis.com/auth/drive.file openid email";
+// Full `drive` (sql/362): Athena reads and writes the client folders in AV.Shared,
+// which it did not create. _shared/drive.ts keeps every call inside AV.Shared.
+const SCOPE = "https://www.googleapis.com/auth/drive openid email";
 const PORTAL_BASE = Deno.env.get("PORTAL_BASE_URL") || "https://portal.almondvalleyaccounting.co.uk";
 
 const corsHeaders = {

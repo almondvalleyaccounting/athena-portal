@@ -1,5 +1,5 @@
 import React from 'react';
-import { Inbox } from 'lucide-react';
+import { Inbox, FolderOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AppShell';
 import GmailConnectionPanel from '../components/GmailConnectionPanel';
@@ -75,6 +75,20 @@ export default function ConnectionsPage() {
           style={{ padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}
         >
           Open Communications
+        </Link>
+      </div>
+
+      {/* Google Drive — the AV.Shared client folders (sql/362) */}
+      <div style={{ marginTop: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <FolderOpen size={18} color="#64748b" />
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>Google Drive</p>
+          <p style={{ fontSize: 14, color: '#64748b' }}>
+            The connection Athena uses to read and save into each client's folder in AV.Shared, and the client ↔ folder map.
+          </p>
+        </div>
+        <Link to="/admin/drive" style={{ padding: '8px 14px', fontSize: 14, fontWeight: 600, background: '#0f172a', color: '#fff', borderRadius: 8, textDecoration: 'none' }}>
+          Drive folders
         </Link>
       </div>
     </div>
