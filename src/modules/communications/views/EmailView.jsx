@@ -30,6 +30,7 @@ const OPTION_DEFAULTS = {
   confirmDelete: false,
   remoteImages: true,     // false = pictures from the web wait for a click
   includeOriginal: true,  // quote the original on replies / forwards
+  autoSignature: true,    // add my signature to new emails and replies
   autoCheckMins: 5,
 };
 function loadOptions() {
@@ -1299,7 +1300,9 @@ export default function EmailView() {
     if (!okToDiscard()) return;
     setError(null);
     // Signature belongs to the account the mail actually leaves from.
-    const sigBody = effectiveSignature(signatures, mode === 'new' ? sendFrom : threadMailbox);
+    const sigBody = optionsRef.current.autoSignature
+      ? effectiveSignature(signatures, mode === 'new' ? sendFrom : threadMailbox)
+      : '';
     const sig = sigBody ? `\n\n${sigBody}` : '';
     if (mode === 'new') {
       setComposer(withStart({ mode, to: '', cc: '', subject: '', body: `${sig}`, mailbox: sendFrom }));
@@ -1397,6 +1400,10 @@ export default function EmailView() {
         references: composer.references || undefined,
       });
       const wasReply = !!composer.threadId;
+      // Sent: the composer is empty NOW. Without this the reopen below read
+      // the old draft through the ref (it updates after render) and asked
+      // "Discard your unsent email?" about an email already gone.
+      composerRef.current = null;
       setComposer(null);
       flash('Sent.');
       if (wasReply && thread) forgetThread(threadMailbox, thread.id);
@@ -2242,6 +2249,9 @@ export default function EmailView() {
             </OptionRow>
 
             <div style={optSection}>Writing</div>
+            <OptionRow label="Add my signature automatically" hint="To new emails, replies and forwards. Edit it with the Signature button.">
+              <YesNo value={options.autoSignature} onChange={(v) => setOption('autoSignature', v)} />
+            </OptionRow>
             <OptionRow label="Include the original email in replies" hint="You can still tick or untick it per email.">
               <YesNo value={options.includeOriginal} onChange={(v) => setOption('includeOriginal', v)} />
             </OptionRow>
