@@ -92,6 +92,7 @@ async function callGmail(action, payload = {}) {
 export const gmail = {
   listLabels: (mailbox) => callGmail('list_labels', { mailbox }),
   createLabel: (mailbox, name) => callGmail('create_label', { mailbox, name }),
+  renameLabel: (mailbox, labelId, name) => callGmail('rename_label', { mailbox, labelId, name }),
   listThreads: (mailbox, { labelIds, q, pageToken, maxResults, excludeOwn } = {}) =>
     callGmail('list_threads', { mailbox, labelIds, q, pageToken, maxResults, excludeOwn }),
   getThread: (mailbox, threadId) => callGmail('get_thread', { mailbox, threadId }),

@@ -3,7 +3,7 @@ import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Check, Keyboard, Search, Send, Settings2, Sparkles, Tag, Trash2, X,
+  Check, Keyboard, Search, Send, Settings2, Smile, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { chipStyle, tones } from '../../../lib/tokens';
@@ -265,6 +265,7 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState('');
   const [busy, setBusy] = useState(false);
+  const [parent, setParent] = useState(''); // full name of the label to create inside
   const ref = useRef(null);
 
   useEffect(() => {
@@ -289,7 +290,7 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
   const create = async () => {
     setBusy(true);
     try {
-      const label = await onCreate(term.trim());
+      const label = await onCreate(parent ? `${parent}/${term.trim()}` : term.trim());
       if (label) await pick(label);
     } finally {
       setBusy(false);
@@ -312,7 +313,7 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
                 else if (term.trim() && !exact) create();
               }
             }}
-            placeholder="Search labels… (use / to nest)"
+            placeholder="Search labels, or type a new one"
             style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13.5, fontFamily: font, border: 'none', borderBottom: '1px solid #e2e8f0', outline: 'none' }}
           />
           <div style={{ maxHeight: 260, overflowY: 'auto' }}>
@@ -338,13 +339,27 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
             )}
           </div>
           {term.trim() && !exact && (
-            <button
-              onClick={create}
-              disabled={busy}
-              style={{ width: '100%', padding: '8px 11px', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: '#f8fafc', border: 'none', borderTop: '1px solid #e2e8f0', cursor: 'pointer', textAlign: 'left', fontFamily: font }}
-            >
-              {busy ? 'Creating…' : `+ Create “${term.trim()}”`}
-            </button>
+            <div style={{ borderTop: '1px solid #e2e8f0', background: '#f8fafc', padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {/* Nest the new tag under an existing one (Gmail stores it as Parent/Child). */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#64748b' }}>
+                Inside
+                <select
+                  value={parent}
+                  onChange={(e) => setParent(e.target.value)}
+                  style={{ flex: 1, minWidth: 0, padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
+                >
+                  <option value="">— top level —</option>
+                  {sorted.map((l) => <option key={l.id} value={l.name}>{l.name.split('/').join(' › ')}</option>)}
+                </select>
+              </label>
+              <button
+                onClick={create}
+                disabled={busy}
+                style={{ padding: '5px 0', fontSize: 13.5, fontWeight: 600, color: '#0e7fe0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: font }}
+              >
+                {busy ? 'Creating…' : `+ Create “${term.trim()}”${parent ? ` in ${parent.split('/').pop()}` : ''}`}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -521,6 +536,7 @@ export default function EmailView() {
   const [compact, setCompact] = useState(() => localStorage.getItem('comms_compact') === '1');
   const [options, setOptions] = useState(loadOptions);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [moveLabel, setMoveLabel] = useState(null); // { label, leaf, parent, busy }
   const optionsRef = useRef(options);
   optionsRef.current = options;
   useEffect(() => {
@@ -1278,6 +1294,31 @@ export default function EmailView() {
     }
   }, [thread, threadMailbox, rejectSuggested]);
 
+  // Emoji reaction, Gmail-style: a reply to the sender carrying a reaction
+  // part. Gmail shows it under their email; other mail apps get the emoji.
+  const [reactOpen, setReactOpen] = useState(false);
+  const react = useCallback(async (emoji) => {
+    setReactOpen(false);
+    const msg = thread?.messages?.[0];
+    if (!msg) return;
+    const subject = msg.subject || '';
+    try {
+      await gmail.send(threadMailbox, {
+        to: parseAddress(msg.from).email,
+        subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`,
+        bodyText: emoji,
+        bodyHtml: `<p style="font-size:24px">${emoji}</p>`,
+        reaction: emoji,
+        threadId: thread.threadId,
+        inReplyTo: msg.messageIdHeader,
+        references: [msg.references, msg.messageIdHeader].filter(Boolean).join(' '),
+      });
+      flash(`Reacted ${emoji} to ${parseAddress(msg.from).name}.`);
+    } catch (e) {
+      setError(`Reaction failed: ${e.message}`);
+    }
+  }, [thread, threadMailbox]);
+
   // Read ↔ unread on the open email (button, or u).
   const setReadState = useCallback(async (id, unread) => {
     try {
@@ -1596,13 +1637,40 @@ export default function EmailView() {
     || labelById[labelId]?.name.split('/').pop()
     || 'this folder';
 
+  // Move / rename a label from the rail (the ✎ on hover).
+  const doMoveLabel = async () => {
+    const leaf = moveLabel.leaf.trim().replace(/\//g, '-');
+    if (!leaf) return;
+    const name = moveLabel.parent ? `${moveLabel.parent}/${leaf}` : leaf;
+    setMoveLabel((m) => ({ ...m, busy: true }));
+    try {
+      await gmail.renameLabel(mailbox, moveLabel.label.id, name);
+      if (moveLabel.parent) {
+        // Open the path down to it so you can see where it went.
+        setExpanded((prev) => {
+          const next = new Set(prev);
+          moveLabel.parent.split('/').reduce((acc, seg) => { const p = acc ? `${acc}/${seg}` : seg; next.add(p); return p; }, '');
+          localStorage.setItem('comms_labels_expanded', JSON.stringify([...next]));
+          return next;
+        });
+      }
+      setMoveLabel(null);
+      await loadLabels();
+      refreshTagRules();
+      flash(`Moved to “${name.split('/').join(' › ')}”.`);
+    } catch (e) {
+      setMoveLabel((m) => ({ ...m, busy: false }));
+      setError(`Couldn't move the label: ${e.message}`);
+    }
+  };
+
   const renderTreeNode = (node, depth) => {
     const isActive = node.label && labelId === node.label.id && !q;
     const hasKids = node.children.length > 0;
     const isOpen = expanded.has(node.full);
     return (
       <React.Fragment key={node.full}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="group/lbl" style={{ display: 'flex', alignItems: 'center' }}>
           <button
             onClick={() => hasKids && toggleExpanded(node.full)}
             style={{ width: 18, height: 22, padding: 0, border: 'none', background: 'none', cursor: hasKids ? 'pointer' : 'default', color: '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: depth * 12 }}
@@ -1624,6 +1692,20 @@ export default function EmailView() {
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.seg}</span>
             {hasKids && <span style={{ fontSize: 11, color: '#cbd5e1', flexShrink: 0 }}>{node.children.length}</span>}
           </button>
+          {node.label && (
+            <button
+              className="invisible group-hover/lbl:visible"
+              onClick={() => {
+                const parts = node.label.name.split('/');
+                const leaf = parts.pop();
+                setMoveLabel({ label: node.label, leaf, parent: parts.join('/'), busy: false });
+              }}
+              title="Move or rename"
+              style={{ width: 20, height: 20, padding: 0, border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <PenSquare size={11} />
+            </button>
+          )}
         </div>
         {hasKids && isOpen && node.children.map((c) => renderTreeNode(c, depth + 1))}
       </React.Fragment>
@@ -1705,6 +1787,30 @@ export default function EmailView() {
               <button onClick={() => startComposer('reply')} title="Reply" style={btnText}><ReplyIcon size={14} /> Reply</button>
               <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnText}><ReplyAllIcon size={14} /> All</button>
               <button onClick={() => startComposer('forward')} title="Forward" style={btnText}><ForwardIcon size={14} /> Forward</button>
+              {/* Not on our own email — you react to what someone sent you. */}
+              {latestMsg && parseAddress(latestMsg.from).email.toLowerCase() !== threadMailbox && (
+                <div style={{ position: 'relative' }}>
+                  <button onClick={() => setReactOpen((o) => !o)} title="React with an emoji (sends to the sender, like Gmail)" style={btnText}>
+                    <Smile size={14} />
+                  </button>
+                  {reactOpen && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 40, display: 'flex', gap: 2, padding: 6, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)' }}>
+                      {['👍', '❤️', '😂', '🎉', '🙏', '👏', '😮', '😢', '✅'].map((em) => (
+                        <button
+                          key={em}
+                          onClick={() => react(em)}
+                          title={`Send ${em}`}
+                          style={{ width: 32, height: 32, fontSize: 18, border: 'none', borderRadius: 8, background: 'transparent', cursor: 'pointer' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          {em}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Labels are per-account, so tagging waits for a single mailbox. */}
               {!isAll && (
                 <LabelPicker
@@ -2278,6 +2384,48 @@ export default function EmailView() {
           {paneContent()}
         </div>
       </div>
+
+      {/* ── Move / rename a label ── */}
+      {moveLabel && (
+        <div onMouseDown={(e) => { if (e.target === e.currentTarget) setMoveLabel(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ width: 440, maxWidth: '92vw', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Move or rename label</span>
+              <button onClick={() => setMoveLabel(null)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+            </div>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+              Name
+              <input
+                value={moveLabel.leaf}
+                onChange={(e) => setMoveLabel((m) => ({ ...m, leaf: e.target.value }))}
+                style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7 }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+              Inside
+              <select
+                value={moveLabel.parent}
+                onChange={(e) => setMoveLabel((m) => ({ ...m, parent: e.target.value }))}
+                style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff' }}
+              >
+                <option value="">— top level —</option>
+                {/* Not itself or anything inside it. */}
+                {[...userLabels]
+                  .filter((l) => l.id !== moveLabel.label.id && !l.name.startsWith(`${moveLabel.label.name}/`))
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((l) => <option key={l.id} value={l.name}>{l.name.split('/').join(' › ')}</option>)}
+              </select>
+            </label>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>
+              Emails keep this label — it just moves in the list. Labels inside it move with it. The change shows in Gmail too.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setMoveLabel(null)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doMoveLabel} disabled={moveLabel.busy} style={{ ...BTN.primary.md, cursor: 'pointer' }}>{moveLabel.busy ? 'Moving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Options ── */}
       {optionsOpen && (

@@ -9,6 +9,7 @@
 //   list_messages  { labelIds?, q?, pageToken?, maxResults?, excludeOwn? }
 //                    one row per EMAIL rather than per conversation
 //   get_message    { messageId }       one email, parsed body + attachments
+//   rename_label   { labelId, name }   rename / move a label (and its children)
 //   modify_message / trash_message / untrash_message  { messageId, … }
 //                    the per-email versions of the thread actions
 //   send           { to, cc?, bcc?, subject, bodyText, bodyHtml?, threadId?,
@@ -136,6 +137,7 @@ function encodeSubject(s: string): string {
 function buildMime(opts: {
   from: string; to: string; cc?: string; bcc?: string; subject: string;
   text: string; html?: string; inReplyTo?: string; references?: string;
+  reaction?: string;
 }): string {
   const boundary = `=_athena_${crypto.randomUUID()}`;
   const headers = [
@@ -152,6 +154,18 @@ function buildMime(opts: {
   const html = opts.html || opts.text
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/\r?\n/g, "<br>\r\n");
+  // Gmail emoji reaction: an extra alternative part Gmail renders as a
+  // reaction under the original; other clients fall back to the plain/HTML
+  // parts (just the emoji). Needs In-Reply-To pointing at the email reacted to.
+  const reactionPart = opts.reaction
+    ? [
+      `--${boundary}`,
+      `Content-Type: text/vnd.google.email-reaction+json; charset="UTF-8"`,
+      `Content-Transfer-Encoding: 8bit`,
+      "",
+      JSON.stringify({ emoji: opts.reaction, version: 1 }),
+    ]
+    : [];
   const body = [
     "",
     `--${boundary}`,
@@ -159,6 +173,7 @@ function buildMime(opts: {
     `Content-Transfer-Encoding: 8bit`,
     "",
     opts.text,
+    ...reactionPart,
     `--${boundary}`,
     `Content-Type: text/html; charset="UTF-8"`,
     `Content-Transfer-Encoding: 8bit`,
@@ -340,6 +355,41 @@ Deno.serve(async (req) => {
         return jsonResponse({ success: true, label });
       }
 
+      // Rename or move a label. Gmail nests by name ("Parent/Child"), and a
+      // child's name holds the full path, so moving a label renames every
+      // label beneath it too. Returns the labels changed.
+      case "rename_label": {
+        const id = String(body.labelId || "");
+        const newName = String(body.name || "").split("/").map((p) => p.trim()).filter(Boolean).join("/");
+        if (!id || !newName) return jsonResponse({ success: false, error: "labelId and name required" }, 400);
+        const all = (await gmailFetch(tok.accessToken, "/labels")).labels || [];
+        const target = all.find((l: any) => l.id === id);
+        if (!target || target.type !== "user") return jsonResponse({ success: false, error: "Label not found" }, 404);
+        const oldName: string = target.name;
+        if (newName === oldName) return jsonResponse({ success: true, renamed: [] });
+        if (newName.startsWith(`${oldName}/`)) {
+          return jsonResponse({ success: false, error: "A label can't go inside itself." }, 400);
+        }
+        // Parent first, then children, so each child's new parent exists.
+        const moves = all
+          .filter((l: any) => l.type === "user" && (l.id === id || l.name.startsWith(`${oldName}/`)))
+          .sort((a: any, b: any) => a.name.length - b.name.length)
+          .map((l: any) => ({ id: l.id, from: l.name, to: newName + l.name.slice(oldName.length) }));
+        const renamed = [];
+        for (const m of moves) {
+          const res = await gmailFetch(tok.accessToken, `/labels/${m.id}`, {
+            method: "PATCH", body: JSON.stringify({ name: m.to }),
+          });
+          renamed.push({ id: res.id, name: res.name });
+        }
+        // Learned tag rules show the name; keep it current.
+        for (const r of renamed) {
+          await service.from("comms_tag_rules").update({ label_name: r.name })
+            .eq("mailbox_email", tok.accountEmail.toLowerCase()).eq("label_id", r.id);
+        }
+        return jsonResponse({ success: true, renamed });
+      }
+
       case "list_threads": {
         const params = new URLSearchParams();
         for (const l of body.labelIds || []) params.append("labelIds", String(l));
@@ -419,12 +469,15 @@ Deno.serve(async (req) => {
 
       case "send": {
         const { to, cc, bcc, subject, bodyText, bodyHtml, threadId, inReplyTo, references } = body;
+        // One emoji, and only as a reply to a specific email.
+        const reaction = typeof body.reaction === "string" && body.reaction.length <= 16 && inReplyTo
+          ? body.reaction : undefined;
         if (!to || !subject || !bodyText) {
           return jsonResponse({ success: false, error: "to, subject, bodyText required" }, 400);
         }
         const mime = buildMime({
           from: formatSender(tok.displayName, tok.accountEmail), to, cc, bcc, subject,
-          text: bodyText, html: bodyHtml, inReplyTo, references,
+          text: bodyText, html: bodyHtml, inReplyTo, references, reaction,
         });
         const sent = await gmailFetch(tok.accessToken, "/messages/send", {
           method: "POST",
