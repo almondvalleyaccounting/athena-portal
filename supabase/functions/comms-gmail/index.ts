@@ -13,6 +13,9 @@
 //   sent_index     { max? }   my recent sent mail → the Message-ID each answered
 //   gmail_signature           this mailbox's Gmail signature(s), to import
 //   sig_save / sig_delete / sig_use   my signatures and where each is used (sql/365)
+//   get_vacation / set_vacation       Out of office (Gmail vacation responder)
+//   list_filters / create_filter / delete_filter   Rules (Gmail filters)
+//                    — need gmail.settings.basic (reconnect once)
 //   queue_send     { …send fields, sendAt?, mode?, contextMessageId?, acknowledged? }
 //                    every composer email: checked (sql/364), then held in
 //                    comms_outbox — 20s for undo, or until a Send later time
@@ -486,6 +489,111 @@ Deno.serve(async (req) => {
         });
         if (e) throw new Error(e.message);
         return jsonResponse({ success: true });
+      }
+
+      // ── Out of office + Rules (gmail.settings.basic) ──────────────────
+      // A mailbox connected before that permission was added gets code
+      // needs_settings_permission — the screen says "reconnect".
+      case "get_vacation":
+      case "set_vacation":
+      case "list_filters":
+      case "create_filter":
+      case "delete_filter": {
+        if (!(tok.scope || "").includes("gmail.settings.basic")) {
+          return jsonResponse({
+            success: false, code: "needs_settings_permission",
+            error: "This mailbox needs reconnecting once to manage out of office and rules.",
+          });
+        }
+        if (action === "get_vacation") {
+          const v = await gmailFetch(tok.accessToken, "/settings/vacation");
+          return jsonResponse({ success: true, vacation: v });
+        }
+        if (action === "set_vacation") {
+          const v = body.vacation || {};
+          const html = String(v.responseBodyHtml || "").slice(0, 100_000)
+            .replace(/<script[\s\S]*?<\/script>/gi, "");
+          const payload: Record<string, unknown> = {
+            enableAutoReply: !!v.enableAutoReply,
+            responseSubject: String(v.responseSubject || "").slice(0, 300),
+            responseBodyHtml: html,
+            responseBodyPlainText: String(v.responseBodyPlainText || "").slice(0, 100_000),
+            restrictToContacts: !!v.restrictToContacts,
+            restrictToDomain: !!v.restrictToDomain,
+          };
+          if (v.startTime) payload.startTime = String(Number(v.startTime));
+          if (v.endTime) payload.endTime = String(Number(v.endTime));
+          const saved = await gmailFetch(tok.accessToken, "/settings/vacation", {
+            method: "PUT", body: JSON.stringify(payload),
+          });
+          return jsonResponse({ success: true, vacation: saved });
+        }
+        if (action === "list_filters") {
+          const f = await gmailFetch(tok.accessToken, "/settings/filters");
+          return jsonResponse({ success: true, filters: f.filter || [] });
+        }
+        if (action === "delete_filter") {
+          if (!body.filterId) return jsonResponse({ success: false, error: "filterId required" }, 400);
+          const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/settings/filters/${encodeURIComponent(String(body.filterId))}`, {
+            method: "DELETE", headers: { Authorization: `Bearer ${tok.accessToken}` },
+          });
+          if (!r.ok && r.status !== 404) throw new GmailApiError(r.status, await r.text());
+          return jsonResponse({ success: true });
+        }
+        // create_filter: criteria { from, to, subject, query, negatedQuery, hasAttachment }
+        // and action { addLabelIds, removeLabelIds } — Gmail's own filter
+        // shape. Forwarding isn't offered (needs a further permission).
+        const c = body.criteria || {};
+        const criteria: Record<string, unknown> = {};
+        for (const k of ["from", "to", "subject", "query", "negatedQuery"]) {
+          const val = String(c[k] || "").trim().slice(0, 500);
+          if (val) criteria[k] = val;
+        }
+        if (c.hasAttachment) criteria.hasAttachment = true;
+        if (!Object.keys(criteria).length) {
+          return jsonResponse({ success: false, error: "Say which emails the rule is for." }, 400);
+        }
+        const allowedSystem = new Set(["INBOX", "UNREAD", "STARRED", "IMPORTANT", "TRASH", "SPAM"]);
+        const clean = (ids: unknown) => (Array.isArray(ids) ? ids : []).map(String)
+          .filter((id) => allowedSystem.has(id) || /^Label_\w+$/.test(id));
+        const act = { addLabelIds: clean(body.ruleAction?.addLabelIds), removeLabelIds: clean(body.ruleAction?.removeLabelIds) };
+        if (!act.addLabelIds.length && !act.removeLabelIds.length) {
+          return jsonResponse({ success: false, error: "Say what the rule should do." }, 400);
+        }
+        const created = await gmailFetch(tok.accessToken, "/settings/filters", {
+          method: "POST", body: JSON.stringify({ criteria, action: act }),
+        });
+        // Optionally do the same to matching mail already there (Gmail's
+        // filters only act on new mail). Capped so one rule can't sweep a
+        // whole mailbox by accident.
+        let applied = 0;
+        if (body.applyToExisting) {
+          const q = [
+            criteria.from ? `from:(${criteria.from})` : "",
+            criteria.to ? `to:(${criteria.to})` : "",
+            criteria.subject ? `subject:(${criteria.subject})` : "",
+            criteria.query ? String(criteria.query) : "",
+            criteria.negatedQuery ? `-{${criteria.negatedQuery}}` : "",
+            criteria.hasAttachment ? "has:attachment" : "",
+          ].filter(Boolean).join(" ");
+          const ids: string[] = [];
+          let pageToken: string | undefined;
+          while (ids.length < 500) {
+            const params = new URLSearchParams({ q, maxResults: "100" });
+            if (pageToken) params.set("pageToken", pageToken);
+            const list = await gmailFetch(tok.accessToken, `/messages?${params.toString()}`);
+            ids.push(...(list.messages || []).map((m: { id: string }) => m.id));
+            pageToken = list.nextPageToken;
+            if (!pageToken) break;
+          }
+          if (ids.length) {
+            await gmailFetch(tok.accessToken, "/messages/batchModify", {
+              method: "POST", body: JSON.stringify({ ids: ids.slice(0, 500), ...act }),
+            });
+            applied = Math.min(ids.length, 500);
+          }
+        }
+        return jsonResponse({ success: true, filter: created, applied });
       }
 
       case "get_message": {

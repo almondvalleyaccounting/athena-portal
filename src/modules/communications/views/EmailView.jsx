@@ -3,7 +3,7 @@ import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
   PenSquare, Plus, RefreshCw, Reply as ReplyIcon, ReplyAll as ReplyAllIcon,
-  Check, Clock, Keyboard, Search, Send, Settings2, Smile, Sparkles, Tag, Trash2, X,
+  Check, Clock, Filter, Keyboard, Plane, Search, Send, Settings2, Smile, Sparkles, Tag, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { supabase } from '../../../lib/supabase';
@@ -485,6 +485,295 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
   );
 }
 
+// ── Out of office (Gmail's vacation responder) ──────────────────────────
+// Gmail sends the reply itself, even with Athena closed, once per sender
+// (every 4 days). First / last day are optional.
+const dayStart = (d) => (d ? new Date(`${d}T00:00:00`).getTime() : null);
+const dayEnd = (d) => (d ? new Date(`${d}T23:59:59`).getTime() : null);
+const toDay = (ms) => (ms ? toLocalInput(new Date(Number(ms))).slice(0, 10) : '');
+
+function OutOfOfficeDialog({ mailbox, vacation, signature, onReconnect, onClose, onSaved }) {
+  const v = vacation && !vacation.needs ? vacation : {};
+  const [on, setOn] = useState(!!v.enableAutoReply);
+  const [from, setFrom] = useState(toDay(v.startTime));
+  const [to, setTo] = useState(toDay(v.endTime));
+  const [subject, setSubject] = useState(v.responseSubject || 'Out of office');
+  const [message, setMessage] = useState(
+    v.responseBodyPlainText || htmlToText(v.responseBodyHtml || '')
+    || "Thank you for your email. I'm out of the office and will reply when I'm back.",
+  );
+  const [withSig, setWithSig] = useState(!!signature && !v.enableAutoReply);
+  const [onlyOrg, setOnlyOrg] = useState(!!v.restrictToDomain);
+  const [onlyContacts, setOnlyContacts] = useState(!!v.restrictToContacts);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    if (from && to && dayEnd(to) < dayStart(from)) { setError('The last day is before the first.'); return; }
+    setBusy(true); setError('');
+    try {
+      const mine = `<div>${escHtml(message).replace(/\r?\n/g, '<br>')}</div>`;
+      const res = await gmail.setVacation(mailbox, {
+        enableAutoReply: on, responseSubject: subject,
+        responseBodyHtml: withSig && signature ? `${mine}<br><div>${signature.body_html}</div>` : mine,
+        responseBodyPlainText: withSig && signature ? `${message}\n\n${htmlToText(signature.body_html)}` : message,
+        restrictToDomain: onlyOrg, restrictToContacts: onlyContacts,
+        startTime: dayStart(from), endTime: dayEnd(to),
+      });
+      onSaved(res.vacation || {});
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(false); }
+  };
+
+  const field = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff' };
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ width: 560, maxWidth: '94vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Plane size={16} color="#d97706" />
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Out of office — {mailbox}</span>
+          <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+        </div>
+        {vacation?.needs ? (
+          <>
+            <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.5 }}>
+              This mailbox was connected before Athena could change Gmail settings. Reconnect it once (sign in to Google and approve) and out of office and rules will work here.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={onClose} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Close</button>
+              <button onClick={onReconnect} style={{ ...BTN.primary.md, cursor: 'pointer' }}>Reconnect {mailbox.split('@')[0]}@</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#334155' }}>
+              Auto-reply <YesNo value={on} onChange={setOn} />
+              <span style={{ fontSize: 12.5, color: '#94a3b8' }}>Gmail sends it, even with Athena closed — once per sender every few days.</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+                First day (optional)
+                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={field} />
+              </label>
+              <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+                Last day (optional)
+                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={field} />
+              </label>
+            </div>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+              Subject
+              <input value={subject} onChange={(e) => setSubject(e.target.value)} style={field} />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+              Message
+              <textarea rows={6} value={message} onChange={(e) => setMessage(e.target.value)} style={{ ...field, resize: 'vertical', lineHeight: 1.5 }} />
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5, color: '#334155' }}>
+              {signature && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={withSig} onChange={(e) => setWithSig(e.target.checked)} /> Add my signature ({signature.name})
+                </label>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={onlyOrg} onChange={(e) => setOnlyOrg(e.target.checked)} /> Only reply to people in the firm
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={onlyContacts} onChange={(e) => setOnlyContacts(e.target.checked)} /> Only reply to my contacts
+              </label>
+            </div>
+            {error && <div style={{ padding: '8px 12px', background: '#fee2e2', color: '#b91c1c', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={onClose} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={save} disabled={busy} style={{ ...BTN.primary.md, cursor: 'pointer' }}>{busy ? 'Saving…' : 'Save'}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Rules (Gmail filters) ─────────────────────────────────────────────────
+// Real Gmail filters, so they act on mail as it arrives even with Athena
+// closed. Gmail can't edit a filter in place — change = delete + new.
+const RULE_ACTIONS = [
+  ['archive', 'Skip the inbox (archive)', { removeLabelIds: ['INBOX'] }],
+  ['read', 'Mark as read', { removeLabelIds: ['UNREAD'] }],
+  ['star', 'Star it', { addLabelIds: ['STARRED'] }],
+  ['trash', 'Delete it (to the bin)', { addLabelIds: ['TRASH'] }],
+];
+
+function RulesDialog({ mailbox, labels, labelById, onReconnect, onClose, onApplied }) {
+  const [filters, setFilters] = useState(null);
+  const [needs, setNeeds] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState(null); // the new rule being written
+
+  const load = useCallback(async () => {
+    try {
+      const res = await gmail.listFilters(mailbox);
+      setFilters(res.filters || []);
+    } catch (e) {
+      if (e.code === 'needs_settings_permission') setNeeds(true); else setError(e.message);
+      setFilters([]);
+    }
+  }, [mailbox]);
+  useEffect(() => { load(); }, [load]);
+
+  const nameOf = (id) => ({ INBOX: 'Inbox', UNREAD: 'Unread', STARRED: 'Starred', TRASH: 'Bin', SPAM: 'Spam', IMPORTANT: 'Important' }[id]
+    || labelById[id]?.name.split('/').join(' › ') || id);
+  const describe = (f) => {
+    const c = f.criteria || {};
+    const when = [
+      c.from && `from ${c.from}`, c.to && `to ${c.to}`, c.subject && `subject has “${c.subject}”`,
+      c.query && `contains “${c.query}”`, c.negatedQuery && `doesn't contain “${c.negatedQuery}”`, c.hasAttachment && 'has an attachment',
+    ].filter(Boolean).join(', ');
+    const a = f.action || {};
+    const add = a.addLabelIds || [];
+    const rem = a.removeLabelIds || [];
+    const what = [
+      ...add.filter((x) => !['STARRED', 'TRASH', 'IMPORTANT', 'SPAM'].includes(x)).map((x) => `tag “${nameOf(x)}”`),
+      rem.includes('INBOX') && 'skip the inbox', rem.includes('UNREAD') && 'mark read',
+      add.includes('STARRED') && 'star', add.includes('TRASH') && 'delete',
+      add.includes('IMPORTANT') && 'mark important', rem.includes('SPAM') && 'never spam',
+      a.forward && `forward to ${a.forward}`,
+    ].filter(Boolean).join(', ');
+    return { when: when || 'any email', what: what || '—' };
+  };
+
+  const remove = async (f) => {
+    if (!window.confirm('Delete this rule? Emails it already sorted stay where they are.')) return;
+    try { await gmail.deleteFilter(mailbox, f.id); await load(); } catch (e) { setError(e.message); }
+  };
+
+  const create = async () => {
+    setBusy(true); setError('');
+    try {
+      const addLabelIds = []; const removeLabelIds = [];
+      if (draft.labelId) addLabelIds.push(draft.labelId);
+      for (const [key, , act] of RULE_ACTIONS) {
+        if (!draft.actions.has(key)) continue;
+        addLabelIds.push(...(act.addLabelIds || [])); removeLabelIds.push(...(act.removeLabelIds || []));
+      }
+      const res = await gmail.createFilter(mailbox, {
+        criteria: { from: draft.from, to: draft.to, subject: draft.subject, query: draft.query, negatedQuery: draft.negatedQuery, hasAttachment: draft.hasAttachment },
+        ruleAction: { addLabelIds, removeLabelIds },
+        applyToExisting: draft.applyToExisting,
+      });
+      onApplied(res.applied || 0);
+      setDraft(null);
+      await load();
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+
+  const field = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', width: '100%', boxSizing: 'border-box' };
+  const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b', flex: 1, minWidth: 0 };
+  const setD = (k, val) => setDraft((d) => ({ ...d, [k]: val }));
+  const canCreate = draft && (draft.from || draft.to || draft.subject || draft.query || draft.negatedQuery || draft.hasAttachment)
+    && (draft.labelId || draft.actions.size);
+
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget && !draft) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ width: 760, maxWidth: '94vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Filter size={16} color={tones.info.solid} />
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{draft ? 'New rule' : 'Rules'} — {mailbox}</span>
+          <button onClick={() => (draft ? setDraft(null) : onClose())} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+        </div>
+
+        {needs ? (
+          <>
+            <div style={{ fontSize: 13.5, color: '#475569', lineHeight: 1.5 }}>
+              This mailbox was connected before Athena could change Gmail settings. Reconnect it once (sign in to Google and approve) and rules will work here.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={onClose} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Close</button>
+              <button onClick={onReconnect} style={{ ...BTN.primary.md, cursor: 'pointer' }}>Reconnect {mailbox.split('@')[0]}@</button>
+            </div>
+          </>
+        ) : draft ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>When an email…</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={lab}>is from<input value={draft.from} onChange={(e) => setD('from', e.target.value)} placeholder="name@client.co.uk or @client.co.uk" style={field} /></label>
+              <label style={lab}>is to<input value={draft.to} onChange={(e) => setD('to', e.target.value)} style={field} /></label>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <label style={lab}>subject has<input value={draft.subject} onChange={(e) => setD('subject', e.target.value)} style={field} /></label>
+              <label style={lab}>contains the words<input value={draft.query} onChange={(e) => setD('query', e.target.value)} style={field} /></label>
+              <label style={lab}>doesn&apos;t contain<input value={draft.negatedQuery} onChange={(e) => setD('negatedQuery', e.target.value)} style={field} /></label>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#334155', cursor: 'pointer' }}>
+              <input type="checkbox" checked={draft.hasAttachment} onChange={(e) => setD('hasAttachment', e.target.checked)} /> has an attachment
+            </label>
+
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginTop: 4 }}>…then</div>
+            <label style={{ ...lab, flex: 'none' }}>
+              tag it
+              <select value={draft.labelId} onChange={(e) => setD('labelId', e.target.value)} style={field}>
+                <option value="">— no tag —</option>
+                {[...labels].sort((a, b) => a.name.localeCompare(b.name)).map((l) => <option key={l.id} value={l.id}>{l.name.split('/').join(' › ')}</option>)}
+              </select>
+            </label>
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 13.5, color: '#334155' }}>
+              {RULE_ACTIONS.map(([key, label]) => (
+                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={draft.actions.has(key)}
+                    onChange={(e) => setDraft((d) => { const n = new Set(d.actions); if (e.target.checked) n.add(key); else n.delete(key); return { ...d, actions: n }; })}
+                  /> {label}
+                </label>
+              ))}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13.5, color: '#334155', cursor: 'pointer', marginTop: 4 }}>
+              <input type="checkbox" checked={draft.applyToExisting} onChange={(e) => setD('applyToExisting', e.target.checked)} />
+              Also do this to matching emails already in the mailbox (up to 500)
+            </label>
+            {error && <div style={{ padding: '8px 12px', background: '#fee2e2', color: '#b91c1c', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setDraft(null)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={create} disabled={!canCreate || busy} style={{ ...BTN.primary.md, cursor: canCreate ? 'pointer' : 'not-allowed', opacity: canCreate ? 1 : 0.5 }}>
+                {busy ? 'Saving…' : 'Create rule'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12.5, color: '#64748b' }}>Gmail runs these on every email as it arrives — even with Athena closed. These are the same rules you see in Gmail&apos;s own settings.</div>
+            {filters === null && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>}
+            {filters?.length === 0 && <div style={{ fontSize: 13.5, color: '#94a3b8' }}>No rules yet.</div>}
+            {filters?.map((f) => {
+              const d = describe(f);
+              return (
+                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#334155', lineHeight: 1.45 }}>
+                    <span style={{ color: '#64748b' }}>When an email is </span><b style={{ color: '#0f172a' }}>{d.when}</b>
+                    <span style={{ color: '#64748b' }}> → </span>{d.what}
+                  </div>
+                  <button onClick={() => remove(f)} style={{ ...BTN.secondary.sm, cursor: 'pointer', color: '#b91c1c' }}>Delete</button>
+                </div>
+              );
+            })}
+            {error && <div style={{ padding: '8px 12px', background: '#fee2e2', color: '#b91c1c', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+            <div>
+              <button
+                onClick={() => setDraft({ from: '', to: '', subject: '', query: '', negatedQuery: '', hasAttachment: false, labelId: '', actions: new Set(), applyToExisting: false })}
+                style={{ ...BTN.primary.sm, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <Plus size={13} /> New rule
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // "Inside which label?" — searchable, for nesting a new or moved label.
 // value = the parent's full name ('' = top level). Matches anywhere in the
 // path, so "ltd" finds "INBOX/Clients - Ltd".
@@ -843,6 +1132,10 @@ export default function EmailView() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [moveLabel, setMoveLabel] = useState(null);
   const [labelSearch, setLabelSearch] = useState('');
+  // Out of office + Rules (Gmail vacation responder / filters).
+  const [oooOpen, setOooOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [vacation, setVacation] = useState(null); // Gmail's vacation settings, or { needs: true }
   const [pickerRow, setPickerRow] = useState(null); // row whose Tag picker is open // { label, leaf, parent, busy }
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -2027,6 +2320,20 @@ export default function EmailView() {
     document.title = `${folderTitle}${unreadLoaded ? ` (${unreadLoaded})` : ''} · Email · Athena`;
   }, [folderTitle, unreadLoaded]);
 
+  // Is out of office on for this mailbox? (Shown on the rail button.)
+  const loadVacation = useCallback(async () => {
+    if (!mailbox || isAll) { setVacation(null); return; }
+    try {
+      const res = await gmail.getVacation(mailbox);
+      setVacation(res.vacation || {});
+    } catch (e) {
+      setVacation(e.code === 'needs_settings_permission' ? { needs: true } : null);
+    }
+  }, [mailbox, isAll]);
+  useEffect(() => { loadVacation(); }, [loadVacation]);
+  const oooOn = !!vacation?.enableAutoReply
+    && (!vacation.endTime || Number(vacation.endTime) > Date.now());
+
   // ── Keyboard ──
   // Ignored while typing in any box, and with Ctrl/Cmd/Alt held (so browser
   // and app shortcuts like "/" search keep working). Clicking inside an
@@ -2543,6 +2850,20 @@ export default function EmailView() {
           {!isAll && (
             <button onClick={() => setSigOpen(true)} style={railBtn}>
               <PenSquare size={12} /> Signature
+            </button>
+          )}
+          {!isAll && (
+            <button
+              onClick={() => setOooOpen(true)}
+              title={oooOn ? 'Out of office is on' : 'Out of office auto-reply'}
+              style={{ ...railBtn, ...(oooOn ? { background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', fontWeight: 700 } : {}) }}
+            >
+              <Plane size={12} /> {oooOn ? 'Away: on' : 'Out of office'}
+            </button>
+          )}
+          {!isAll && (
+            <button onClick={() => setRulesOpen(true)} title="Rules: what happens to emails as they arrive" style={railBtn}>
+              <Filter size={12} /> Rules
             </button>
           )}
             <div style={{ position: 'relative' }}>
@@ -3157,6 +3478,27 @@ export default function EmailView() {
           </div>
         );
       })()}
+
+      {oooOpen && (
+        <OutOfOfficeDialog
+          mailbox={mailbox}
+          vacation={vacation}
+          signature={pickSignature(sigSets, mailbox, 'new')}
+          onReconnect={reconnect}
+          onClose={() => setOooOpen(false)}
+          onSaved={(v) => { setVacation(v); flash(v.enableAutoReply ? 'Out of office is on.' : 'Out of office is off.'); }}
+        />
+      )}
+      {rulesOpen && (
+        <RulesDialog
+          mailbox={mailbox}
+          labels={userLabels}
+          labelById={labelById}
+          onReconnect={reconnect}
+          onClose={() => setRulesOpen(false)}
+          onApplied={(n) => { if (n) { flash(`Applied to ${n} existing email${n === 1 ? '' : 's'}.`); loadThreads(); } }}
+        />
+      )}
 
       {/* ── Send check: the server's warnings, before anything goes ── */}
       {sendWarn && (

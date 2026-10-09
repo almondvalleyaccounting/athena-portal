@@ -24,8 +24,12 @@ export const GMAIL_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-auth-callb
 // module syncs Google Contacts for composer autocomplete + SMS/WhatsApp
 // name matching (comms-contacts-sync). Scope additions mean existing
 // mailboxes must reconnect once to re-consent.
+// gmail.settings.basic (2026-10-09): Out of office (the Gmail vacation
+// responder) and Rules (Gmail filters) from the email screen. Not
+// gmail.settings.sharing — so no forwarding rules or delegation.
 export const GMAIL_SCOPE = [
   "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.settings.basic",
   "https://www.googleapis.com/auth/contacts.readonly",
   "https://www.googleapis.com/auth/contacts.other.readonly",
   "openid",

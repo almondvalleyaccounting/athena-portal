@@ -106,6 +106,13 @@ export const gmail = {
   sigSave: (mailbox, { id, name, bodyHtml }) => callGmail('sig_save', { mailbox, id, name, bodyHtml }),
   sigDelete: (mailbox, id) => callGmail('sig_delete', { mailbox, id }),
   sigUse: (mailbox, opts) => callGmail('sig_use', { mailbox, ...opts }),
+  // Out of office + Rules (Gmail vacation responder / filters).
+  getVacation: (mailbox) => callGmail('get_vacation', { mailbox }),
+  setVacation: (mailbox, vacation) => callGmail('set_vacation', { mailbox, vacation }),
+  listFilters: (mailbox) => callGmail('list_filters', { mailbox }),
+  createFilter: (mailbox, { criteria, ruleAction, applyToExisting }) =>
+    callGmail('create_filter', { mailbox, criteria, ruleAction, applyToExisting }),
+  deleteFilter: (mailbox, filterId) => callGmail('delete_filter', { mailbox, filterId }),
   modifyMessage: (mailbox, messageId, { addLabelIds, removeLabelIds }) =>
     callGmail('modify_message', { mailbox, messageId, addLabelIds, removeLabelIds }),
   trashMessage: (mailbox, messageId) => callGmail('trash_message', { mailbox, messageId }),
