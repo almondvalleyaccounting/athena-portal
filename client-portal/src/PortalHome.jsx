@@ -207,7 +207,10 @@ export default function PortalHome({ session }) {
         </div>
       </header>
 
-      <main style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px 60px' }}>
+      {/* The dashboard takes the screen it is given — up to 1440px on a desktop;
+          the onboarding cards below it keep a reading column, because a step
+          list stretched across a monitor is harder to follow, not easier. */}
+      <main style={{ maxWidth: hasDashboards ? 1440 : 760, margin: '0 auto', padding: 'clamp(16px, 2.4vw, 28px) clamp(12px, 2.5vw, 32px) 60px' }}>
         {view === 'preferences' && <PreferencesPage onBack={() => setView('home')} />}
         <div style={{ display: view === 'preferences' ? 'none' : 'block' }}>
         {error && (
@@ -218,6 +221,8 @@ export default function PortalHome({ session }) {
         {!data && !error && <div style={{ color: t.faint, fontSize: 14 }}>Loading…</div>}
 
         <DashboardSection onHasDashboards={setHasDashboards} />
+
+        <div style={{ maxWidth: 760, margin: '0 auto' }}>
 
         {data && onboardings.length === 0 && !hasDashboards && (
           <div className="fade-up" style={{ background: '#fff', border: `1px solid ${t.border}`, borderRadius: 16, padding: '36px 24px', textAlign: 'center' }}>
@@ -379,6 +384,7 @@ export default function PortalHome({ session }) {
         <div style={{ textAlign: 'center', fontSize: 12, color: t.faint, marginTop: 10, lineHeight: 1.6 }}>
           Questions? Use “Message us” on any step above, or reply to any of our emails —
           they come straight to the team.
+        </div>
         </div>
         </div>
       </main>

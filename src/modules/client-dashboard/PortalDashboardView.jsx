@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { portalTheme as t } from './portalTheme';
 import TabErrorBoundary from './TabErrorBoundary';
 import {
@@ -20,6 +20,7 @@ import { ReportTable, AgedSection } from './StatementTables';
 import { buildKpiModel, formatKpi } from './kpiEngine';
 import ReportView from './ReportView';
 import OverdueInvoicesView from './OverdueInvoicesView';
+import { useElementWidth, layoutFor } from './useElementWidth';
 import { PORTAL_PERIOD_PRESETS, PORTAL_ASAT_PRESETS, ASAT_TABS } from './usePortalDashboard';
 
 /*
@@ -62,6 +63,22 @@ export const PORTAL_GRAINS = [
 const SPAN_BACK = { month: 12, quarter: 24, year: 36 };
 const SPAN_FWD = { month: 18, quarter: 36, year: 60 };
 
+/*
+  LAYOUT. The page measures its own width and picks one of three layouts —
+  'compact' (a phone), 'medium' (a tablet, a narrow window) and 'wide' (a
+  desktop) — rather than asking the window, because Athena's preview panel
+  renders this inside a slice of the screen and must show what a client at
+  that width would see. Every section reads it from LayoutContext.
+
+  Wide is not the phone layout stretched: the Overview puts its chart beside a
+  column of figures, the projection's two charts sit side by side, and the
+  statements get a size of type you can read at arm's length. Compact keeps one
+  column, scrolls the tab strip sideways instead of wrapping it into a block,
+  and draws charts at their real pixel width so the labels stay legible.
+*/
+const LayoutContext = createContext({ layout: 'medium', width: 0 });
+const useLayout = () => useContext(LayoutContext);
+
 // The statement tables in the client's palette rather than the staff greys.
 const TABLE_PALETTE = {
   text: t.text,
@@ -75,6 +92,11 @@ const TABLE_PALETTE = {
   size: 12.5,
   headSize: 11,
 };
+
+// Bigger type on a desktop: the same statement read at arm's length.
+const tablePalette = (layout) => (layout === 'wide'
+  ? { ...TABLE_PALETTE, size: 13.5, headSize: 12 }
+  : TABLE_PALETTE);
 
 const cardChrome = {
   background: t.card, border: `1px solid ${t.border}`, borderRadius: 16,
@@ -146,20 +168,34 @@ export default function PortalDashboardView({
   const statementCompare = active === 'pl' ? ui.plCompare : ui.bsCompare;
   const showGrain = active === 'overview' || (isStatement && statementCompare === 'trend');
 
+  const [rootRef, width] = useElementWidth();
+  const layout = layoutFor(width);
+  const compact = layout === 'compact';
+  const wide = layout === 'wide';
+  const layoutValue = useMemo(() => ({ layout, width }), [layout, width]);
+
   return (
-    <div>
+    <LayoutContext.Provider value={layoutValue}>
+    <div ref={rootRef}>
       {showHero && (
         <div style={{
-          borderRadius: 20, overflow: 'hidden',
+          borderRadius: compact ? 16 : 20, overflow: 'hidden',
           background: `linear-gradient(120deg, ${t.navyDark}, ${t.navy} 60%, ${t.teal})`,
-          padding: '22px 22px 18px', color: '#fff', marginBottom: 14,
+          padding: compact ? '16px 16px 14px' : wide ? '20px 28px' : '22px 22px 18px',
+          color: '#fff', marginBottom: 14,
+          // A desktop has the width to put the name and the freshness on one
+          // line, which gives the figures back the height a stacked hero takes.
+          ...(wide ? { display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' } : {}),
         }}>
+          <div style={wide ? { flex: 1, minWidth: 0 } : undefined}>
           <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.65)', fontWeight: 600 }}>
             Your numbers
           </div>
-          <div style={{ fontSize: 'clamp(19px, 4.2vw, 24px)', fontWeight: 700, margin: '5px 0 4px' }}>
+          <div style={{ fontSize: compact ? 20 : wide ? 26 : 24, fontWeight: 700, margin: '5px 0 4px' }}>
             {payload?.company_name || 'Your business'}
           </div>
+          </div>
+          <div style={wide ? { textAlign: 'right' } : undefined}>
           {/* The freshness date stays — it is the one thing here a client cannot
               work out for themselves, and it decides whether they trust the
               figures. The line that used to precede it only told them what the
@@ -186,17 +222,25 @@ export default function PortalDashboardView({
               ))}
             </select>
           )}
+          </div>
         </div>
       )}
 
       {tabs.length > 1 && (
-        <div style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${t.border}`, marginBottom: 14, flexWrap: 'wrap' }}>
+        // On a phone the tabs scroll sideways in one strip. Wrapped, eight tabs
+        // become a three-line block that pushes the figures off the screen.
+        <div style={{
+          display: 'flex', gap: 2, borderBottom: `1px solid ${t.border}`, marginBottom: 14,
+          flexWrap: compact ? 'nowrap' : 'wrap',
+          ...(compact ? { overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch', margin: '0 -4px 14px', padding: '0 4px' } : {}),
+        }}>
           {tabs.map((x) => (
             <button
               key={x.key}
               onClick={() => ui.setTab(x.key)}
               style={{
-                padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer',
+                padding: compact ? '9px 11px' : '9px 14px', border: 'none', background: 'none', cursor: 'pointer',
+                whiteSpace: 'nowrap', flexShrink: 0,
                 fontSize: 14, fontWeight: active === x.key ? 700 : 500,
                 color: active === x.key ? t.navy : t.muted,
                 borderBottom: `2px solid ${active === x.key ? t.teal : 'transparent'}`,
@@ -327,7 +371,7 @@ export default function PortalDashboardView({
         {payload && active === 'debtors' && (
           <AgedSection
             title="Who owes you" data={payload.metrics?.ar_asat} currency={currency}
-            sameLabel="The same customers" palette={TABLE_PALETTE} cardStyle={cardChrome}
+            sameLabel="The same customers" palette={tablePalette(layout)} cardStyle={cardChrome}
           />
         )}
         {payload && active === 'overdue' && (
@@ -349,7 +393,7 @@ export default function PortalDashboardView({
         {payload && active === 'creditors' && (
           <AgedSection
             title="Who you owe" data={payload.metrics?.ap_asat} currency={currency}
-            sameLabel="The same suppliers" palette={TABLE_PALETTE} cardStyle={cardChrome}
+            sameLabel="The same suppliers" palette={tablePalette(layout)} cardStyle={cardChrome}
           />
         )}
         {payload && active === 'kpis' && <Measures payload={payload} ui={ui} currency={currency} />}
@@ -370,6 +414,7 @@ export default function PortalDashboardView({
         )}
       </TabErrorBoundary>
     </div>
+    </LayoutContext.Provider>
   );
 }
 
@@ -409,6 +454,7 @@ function useBuckets(payload, grain, basis) {
 
 /* ─── Overview ─────────────────────────────────────────────────── */
 function Overview({ payload, ui }) {
+  const { layout } = useLayout();
   const { grain, basis, view } = ui;
   const { rows, buckets } = useBuckets(payload, grain, basis);
   const chartRows = rows.slice(1);
@@ -450,54 +496,84 @@ function Overview({ payload, ui }) {
     ? ((cur.net_income - prv.net_income) >= 0 ? 'better than' : 'behind')
     : null;
 
+  const sentence = (
+    <Card>
+      <div style={{ fontSize: layout === 'wide' ? 16 : 15, color: t.text, lineHeight: 1.65 }}>
+        In <strong>{latest.label}</strong> you turned over{' '}
+        <strong>{money(cur.income, currency)}</strong> and {profitWord}{' '}
+        <strong>{money(Math.abs(cur.net_income ?? 0), currency)}</strong>
+        {isU && ' once your own costs are taken out'}
+        {changeWord && previous
+          ? <> — {changeWord} {previous.label} by {money(Math.abs((cur.net_income ?? 0) - (prv.net_income ?? 0)), currency)}.</>
+          : '.'}
+      </div>
+    </Card>
+  );
+
+  const tiles = [
+    <Tile key="inc" label="Turnover" value={cur.income} prev={prv.income} currency={currency} sub={latest.label} />,
+    <Tile key="net" label={isU ? 'Underlying profit' : 'Profit'} value={cur.net_income} prev={prv.net_income} currency={currency} sub={latest.label} />,
+    <Tile key="cash" label="Money in the bank" value={bs?.cash} prev={bs?.prev?.cash} currency={currency} sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />,
+    <Tile key="dr" label="Owed to you" value={bs?.debtors} prev={bs?.prev?.debtors} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />,
+    <Tile key="cr" label="You owe" value={creditors} prev={bs?.prev?.accounts_payable ?? bs?.prev?.creditors_within_1yr} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />,
+    ...kpiTiles.map((k) => <KpiTile key={k.definition.id} row={k} currency={currency} sub={latest.label} />),
+  ];
+
+  const chart = (
+    <Card>
+      <CardTitle>Turnover and profit</CardTitle>
+      <Muted small>{windowLabel(grain, basis, chartRows)}</Muted>
+      <div style={{ marginTop: 10 }}>
+        <FitChart>
+          {(w) => (
+            <BucketChart
+              width={w}
+              height={layout === 'wide' ? 330 : layout === 'compact' ? 220 : 260}
+              points={chartRows.map((r) => {
+                const s = seriesFor(r, view);
+                return { label: r.label, income: s.income, net: s.net_income };
+              })}
+              currency={currency}
+              netLabel={isU ? 'underlying profit' : 'profit'}
+            />
+          )}
+        </FitChart>
+      </div>
+      <Legend />
+    </Card>
+  );
+
+  const note = isU && (
+    <Note>
+      The underlying view takes out the costs that are really yours rather than the
+      business's — your own pay, dividends, anything we've agreed is personal — so what's
+      left is what the business itself earns.
+    </Note>
+  );
+
+  // Desktop: the story and the chart on the left, the figures in a column
+  // beside them, so the whole Overview sits in one screen without scrolling.
+  if (layout === 'wide') {
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: 14, alignItems: 'start' }}>
+        <div>
+          {sentence}
+          {chart}
+          {note}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+          {tiles}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <Card>
-        <div style={{ fontSize: 15, color: t.text, lineHeight: 1.65 }}>
-          In <strong>{latest.label}</strong> you turned over{' '}
-          <strong>{money(cur.income, currency)}</strong> and {profitWord}{' '}
-          <strong>{money(Math.abs(cur.net_income ?? 0), currency)}</strong>
-          {isU && ' once your own costs are taken out'}
-          {changeWord && previous
-            ? <> — {changeWord} {previous.label} by {money(Math.abs((cur.net_income ?? 0) - (prv.net_income ?? 0)), currency)}.</>
-            : '.'}
-        </div>
-      </Card>
-
-      <Tiles>
-        <Tile label="Turnover" value={cur.income} prev={prv.income} currency={currency} sub={latest.label} />
-        <Tile label={isU ? 'Underlying profit' : 'Profit'} value={cur.net_income} prev={prv.net_income} currency={currency} sub={latest.label} />
-        <Tile label="Money in the bank" value={bs?.cash} prev={bs?.prev?.cash} currency={currency} sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />
-        <Tile label="Owed to you" value={bs?.debtors} prev={bs?.prev?.debtors} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />
-        <Tile label="You owe" value={creditors} prev={bs?.prev?.accounts_payable ?? bs?.prev?.creditors_within_1yr} currency={currency} goodWhenDown sub={bs?.period?.end ? `at ${shortDate(bs.period.end)}` : null} />
-        {kpiTiles.map((k) => (
-          <KpiTile key={k.definition.id} row={k} currency={currency} sub={latest.label} />
-        ))}
-      </Tiles>
-
-      <Card>
-        <CardTitle>Turnover and profit</CardTitle>
-        <Muted small>{windowLabel(grain, basis, chartRows)}</Muted>
-        <div style={{ marginTop: 10 }}>
-          <BucketChart
-            points={chartRows.map((r) => {
-              const s = seriesFor(r, view);
-              return { label: r.label, income: s.income, net: s.net_income };
-            })}
-            currency={currency}
-            netLabel={isU ? 'underlying profit' : 'profit'}
-          />
-        </div>
-        <Legend />
-      </Card>
-
-      {isU && (
-        <Note>
-          The underlying view takes out the costs that are really yours rather than the
-          business's — your own pay, dividends, anything we've agreed is personal — so what's
-          left is what the business itself earns.
-        </Note>
-      )}
+      {sentence}
+      <Tiles>{tiles}</Tiles>
+      {chart}
+      {note}
     </>
   );
 }
@@ -517,6 +593,7 @@ function Overview({ payload, ui }) {
   so line 14 of this year is not line 14 of last.
 */
 function ProfitAndLoss({ payload, ui, currency, loading }) {
+  const { layout } = useLayout();
   const isTrend = ui.plCompare === 'trend';
   const pl = payload.metrics?.pl_range;
   const cmpPl = payload.metrics?.pl_compare;
@@ -579,7 +656,7 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
         columns={columns} rows={rows} monthLabels={!merged && !bucketed}
         columnKinds={merged ? COMPARATIVE_KINDS : null}
         dividerAt={merged ? 2 : null}
-        palette={TABLE_PALETTE} startExpanded
+        palette={tablePalette(layout)} startExpanded
       />
     </Card>
   );
@@ -592,6 +669,7 @@ function ProfitAndLoss({ payload, ui, currency, loading }) {
   position at that period end, never three months added together.
 */
 function BalanceSheet({ payload, ui, currency, loading }) {
+  const { layout } = useLayout();
   const isTrend = ui.bsCompare === 'trend';
   const bs = payload.metrics?.bs_asat;
   const cmpSheet = payload.metrics?.bs_compare;
@@ -671,7 +749,7 @@ function BalanceSheet({ payload, ui, currency, loading }) {
           columns={columns} rows={rows} monthLabels={!merged && !bucketed}
           columnKinds={merged ? COMPARATIVE_KINDS : null}
           dividerAt={merged ? 2 : null}
-          palette={TABLE_PALETTE} startExpanded
+          palette={tablePalette(layout)} startExpanded
         />
       </Card>
     </>
@@ -744,6 +822,7 @@ function bucketRowsFor(payload, ui) {
 
 /* ─── Projection ───────────────────────────────────────────────── */
 function Projection({ payload, ui }) {
+  const { layout } = useLayout();
   const { grain, basis } = ui;
   const p = payload.projection;
   const currency = payload?.metrics?.detail?.currency || 'GBP';
@@ -792,31 +871,48 @@ function Projection({ payload, ui }) {
         year does, and we'll keep it current with you.
       </Note>
 
-      <Card>
-        <CardTitle>Turnover and profit, with the year ahead</CardTitle>
-        <div style={{ marginTop: 10 }}>
-          <BucketChart
-            points={buckets.map((b, i) => ({ label: b.label, income: income?.values[i] ?? null, net: net.values[i] ?? null }))}
-            currency={currency}
-            forecastFrom={forecastFrom < 0 ? null : forecastFrom}
-            netLabel="profit"
-          />
-        </div>
-        <Legend forecast />
-      </Card>
-
-      {closing && (
+      <div style={layout === 'wide' && closing
+        ? { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14 }
+        : undefined}
+      >
         <Card>
-          <CardTitle>Cash, looking forward</CardTitle>
+          <CardTitle>Turnover and profit, with the year ahead</CardTitle>
           <div style={{ marginTop: 10 }}>
-            <LineChart
-              points={buckets.map((b, i) => ({ label: b.label, value: closing.values[i] ?? null }))}
-              currency={currency}
-              forecastFrom={forecastFrom < 0 ? null : forecastFrom}
-            />
+            <FitChart>
+              {(w) => (
+                <BucketChart
+                  width={w}
+                  height={layout === 'compact' ? 220 : 280}
+                  points={buckets.map((b, i) => ({ label: b.label, income: income?.values[i] ?? null, net: net.values[i] ?? null }))}
+                  currency={currency}
+                  forecastFrom={forecastFrom < 0 ? null : forecastFrom}
+                  netLabel="profit"
+                />
+              )}
+            </FitChart>
           </div>
+          <Legend forecast />
         </Card>
-      )}
+
+        {closing && (
+          <Card>
+            <CardTitle>Cash, looking forward</CardTitle>
+            <div style={{ marginTop: 10 }}>
+              <FitChart>
+                {(w) => (
+                  <LineChart
+                    width={w}
+                    height={layout === 'compact' ? 200 : 280}
+                    points={buckets.map((b, i) => ({ label: b.label, value: closing.values[i] ?? null }))}
+                    currency={currency}
+                    forecastFrom={forecastFrom < 0 ? null : forecastFrom}
+                  />
+                )}
+              </FitChart>
+            </div>
+          </Card>
+        )}
+      </div>
 
       <Card pad={false}>
         <div style={{ padding: '16px 18px 6px' }}>
@@ -875,15 +971,23 @@ const dateInput = {
   fontSize: 13.5, background: t.card, color: t.text, fontFamily: 'inherit',
 };
 
+// One line always: on a phone a pill group too wide for the screen scrolls
+// sideways rather than folding its labels onto two lines.
 function Pills({ options, value, onChange }) {
+  const { layout } = useLayout();
+  const compact = layout === 'compact';
   return (
-    <div style={{ display: 'inline-flex', border: `1px solid ${t.border}`, borderRadius: 999, overflow: 'hidden', background: '#fff' }}>
+    <div style={{
+      display: 'inline-flex', border: `1px solid ${t.border}`, borderRadius: 999, background: '#fff',
+      maxWidth: '100%', overflowX: 'auto', scrollbarWidth: 'none',
+    }}>
       {options.map((o) => (
         <button
           key={o.key}
           onClick={() => onChange(o.key)}
           style={{
-            padding: '7px 14px', border: 'none', cursor: 'pointer',
+            padding: compact ? '7px 11px' : '7px 14px', border: 'none', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0,
             background: value === o.key ? t.navy : '#fff',
             color: value === o.key ? '#fff' : t.muted,
             fontSize: 13.5, fontWeight: value === o.key ? 700 : 500,
@@ -896,11 +1000,21 @@ function Pills({ options, value, onChange }) {
   );
 }
 
-const Card = ({ children, pad = true }) => (
-  <div style={{ ...cardChrome, padding: pad ? '16px 18px' : 0 }}>
-    {children}
-  </div>
-);
+function Card({ children, pad = true }) {
+  const { layout } = useLayout();
+  return (
+    <div style={{ ...cardChrome, padding: pad ? (layout === 'compact' ? '14px 14px' : '16px 18px') : 0 }}>
+      {children}
+    </div>
+  );
+}
+
+// A chart drawn at the width it actually has, so its text stays the size it
+// was designed at (see BucketChart's `width`).
+function FitChart({ children }) {
+  const [ref, w] = useElementWidth();
+  return <div ref={ref}>{w ? children(w) : null}</div>;
+}
 
 const CardTitle = ({ children }) => (
   <div style={{ fontSize: 15, fontWeight: 700, color: t.navy }}>{children}</div>

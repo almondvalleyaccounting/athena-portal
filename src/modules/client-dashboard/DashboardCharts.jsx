@@ -12,6 +12,10 @@ import { moneyCompact, OUTFIT } from './dashboardData';
   points        [{ label, income, net }] — one entry per bucket, oldest first.
                 Buckets are months, quarters or years depending on the
                 Overview's grain toggle, so nothing here may assume months.
+  width         the pixel width the chart will be drawn at, where the caller
+                knows it. The SVG then maps 1:1 and its 11px labels stay 11px —
+                without it the 720-unit drawing is scaled to fit, so text is
+                microscopic on a phone and oversized on a wide monitor.
   forecastFrom  index of the first FORECAST bucket (null = all actual). From
                 that point the bars go hollow and the line dashes, with a
                 divider on the boundary — the Projection tab shows actuals and
@@ -20,9 +24,10 @@ import { moneyCompact, OUTFIT } from './dashboardData';
 */
 export function BucketChart({
   points = [], currency = 'GBP', forecastFrom = null, height = 250,
-  incomeLabel = 'revenue', netLabel = 'net profit',
+  incomeLabel = 'revenue', netLabel = 'net profit', width = null,
 }) {
-  const W = 720, H = height;
+  const W = width && width > 200 ? Math.round(width) : 720;
+  const H = height;
   const PAD = { top: 18, right: 12, bottom: 30, left: 56 };
   const iw = W - PAD.left - PAD.right;
   const ih = H - PAD.top - PAD.bottom;
@@ -39,7 +44,7 @@ export function BucketChart({
   const span = max - min;
   const y = (v) => PAD.top + ih - ((v - min) / span) * ih;
   const slot = iw / n;
-  const barW = Math.min(34, slot * 0.55);
+  const barW = Math.min(width ? 44 : 34, slot * 0.55);
   const xMid = (i) => PAD.left + slot * i + slot / 2;
   const isFc = (i) => forecastFrom != null && i >= forecastFrom;
 
@@ -53,8 +58,9 @@ export function BucketChart({
   const actualPts = pts.slice(0, splitAt).join(' ');
   const fcPts = pts.slice(Math.max(0, splitAt - 1)).join(' ');
 
-  // Thin the labels when there are more buckets than will fit legibly.
-  const labelEvery = Math.ceil(n / 24);
+  // Thin the labels when there are more buckets than will fit legibly — about
+  // one per 52px, which holds "Sep 25" or "Q3 25" without collisions.
+  const labelEvery = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 52))));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }} role="img" aria-label={`${incomeLabel} and ${netLabel} by period`}>
@@ -139,8 +145,9 @@ export function BucketChart({
 }
 
 /* ─── Single-series line, for cash / balance-sheet trends ──────── */
-export function LineChart({ points = [], currency = 'GBP', forecastFrom = null, height = 200, colour = '#0284c7' }) {
-  const W = 720, H = height;
+export function LineChart({ points = [], currency = 'GBP', forecastFrom = null, height = 200, colour = '#0284c7', width = null }) {
+  const W = width && width > 200 ? Math.round(width) : 720;
+  const H = height;
   const PAD = { top: 16, right: 12, bottom: 28, left: 56 };
   const iw = W - PAD.left - PAD.right;
   const ih = H - PAD.top - PAD.bottom;
@@ -159,7 +166,7 @@ export function LineChart({ points = [], currency = 'GBP', forecastFrom = null, 
   const splitAt = forecastFrom == null ? n : forecastFrom;
   const gridVals = [];
   for (let g = 0; g <= 4; g++) gridVals.push(min + (span * g) / 4);
-  const labelEvery = Math.ceil(n / 14);
+  const labelEvery = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 52))));
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }} role="img" aria-label="trend">

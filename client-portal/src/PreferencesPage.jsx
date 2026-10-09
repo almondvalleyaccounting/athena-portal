@@ -35,7 +35,7 @@ export default function PreferencesPage({ onBack }) {
   };
 
   return (
-    <div className="fade-up">
+    <div className="fade-up" style={{ maxWidth: 760, margin: '0 auto' }}>
       <button
         onClick={onBack}
         style={{ border: 'none', background: 'none', color: t.teal, fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: 0, marginBottom: 14 }}

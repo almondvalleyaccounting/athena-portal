@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Eye, Loader } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import PortalDashboardView, { portalTabsFor } from './PortalDashboardView';
@@ -35,6 +35,9 @@ export const SECTION_LABELS = {
 };
 
 export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
+  // The client page lays itself out from the width it is given, so the preview
+  // can show either version: the panel's full width, or a phone's 390px.
+  const [device, setDevice] = useState('desktop');
   // The section flags are part of the fetch signature because the SERVER applies
   // them: turning Underlying on has to re-fetch, not just re-render, since the
   // account rows that make the underlying view possible are withheld without it.
@@ -59,7 +62,7 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 'min(980px, 100%)', height: '100%', background: portalTheme.bg,
+          width: 'min(1500px, 100%)', height: '100%', background: portalTheme.bg,
           display: 'flex', flexDirection: 'column', fontFamily: font,
           boxShadow: '-8px 0 32px rgba(15,23,42,0.18)',
         }}
@@ -72,9 +75,24 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
               Previewing as {row.email}
             </span>
             {ui.loading && <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+            <div style={{ marginLeft: 'auto', display: 'inline-flex', background: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 2 }}>
+              {[['desktop', 'Desktop'], ['phone', 'Phone']].map(([k, l]) => (
+                <button
+                  key={k}
+                  onClick={() => setDevice(k)}
+                  style={{
+                    border: 'none', borderRadius: 6, padding: '5px 11px', fontSize: 12.5, cursor: 'pointer', fontFamily: font,
+                    fontWeight: device === k ? 700 : 500,
+                    background: device === k ? '#fff' : 'transparent', color: device === k ? '#0f172a' : '#cbd5e1',
+                  }}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
             <button
               onClick={onClose}
-              style={{ marginLeft: 'auto', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
+              style={{ border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: font }}
             >
               Close
             </button>
@@ -117,7 +135,10 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
 
         {/* The client's own page, verbatim */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px 60px' }}>
-          <div style={{ maxWidth: 880, margin: '0 auto' }}>
+          <div style={{
+            maxWidth: device === 'phone' ? 390 : 1440, margin: '0 auto',
+            ...(device === 'phone' ? { border: '1px solid #cbd5e1', borderRadius: 24, padding: '14px 10px', background: portalTheme.bg } : {}),
+          }}>
             <PortalDashboardView
               payload={ui.payload}
               loading={ui.loading}
