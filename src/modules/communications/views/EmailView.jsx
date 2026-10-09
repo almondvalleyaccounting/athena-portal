@@ -1272,9 +1272,21 @@ export default function EmailView() {
     setBulkBusy(false);
     threadCache.current.clear();
     flash(`${verb} ${selected.size - failed} email${selected.size - failed === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}.`);
+    // Change the rows in place — read/unread just flips bold — rather than
+    // reloading the list. A row that no longer belongs in this folder (archived
+    // out of the Inbox, say) drops out.
+    const done = new Set(selected);
+    setThreads((prev) => prev.flatMap((t) => {
+      if (!done.has(t.id)) return [t];
+      const ids = new Set(t.labelIds || []);
+      addLabelIds.forEach((l) => ids.add(l));
+      removeLabelIds.forEach((l) => ids.delete(l));
+      if (labelId !== 'ALL' && !q && !ids.has(labelId)) return [];
+      return [{ ...t, labelIds: [...ids], unread: ids.has('UNREAD') }];
+    }));
+    if (thread && done.has(thread.id) && labelId !== 'ALL' && !q && removeLabelIds.includes(labelId)) setThread(null);
     setSelected(new Set());
-    loadThreads();
-  }, [selected, boxOf, loadThreads]);
+  }, [selected, boxOf, labelId, q, thread]);
 
   const bulkTrash = useCallback(async () => {
     if (optionsRef.current.confirmDelete && !window.confirm(`Move ${selected.size} email${selected.size === 1 ? '' : 's'} to the bin?`)) return;
@@ -1288,12 +1300,14 @@ export default function EmailView() {
     setBulkBusy(false);
     threadCache.current.clear();
     setSelected(new Set());
+    const gone = new Set(ids.map(([id]) => id));
+    setThreads((prev) => prev.filter((t) => !gone.has(t.id)));
+    if (thread && gone.has(thread.id)) setThread(null);
     flash(`Binned ${ids.length - failed} email${ids.length - failed === 1 ? '' : 's'}.`, async () => {
       for (const [id, mb] of ids) await gmail.untrashMessage(mb, id).catch(() => {});
       loadThreads();
     });
-    loadThreads();
-  }, [selected, boxOf, loadThreads]);
+  }, [selected, boxOf, loadThreads, thread]);
 
   // ── Composer ──
   const startComposer = useCallback((mode) => {
@@ -1928,7 +1942,7 @@ export default function EmailView() {
 
         {/* Tagging mode: filter to a suggested tag, eyeball, approve. */}
         {taggingMode && !isAll && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 13 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 10px', background: tones.teal.bg, border: `1px solid ${tones.teal.border}`, borderRadius: 8, fontSize: 13 }}>
             {labelId !== 'INBOX' || q ? (
               <span style={{ color: tones.teal.fg }}>
                 Suggestions work on the Inbox. Here, tick emails and use <b>Tag + archive</b>, or tag one from its row.
@@ -1936,12 +1950,16 @@ export default function EmailView() {
             ) : (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <Sparkles size={13} color={tones.teal.solid} style={{ flexShrink: 0 }} />
+                  <Sparkles
+                    size={13}
+                    color={tones.teal.solid}
+                    style={{ flexShrink: 0, cursor: 'help' }}
+                    title="✓ tags the email as suggested and archives it. Hover a row for × (this tag is wrong for that sender — never suggested again) and the tag button (pick the right one). All of these archive."
+                  />
                   {learnBusy ? (
                     <span style={{ color: tones.teal.fg }}>Learning from this mailbox&apos;s labelled history…</span>
                   ) : (
                     <>
-                      <span style={{ fontWeight: 700, color: tones.teal.fg }}>Show</span>
                       <select
                         value={tagFilter}
                         onChange={(e) => setTagFilter(e.target.value)}
@@ -1968,14 +1986,11 @@ export default function EmailView() {
                   <button
                     disabled={learnBusy || sweepBusy}
                     onClick={() => doLearnTags(false)}
-                    title="Learn tags from your existing labels"
-                    style={{ ...sweepBtn, marginLeft: 'auto', background: 'transparent' }}
+                    title="Learn tags again from how your existing mail is labelled"
+                    style={{ marginLeft: 'auto', border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: tones.teal.fg, fontSize: 12.5, fontFamily: font, textDecoration: 'underline' }}
                   >
                     {tagRules.length === 0 && !learnBusy ? 'Learn from my labels' : 'Re-learn'}
                   </button>
-                </div>
-                <div style={{ fontSize: 12, color: tones.teal.fg }}>
-                  <b>Approve</b> tags as suggested · <b>×</b> on a tag marks it wrong for that sender (never suggested again) · <b>Change</b> picks the right tag instead. All of these archive the email.
                 </div>
               </>
             )}
@@ -2028,48 +2043,45 @@ export default function EmailView() {
             const sug = sugById.get(t.id);
             // Tagging mode's second line: the suggestion with approve / wrong /
             // change, or a plain tag picker when there's nothing to suggest.
-            const tagLine = taggingMode && !isAll && (
-              // Only the controls keep their clicks; the empty part of the line
-              // opens the email like the rest of the row.
-              <div
+            // Tagging mode, on the row itself: the suggested tag and a ✓. The ×
+            // (wrong) and the tag picker appear on hover, so a page of
+            // suggestions reads as a list, not a wall of buttons.
+            const tagControls = taggingMode && !isAll && (
+              <span
                 onClick={(e) => { if (e.target.closest('button, [data-picker]')) e.stopPropagation(); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', marginTop: 4 }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
               >
-                {sug ? (
-                  <>
-                    <Sparkles size={11} color={tones.teal.solid} />
-                    {sug.labels.map((l) => (
-                      <span key={l.id} style={suggChip} title={l.name}>
-                        {l.name.split('/').pop()}
-                        <button
-                          onClick={() => rejectSuggested(sug.sender, l)}
-                          title={`Wrong — stop suggesting “${l.name}” for ${sug.sender}`}
-                          style={chipX}
-                        >
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                    <button disabled={sweepBusy} onClick={() => acceptSuggestion(t, sug)} title="Approve — tag as suggested and archive" style={approveBtn}>
-                      <Check size={11} /> Approve
+                {sug && sug.labels.map((l) => (
+                  <span key={l.id} style={suggPill} title={l.name}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name.split('/').pop()}</span>
+                    <button
+                      className="hidden group-hover:inline-flex"
+                      onClick={() => rejectSuggested(sug.sender, l)}
+                      title={`Wrong — stop suggesting “${l.name}” for ${sug.sender}`}
+                      style={chipX}
+                    >
+                      <X size={10} />
                     </button>
-                  </>
-                ) : (
-                  <span style={{ fontSize: 11.5, color: '#94a3b8' }}>No suggestion</span>
-                )}
-                <span data-picker>
+                  </span>
+                ))}
+                <span data-picker className="opacity-0 group-hover:opacity-100">
                   <LabelPicker
                     labels={userLabels}
                     onPick={(label) => tagRowAs(t, label, sug)}
                     onCreate={ensureLabel}
-                    trigger={<button style={changeBtn}><Tag size={10} /> {sug ? 'Change' : 'Tag'} ▾</button>}
+                    align="right"
+                    trigger={<button title={sug ? 'Pick a different tag (and archive)' : 'Tag (and archive)'} style={tagIconBtn}><Tag size={11} /></button>}
                   />
                 </span>
-              </div>
+                {sug && (
+                  <button disabled={sweepBusy} onClick={() => acceptSuggestion(t, sug)} title="Approve — tag as suggested and archive" style={approveIconBtn}>
+                    <Check size={12} />
+                  </button>
+                )}
+              </span>
             );
             const sender = (
               <span style={{ fontWeight: t.unread ? 700 : 500, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...(compact ? { flex: '0 0 150px' } : { flex: 1 }) }}>
-                {party.own && <Send size={10} color="#94a3b8" style={{ marginRight: 4, verticalAlign: -1 }} title="You sent the latest message" />}
                 {party.name}{t.messageCount > 1 ? ` (${t.messageCount})` : ''}
                 {party.to && <span style={{ fontWeight: 400, color: '#94a3b8' }}> → {party.to}</span>}
               </span>
@@ -2088,12 +2100,15 @@ export default function EmailView() {
                   </span>
                 )}
                 {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('teal'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
+                {tagControls}
               </>
             );
             // Actions sit under the date and swap in on hover, so a dense list
             // stays readable. group-hover rather than React state: re-rendering
             // 500 rows on every mouse move would crawl.
-            const actions = (
+            const actions = tagControls ? (
+              <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtDate(t.internalDate)}</span>
+            ) : (
               <span className="relative flex-shrink-0" style={{ display: 'inline-flex', alignItems: 'center' }}>
                 <span className="group-hover:invisible" style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                   {fmtDate(t.internalDate)}
@@ -2143,7 +2158,6 @@ export default function EmailView() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
                       {sender}{subject}{marks}{actions}
                     </div>
-                    {tagLine}
                   </div>
                 ) : (
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2151,7 +2165,6 @@ export default function EmailView() {
                       {sender}{marks}{actions}
                     </div>
                     <div style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</div>
-                    {tagLine}
                   </div>
                 )}
               </div>
@@ -2321,25 +2334,23 @@ const sweepBtn = {
   fontFamily: font, color: tones.teal.fg,
 };
 
-// Tagging mode, per row: a suggested tag (with × = wrong), Approve, Change.
-const suggChip = {
-  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 3px 1px 8px', fontSize: 11.5, fontWeight: 700,
-  color: tones.teal.fg, background: tones.teal.bg, border: `1px dashed ${tones.teal.solid}`, borderRadius: 999,
-  fontFamily: font, whiteSpace: 'nowrap', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis',
+// Tagging mode, per row: a quiet tag pill, an icon ✓, an icon tag picker.
+const suggPill = {
+  display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 8px', fontSize: 11.5, fontWeight: 600,
+  color: tones.teal.fg, background: tones.teal.bg, borderRadius: 999,
+  fontFamily: font, whiteSpace: 'nowrap', maxWidth: 170,
 };
 const chipX = {
-  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, padding: 0,
+  alignItems: 'center', justifyContent: 'center', width: 15, height: 15, padding: 0, marginRight: -4,
   border: 'none', borderRadius: 999, background: 'transparent', color: tones.teal.fg, cursor: 'pointer', flexShrink: 0,
 };
-const approveBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', fontSize: 11.5, fontWeight: 700,
-  color: '#fff', background: tones.teal.solid, border: `1px solid ${tones.teal.solid}`, borderRadius: 6,
-  cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap',
+const tagIconBtn = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, padding: 0,
+  border: '1px solid #e2e8f0', borderRadius: 5, background: '#fff', color: '#64748b', cursor: 'pointer',
 };
-const changeBtn = {
-  display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 8px', fontSize: 11.5, fontWeight: 600,
-  color: '#475569', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6,
-  cursor: 'pointer', fontFamily: font, whiteSpace: 'nowrap',
+const approveIconBtn = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, padding: 0,
+  border: `1px solid ${tones.teal.solid}`, borderRadius: 5, background: '#fff', color: tones.teal.solid, cursor: 'pointer',
 };
 
 // Options dialog pieces.
