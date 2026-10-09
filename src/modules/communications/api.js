@@ -95,6 +95,14 @@ export const gmail = {
   listThreads: (mailbox, { labelIds, q, pageToken, maxResults, excludeOwn } = {}) =>
     callGmail('list_threads', { mailbox, labelIds, q, pageToken, maxResults, excludeOwn }),
   getThread: (mailbox, threadId) => callGmail('get_thread', { mailbox, threadId }),
+  // Email-level (the inbox lists single emails, not conversations).
+  listMessages: (mailbox, { labelIds, q, pageToken, maxResults, excludeOwn } = {}) =>
+    callGmail('list_messages', { mailbox, labelIds, q, pageToken, maxResults, excludeOwn }),
+  getMessage: (mailbox, messageId) => callGmail('get_message', { mailbox, messageId }),
+  modifyMessage: (mailbox, messageId, { addLabelIds, removeLabelIds }) =>
+    callGmail('modify_message', { mailbox, messageId, addLabelIds, removeLabelIds }),
+  trashMessage: (mailbox, messageId) => callGmail('trash_message', { mailbox, messageId }),
+  untrashMessage: (mailbox, messageId) => callGmail('untrash_message', { mailbox, messageId }),
   send: (mailbox, opts) => callGmail('send', { mailbox, ...opts }),
   modifyThread: (mailbox, threadId, { addLabelIds, removeLabelIds }) =>
     callGmail('modify_thread', { mailbox, threadId, addLabelIds, removeLabelIds }),

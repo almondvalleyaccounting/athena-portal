@@ -6,6 +6,11 @@
 //   list_labels    → user's labels (system + custom)
 //   list_threads   { labelIds?, q?, pageToken?, maxResults?, excludeOwn? }
 //   get_thread     { threadId }        full messages, parsed bodies + attachments
+//   list_messages  { labelIds?, q?, pageToken?, maxResults?, excludeOwn? }
+//                    one row per EMAIL rather than per conversation
+//   get_message    { messageId }       one email, parsed body + attachments
+//   modify_message / trash_message / untrash_message  { messageId, … }
+//                    the per-email versions of the thread actions
 //   send           { to, cc?, bcc?, subject, bodyText, bodyHtml?, threadId?,
 //                    inReplyTo?, references? }   new mail / reply / forward
 //   modify_thread  { threadId, addLabelIds?, removeLabelIds? }
@@ -240,6 +245,52 @@ async function fetchThreadSummaries(
   return { summaries, missed };
 }
 
+// One row per email (messages.list), for the inbox's email-level view. Gmail
+// groups replies AND unrelated mail with a similar subject into one thread, so
+// a thread row could open on a different email from the one clicked. Same
+// paced batching as the thread summaries; messages.get costs 5 units, not 10.
+async function fetchMessageSummaries(accessToken: string, ids: string[], self: Set<string>) {
+  const summaries: any[] = [];
+  const CHUNK = 20;
+  const pace = ids.length > CHUNK * 2 ? 250 : 0;
+  let missed = 0;
+  const meta = (id: string) =>
+    gmailFetch(accessToken, `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`);
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const got = await Promise.all(chunk.map((id) =>
+      meta(id).catch(() =>
+        new Promise((r) => setTimeout(r, 500)).then(() => meta(id)).catch(() => null))
+    ));
+    if (pace && i + CHUNK < ids.length) await new Promise((r) => setTimeout(r, pace));
+    for (const m of got as any[]) {
+      if (!m) { missed++; continue; }
+      const h = m.payload?.headers;
+      const from = header(h, "From");
+      const fromSelf = self.has(extractEmail(from));
+      const labelIds: string[] = m.labelIds || [];
+      summaries.push({
+        id: m.id,
+        threadId: m.threadId,
+        messageCount: 1,
+        // The other party for tag suggestions; blank when we sent it.
+        counterpartFrom: fromSelf ? "" : from,
+        fromSelf,
+        onlySelf: fromSelf,
+        snippet: m.snippet || "",
+        subject: header(h, "Subject") || "(no subject)",
+        from,
+        to: header(h, "To"),
+        internalDate: Number(m.internalDate || 0),
+        unread: labelIds.includes("UNREAD"),
+        labelIds,
+      });
+    }
+  }
+  summaries.sort((a, b) => b.internalDate - a.internalDate);
+  return { summaries, missed };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ success: false, error: "POST required" }, 405);
@@ -308,6 +359,53 @@ Deno.serve(async (req) => {
           nextPageToken: list.nextPageToken || null,
           resultSizeEstimate: list.resultSizeEstimate || 0,
         });
+      }
+
+      case "list_messages": {
+        const params = new URLSearchParams();
+        for (const l of body.labelIds || []) params.append("labelIds", String(l));
+        if (body.q) params.set("q", String(body.q));
+        if (body.pageToken) params.set("pageToken", String(body.pageToken));
+        params.set("maxResults", String(Math.min(Number(body.maxResults) || 25, 100)));
+        const list = await gmailFetch(tok.accessToken, `/messages?${params.toString()}`);
+        const ids = (list.messages || []).map((m: any) => m.id);
+        const self = await selfAddresses(tok.accessToken, tok.accountEmail);
+        const { summaries, missed } = await fetchMessageSummaries(tok.accessToken, ids, self);
+        const messages = body.excludeOwn ? summaries.filter((m) => !m.fromSelf) : summaries;
+        return jsonResponse({
+          success: true, messages, missed, scanned: ids.length,
+          nextPageToken: list.nextPageToken || null,
+        });
+      }
+
+      case "get_message": {
+        if (!body.messageId) return jsonResponse({ success: false, error: "messageId required" }, 400);
+        const m = await gmailFetch(tok.accessToken, `/messages/${body.messageId}?format=full`);
+        return jsonResponse({ success: true, message: parseMessage(m) });
+      }
+
+      case "modify_message": {
+        if (!body.messageId) return jsonResponse({ success: false, error: "messageId required" }, 400);
+        const add = (body.addLabelIds || []).map(String);
+        const remove = (body.removeLabelIds || []).map(String);
+        if (!add.length && !remove.length) {
+          return jsonResponse({ success: false, error: "addLabelIds or removeLabelIds required" }, 400);
+        }
+        await gmailFetch(tok.accessToken, `/messages/${body.messageId}/modify`, {
+          method: "POST",
+          body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }),
+        });
+        return jsonResponse({ success: true });
+      }
+
+      // Bin, never permanent deletion — same as the thread versions below.
+      case "trash_message":
+      case "untrash_message": {
+        if (!body.messageId) return jsonResponse({ success: false, error: "messageId required" }, 400);
+        await gmailFetch(tok.accessToken,
+          `/messages/${body.messageId}/${action === "trash_message" ? "trash" : "untrash"}`,
+          { method: "POST", body: "{}" });
+        return jsonResponse({ success: true });
       }
 
       case "get_thread": {

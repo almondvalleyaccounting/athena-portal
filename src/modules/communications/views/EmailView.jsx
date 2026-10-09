@@ -616,13 +616,13 @@ export default function EmailView() {
       try {
         do {
           // eslint-disable-next-line no-await-in-loop
-          const res = await gmail.listThreads(mb, {
+          const res = await gmail.listMessages(mb, {
             ...listQuery,
             pageToken: token,
             maxResults: Math.min(SERVER_PAGE, perBox - added),
           });
           if (gen !== loadGen.current) return; // superseded — drop these rows
-          const rows = (res.threads || []).map((t) => ({ ...t, mailbox: mb }));
+          const rows = (res.messages || []).map((t) => ({ ...t, mailbox: mb }));
           setThreads((prev) => [...prev, ...rows]);
           token = res.nextPageToken || null;
           tokensRef.current = { ...tokensRef.current, [mb]: token };
@@ -639,7 +639,7 @@ export default function EmailView() {
     }));
     if (gen !== loadGen.current) return;
     if (failure) setError(failure);
-    if (missed) flash(`${missed} conversation${missed === 1 ? '' : 's'} couldn't be loaded — refresh to retry.`);
+    if (missed) flash(`${missed} email${missed === 1 ? '' : 's'} couldn't be loaded — refresh to retry.`);
     setListLoading(false);
     // pageTokens is read for "Load more" only; including it would re-fire the
     // load effect on every batch.
@@ -661,9 +661,9 @@ export default function EmailView() {
     const incoming = [];
     await Promise.all(activeMailboxes.map(async (mb) => {
       try {
-        const res = await gmail.listThreads(mb, { ...listQuery, maxResults: 50 });
+        const res = await gmail.listMessages(mb, { ...listQuery, maxResults: 50 });
         if (gen !== loadGen.current) return;
-        incoming.push(...(res.threads || []).map((t) => ({ ...t, mailbox: mb })));
+        incoming.push(...(res.messages || []).map((t) => ({ ...t, mailbox: mb })));
       } catch { /* a background check stays quiet */ }
     }));
     if (gen !== loadGen.current) return;
@@ -824,7 +824,7 @@ export default function EmailView() {
 
   // Applies the whole suggested set in one modify, then archives.
   const applySuggestion = useCallback(async (t, sug) => {
-    await gmail.modifyThread(t.mailbox, t.id, {
+    await gmail.modifyMessage(t.mailbox, t.id, {
       addLabelIds: sug.labels.map((l) => l.id),
       removeLabelIds: ['INBOX'],
     });
@@ -858,7 +858,7 @@ export default function EmailView() {
     }
     setSweepBusy(false);
     setSelected(new Set());
-    flash(`Cleared ${done} conversation${done === 1 ? '' : 's'} as suggested${failed ? ` (${failed} failed)` : ''}.`);
+    flash(`Cleared ${done} email${done === 1 ? '' : 's'} as suggested${failed ? ` (${failed} failed)` : ''}.`);
   }, [suggested, applySuggestion]);
 
   // "This suggestion is wrong": stored server-side so neither this inbox nor a
@@ -888,7 +888,7 @@ export default function EmailView() {
   // passed over is marked wrong for this sender.
   const tagRowAs = useCallback(async (t, label, sug) => {
     try {
-      await gmail.modifyThread(t.mailbox, t.id, { addLabelIds: [label.id], removeLabelIds: ['INBOX'] });
+      await gmail.modifyMessage(t.mailbox, t.id, { addLabelIds: [label.id], removeLabelIds: ['INBOX'] });
       const sender = sug?.sender || parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
       if (sender && sender !== mailbox) recordTagRule(t.mailbox, sender, label);
       for (const l of sug?.labels || []) if (l.id !== label.id) rejectSuggested(sug.sender, l);
@@ -956,9 +956,10 @@ export default function EmailView() {
   const fetchThread = useCallback((mb, id) => {
     const key = `${mb}:${id}`;
     if (inflight.current.has(key)) return inflight.current.get(key);
-    const p = gmail.getThread(mb, id).then((res) => {
-      res.thread.messages = [...res.thread.messages].sort((a, b) => b.internalDate - a.internalDate);
-      const full = { ...res.thread, mailbox: mb };
+    // One email, not its conversation: Gmail threads by subject as well as by
+    // reply, so the thread could open on a different email from the row.
+    const p = gmail.getMessage(mb, id).then((res) => {
+      const full = { id: res.message.id, threadId: res.message.threadId, messages: [res.message], mailbox: mb };
       threadCache.current.set(key, full);
       return full;
     }).finally(() => inflight.current.delete(key));
@@ -980,7 +981,7 @@ export default function EmailView() {
     setComposer(null);
     if (paneRef.current) paneRef.current.scrollTop = 0;
     if (summary.unread) {
-      gmail.modifyThread(mb, summary.id, { removeLabelIds: ['UNREAD'] })
+      gmail.modifyMessage(mb, summary.id, { removeLabelIds: ['UNREAD'] })
         .then(() => setThreads((prev) => prev.map((t) => (t.id === summary.id ? { ...t, unread: false } : t))))
         .catch(() => { /* read-state is cosmetic */ });
     }
@@ -1025,7 +1026,7 @@ export default function EmailView() {
 
   const archiveThread = useCallback(async (threadId, restore = false) => {
     try {
-      await gmail.modifyThread(threadMailbox, threadId, restore
+      await gmail.modifyMessage(threadMailbox, threadId, restore
         ? { addLabelIds: ['INBOX'] }
         : { removeLabelIds: ['INBOX'] });
       forgetThread(threadMailbox, threadId);
@@ -1042,12 +1043,12 @@ export default function EmailView() {
   // Delete = Gmail bin (recoverable ~30 days), never permanent.
   const trashThread = useCallback(async (threadId) => {
     try {
-      await gmail.trashThread(threadMailbox, threadId);
+      await gmail.trashMessage(threadMailbox, threadId);
       forgetThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
       flash('Moved to bin.', async () => {
-        await gmail.untrashThread(threadMailbox, threadId).catch(() => {});
+        await gmail.untrashMessage(threadMailbox, threadId).catch(() => {});
         loadThreads();
       });
     } catch (e) {
@@ -1057,7 +1058,7 @@ export default function EmailView() {
 
   const restoreThread = useCallback(async (threadId) => {
     try {
-      await gmail.untrashThread(threadMailbox, threadId);
+      await gmail.untrashMessage(threadMailbox, threadId);
       forgetThread(threadMailbox, threadId);
       setThreads((prev) => prev.filter((t) => t.id !== threadId));
       setThread(null);
@@ -1070,7 +1071,7 @@ export default function EmailView() {
   const tagThread = useCallback(async (label) => {
     if (!thread) return;
     try {
-      await gmail.modifyThread(threadMailbox, thread.id, { addLabelIds: [label.id] });
+      await gmail.modifyMessage(threadMailbox, thread.id, { addLabelIds: [label.id] });
       const sender = thread.messages
         .map((m) => parseAddress(m.from).email.toLowerCase())
         .find((e) => e && e !== threadMailbox);
@@ -1092,7 +1093,7 @@ export default function EmailView() {
   const untagThread = useCallback(async (label) => {
     if (!thread) return;
     try {
-      await gmail.modifyThread(threadMailbox, thread.id, { removeLabelIds: [label.id] });
+      await gmail.modifyMessage(threadMailbox, thread.id, { removeLabelIds: [label.id] });
       const ownDomain = threadMailbox.split('@')[1];
       const senders = new Set(thread.messages
         .map((m) => parseAddress(m.from).email.toLowerCase())
@@ -1127,12 +1128,12 @@ export default function EmailView() {
     let failed = 0;
     for (const id of selected) {
       try {
-        await gmail.modifyThread(boxOf(id), id, { addLabelIds, removeLabelIds });
+        await gmail.modifyMessage(boxOf(id), id, { addLabelIds, removeLabelIds });
       } catch { failed++; }
     }
     setBulkBusy(false);
     threadCache.current.clear();
-    flash(`${verb} ${selected.size - failed} conversation${selected.size - failed === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}.`);
+    flash(`${verb} ${selected.size - failed} email${selected.size - failed === 1 ? '' : 's'}${failed ? ` (${failed} failed)` : ''}.`);
     setSelected(new Set());
     loadThreads();
   }, [selected, boxOf, loadThreads]);
@@ -1143,13 +1144,13 @@ export default function EmailView() {
     const ids = [...selected].map((id) => [id, boxOf(id)]);
     let failed = 0;
     for (const [id, mb] of ids) {
-      try { await gmail.trashThread(mb, id); } catch { failed++; }
+      try { await gmail.trashMessage(mb, id); } catch { failed++; }
     }
     setBulkBusy(false);
     threadCache.current.clear();
     setSelected(new Set());
-    flash(`Binned ${ids.length - failed} conversation${ids.length - failed === 1 ? '' : 's'}.`, async () => {
-      for (const [id, mb] of ids) await gmail.untrashThread(mb, id).catch(() => {});
+    flash(`Binned ${ids.length - failed} email${ids.length - failed === 1 ? '' : 's'}.`, async () => {
+      for (const [id, mb] of ids) await gmail.untrashMessage(mb, id).catch(() => {});
       loadThreads();
     });
     loadThreads();
@@ -1179,7 +1180,7 @@ export default function EmailView() {
           .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer(withStart({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.id, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
+      setComposer(withStart({ mode, to, cc, subject: reSubject, body: `${sig}\n\n${quoteBody(latestMsg)}`, threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
       setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: `${sig}\n\n${forwardBody(latestMsg)}`, mailbox: threadMailbox }));
@@ -1207,12 +1208,12 @@ export default function EmailView() {
 
   const rowTrash = useCallback(async (t) => {
     try {
-      await gmail.trashThread(t.mailbox, t.id);
+      await gmail.trashMessage(t.mailbox, t.id);
       forgetThread(t.mailbox, t.id);
       setThreads((prev) => prev.filter((x) => x.id !== t.id));
       setThread((prev) => (prev?.id === t.id ? null : prev));
       flash('Moved to bin.', async () => {
-        await gmail.untrashThread(t.mailbox, t.id).catch(() => {});
+        await gmail.untrashMessage(t.mailbox, t.id).catch(() => {});
         loadThreads();
       });
     } catch (e) {
@@ -1232,7 +1233,7 @@ export default function EmailView() {
         decodeEntities(t.snippet),
         '',
         `From: ${t.from}`,
-        `Email: https://mail.google.com/mail/?authuser=${t.mailbox}#all/${t.id}`,
+        `Email: https://mail.google.com/mail/?authuser=${t.mailbox}#all/${t.threadId || t.id}`,
       ].join('\n'),
     });
     if (other.email) params.set('add', other.email);
@@ -1404,7 +1405,7 @@ export default function EmailView() {
   }
 
   const paneContent = () => {
-    if (composer && (composer.mode === 'new' || composer.mode === 'forward' || !thread || composer.threadId !== thread.id)) {
+    if (composer && (composer.mode === 'new' || composer.mode === 'forward' || !thread || composer.threadId !== thread.threadId)) {
       return renderComposer();
     }
     if (thread) {
@@ -1661,7 +1662,7 @@ export default function EmailView() {
               Hide my own sent mail
             </label>
           )}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Conversations per page">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }} title="Emails per page">
             Load
             <select
               value={pageSize}
