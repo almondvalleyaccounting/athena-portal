@@ -32,6 +32,10 @@ import TabErrorBoundary from './TabErrorBoundary';
 import KpiTab from './KpiTab';
 import ReportsTab from './ReportsTab';
 import ClientAccessTab from './ClientAccessTab';
+import OverdueInvoicesView from './OverdueInvoicesView';
+
+// Fetched on the first statement download, not with the page.
+const loadJsPDF = () => import('jspdf').then((m) => m.jsPDF);
 import { useKpiData } from './useKpiData';
 import { buildKpiModel } from './kpiEngine';
 
@@ -69,6 +73,7 @@ const TABS = [
   { id: 'underlying', label: 'Underlying Performance' },
   { id: 'balance', label: 'Balance Sheet' },
   { id: 'debtors', label: 'Debtors' },
+  { id: 'overdue', label: 'Overdue invoices' },
   { id: 'creditors', label: 'Creditors' },
   { id: 'projection', label: 'Projection' },
   { id: 'kpis', label: 'KPIs' },
@@ -80,6 +85,10 @@ const TABS = [
 ];
 const PERIOD_TABS = new Set(['overview', 'pnl', 'underlying', 'kpis', 'reports']);
 const ASAT_TABS = new Set(['balance', 'debtors', 'creditors']);
+// The Overdue invoices tab reads an as-at date too, so the rail shows the
+// as-at picker over it — but it has its own lighter pull (open_items), so it
+// is kept out of ASAT_TABS, which fetches the balance sheet and both ledgers.
+const RAIL_ASAT_TABS = new Set([...ASAT_TABS, 'overdue']);
 
 // The Overview toggles are a working preference, not client data — remembering
 // them means someone who thinks in fiscal quarters isn't re-picking them on
@@ -151,6 +160,10 @@ export default function ClientDashboardPage() {
   const [periodLoading, setPeriodLoading] = useState(false);
   const [asAtLoading, setAsAtLoading] = useState(false);
   const asAtLoadedRef = useRef(null);
+  const [invoicesData, setInvoicesData] = useState(null); // open_items
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoicesError, setInvoicesError] = useState(null);
+  const invoicesLoadedRef = useRef(null);
 
   // Owner-cost / one-off config, held once for the whole page — the Overview
   // and Underlying tabs both read it and must not diverge.
@@ -310,6 +323,19 @@ export default function ClientDashboardPage() {
   const selected = clients.find((c) => c.realm_id === realmId);
   const selectedName = selected?.company_name || '';
   const entityId = selected?.entity_id || null;
+
+  // The client's statement letterhead (sql/361), read and written through
+  // statement-settings — the same calls the portal makes, so staff setting it
+  // up on a client's behalf set exactly what the client will see.
+  const statementSettingsCall = useCallback(async (action, settings) => {
+    const { data, error: e } = await supabase.functions.invoke('statement-settings', {
+      body: { entityId, action, ...(settings ? { settings } : {}) },
+    });
+    if (e || !data?.success) throw new Error(data?.error || e?.message || 'Could not reach the statement settings');
+    return data.settings || null;
+  }, [entityId]);
+  const loadStatementSettings = useCallback(() => statementSettingsCall('get'), [statementSettingsCall]);
+  const saveStatementSettings = useCallback((v) => statementSettingsCall('save', v), [statementSettingsCall]);
   const isFavourite = realmId ? favourites.has(realmId) : false;
   const clientGrants = useMemo(
     () => (entityId ? grants.filter((g) => g.entity_id === entityId) : []),
@@ -536,6 +562,33 @@ export default function ClientDashboardPage() {
     setAsAtLoading(false);
   }, [realmId, asAtKey, asAt.date, bsGridStart, bsCmpDate]);
 
+  // Open sales-ledger items for the Overdue invoices tab, as at the rail date.
+  const fetchInvoices = useCallback(async (refresh = false) => {
+    if (!realmId || !asAt.date) return;
+    setInvoicesLoading(true);
+    setInvoicesError(null);
+    try {
+      const { data: payload, error: fnErr } = await supabase.functions.invoke('dashboard-qbo-pull', {
+        body: {
+          realmId, refresh,
+          window: { kind: asAtKey === 'custom' ? 'custom' : 'preset', invoices: { date: asAt.date } },
+        },
+      });
+      if (fnErr) throw fnErr;
+      if (!payload?.metrics?.open_items) throw new Error(payload?.errors?.open_items || payload?.error || 'No invoice data came back');
+      setInvoicesData(payload.metrics.open_items);
+      invoicesLoadedRef.current = `${realmId}|${asAt.date}`;
+    } catch (e) {
+      setInvoicesError(`Couldn't pull the invoices: ${e?.message || e}`);
+    }
+    setInvoicesLoading(false);
+  }, [realmId, asAtKey, asAt.date]);
+
+  useEffect(() => {
+    if (realmId && tab === 'overdue' && invoicesLoadedRef.current !== `${realmId}|${asAt.date}`) fetchInvoices(false);
+  }, [realmId, tab, asAt.date, fetchInvoices]);
+  useEffect(() => { setInvoicesData(null); setInvoicesError(null); invoicesLoadedRef.current = null; }, [realmId]);
+
   // Period data: fetch on select and whenever the period window changes.
   useEffect(() => { if (realmId) fetchPeriod(false); }, [fetchPeriod]);
   // As-at data: fetch lazily on first visit to a balance/aged tab, and when the
@@ -549,7 +602,7 @@ export default function ClientDashboardPage() {
   }, [realmId, tab, asAt.date, bsGridStart, bsCmpDate, fetchAsAt]);
 
   const lastPulled = cacheRows.length ? cacheRows[0].pulled_at : null;
-  const winBusy = periodLoading || asAtLoading;
+  const winBusy = periodLoading || asAtLoading || invoicesLoading;
 
   // A realm with no stored tokens → every metric errors with the same reconnect message.
   const errVals = fnErrors ? Object.values(fnErrors) : [];
@@ -561,6 +614,7 @@ export default function ClientDashboardPage() {
     load(realmId, true);
     if (PERIOD_TABS.has(tab)) fetchPeriod(true);
     if (ASAT_TABS.has(tab)) { asAtLoadedRef.current = null; fetchAsAt(true); }
+    if (tab === 'overdue') fetchInvoices(true);
   };
   const emptyProps = { needsReconnect, selectedName, onPull: pull, loading: winBusy || loading };
 
@@ -874,6 +928,22 @@ export default function ClientDashboardPage() {
                 <AgedTab data={asAtData?.ar_asat} title="Aged debtors (receivables)" sameLabel="Same debtors"
                   label="aged debtors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
               )}
+              {tab === 'overdue' && (
+                <OverdueInvoicesView
+                  data={invoicesData}
+                  loading={invoicesLoading}
+                  error={invoicesError}
+                  onRetry={() => fetchInvoices(true)}
+                  getJsPDF={loadJsPDF}
+                  loadSettings={entityId ? loadStatementSettings : null}
+                  saveSettings={entityId ? saveStatementSettings : null}
+                  palette={{
+                    text: '#0f172a', strong: '#0f172a', muted: '#64748b', faint: '#94a3b8',
+                    border: '#e2e8f0', accent: '#0f172a', soft: '#f8fafc',
+                  }}
+                  cardStyle={cardStyle}
+                />
+              )}
               {tab === 'creditors' && (
                 <AgedTab data={asAtData?.ap_asat} title="Aged creditors (payables)" sameLabel="Same suppliers"
                   label="aged creditors" currency={asAtCurrency} loading={asAtLoading} empty={emptyProps} />
@@ -906,7 +976,7 @@ function FilterRail({
   customPeriod, setCustomPeriod, customAsAt, setCustomAsAt,
   period, asAt, busy, lastPulled,
 }) {
-  const isAsAt = ASAT_TABS.has(tab);
+  const isAsAt = RAIL_ASAT_TABS.has(tab);
   const isPeriod = PERIOD_TABS.has(tab);
 
   const freshness = (

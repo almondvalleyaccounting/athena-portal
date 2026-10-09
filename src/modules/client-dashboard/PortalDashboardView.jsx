@@ -19,6 +19,7 @@ import {
 import { ReportTable, AgedSection } from './StatementTables';
 import { buildKpiModel, formatKpi } from './kpiEngine';
 import ReportView from './ReportView';
+import OverdueInvoicesView from './OverdueInvoicesView';
 import { PORTAL_PERIOD_PRESETS, PORTAL_ASAT_PRESETS, ASAT_TABS } from './usePortalDashboard';
 
 /*
@@ -105,6 +106,9 @@ export function portalTabsFor(payload) {
     { key: 'pl', label: 'Profit & loss', on: !!s.pl },
     { key: 'bs', label: 'Balance sheet', on: !!s.balance },
     { key: 'debtors', label: 'Who owes you', on: !!s.debtors },
+    // Invoice by invoice, with statements to send. The same sales ledger the
+    // debtors tab ages, so the same flag.
+    { key: 'overdue', label: 'Overdue invoices', on: !!s.debtors },
     { key: 'creditors', label: 'Who you owe', on: !!s.creditors },
     { key: 'kpis', label: 'Measures', on: !!s.kpis && !!(payload?.kpis?.definitions || []).length },
     { key: 'projection', label: 'The year ahead', on: !!s.projection && !!payload?.projection },
@@ -123,6 +127,10 @@ export default function PortalDashboardView({
   // The preview renders inside an Athena panel that supplies its own heading,
   // so the hero is suppressed there.
   showHero = true,
+  // () => Promise<jsPDF constructor>, from the host app — a shared module may
+  // not import it (see vite.config.js). Without it the statements button is
+  // disabled.
+  getJsPDF = null,
 }) {
   const sections = payload?.sections || {};
   const tabs = portalTabsFor(payload);
@@ -320,6 +328,22 @@ export default function PortalDashboardView({
           <AgedSection
             title="Who owes you" data={payload.metrics?.ar_asat} currency={currency}
             sameLabel="The same customers" palette={TABLE_PALETTE} cardStyle={cardChrome}
+          />
+        )}
+        {payload && active === 'overdue' && (
+          <OverdueInvoicesView
+            data={ui.invoices}
+            loading={ui.invoicesLoading}
+            error={ui.invoicesError}
+            onRetry={ui.loadInvoices}
+            getJsPDF={getJsPDF}
+            loadSettings={ui.loadSettings}
+            saveSettings={ui.saveSettings}
+            palette={{
+              text: t.text, strong: t.navy, muted: t.muted, faint: t.faint, border: t.border,
+              accent: t.navy, surface: t.card, soft: t.bg,
+            }}
+            cardStyle={cardChrome}
           />
         )}
         {payload && active === 'creditors' && (

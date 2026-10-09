@@ -57,7 +57,7 @@ export const PORTAL_ASAT_PRESETS = ASAT_PRESETS.filter(
 // Tabs that read an AS-AT date rather than a period. A balance sheet and an
 // aged ledger are positions: "the last 12 months" is not a thing either of them
 // can be, so the rail above them shows a date and not a range.
-export const ASAT_TABS = new Set(['bs', 'debtors', 'creditors']);
+export const ASAT_TABS = new Set(['bs', 'debtors', 'creditors', 'overdue']);
 
 const CLIENT_ERROR = "We couldn't load your figures just now. Please try again shortly.";
 
@@ -171,9 +171,58 @@ export function usePortalDashboard({
   // Switching client drops the figures BEFORE the next fetch lands, rather than
   // showing the previous client's numbers under the new company's name for a
   // second. Ordered ahead of the load effect so it wins the same render.
-  useEffect(() => { setPayload(null); }, [entityId]);
+  useEffect(() => { setPayload(null); setInvoices(null); }, [entityId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /*
+    Overdue invoices — fetched only when that tab is open, and again when its
+    as-at date moves. A separate call (portal-dashboard, mode "invoices") so
+    the dashboard's first load does not pay for an invoice listing nobody may
+    look at. The server bounds the date by the release window, as it does the
+    aged ledgers.
+  */
+  const [invoices, setInvoices] = useState(null);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoicesError, setInvoicesError] = useState(null);
+  const loadInvoices = useCallback(async () => {
+    if (!entityId || customIncomplete) return;
+    setInvoicesLoading(true);
+    setInvoicesError(null);
+    try {
+      const { data, error: e } = await supabase.functions.invoke('portal-dashboard', {
+        body: {
+          entityId, mode: 'invoices',
+          ...(previewEmail ? { previewEmail } : {}),
+          asAt: { date: asAt.date },
+        },
+      });
+      if (e) throw e;
+      if (!data?.success) throw new Error(data?.error || CLIENT_ERROR);
+      setInvoices(data.open_items || null);
+    } catch (e) {
+      const msg = String(e?.message || e);
+      setInvoicesError(previewEmail ? msg : CLIENT_ERROR);
+    }
+    setInvoicesLoading(false);
+    // customIncomplete covers the as-at custom box; asAt.date is the whole input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, entityId, previewEmail, asAt.date, customIncomplete]);
+
+  useEffect(() => { if (tab === 'overdue') loadInvoices(); }, [tab, loadInvoices]);
+
+  // The letterhead for the customer statements. statement-settings decides
+  // who may read or change it (the client's grant, or staff).
+  const settingsCall = useCallback(async (action, settings) => {
+    const { data, error: e } = await supabase.functions.invoke('statement-settings', {
+      body: { entityId, action, ...(settings ? { settings } : {}) },
+    });
+    if (e) throw new Error("We couldn't reach your settings just now.");
+    if (!data?.success) throw new Error(data?.error || "We couldn't reach your settings just now.");
+    return data.settings || null;
+  }, [supabase, entityId]);
+  const loadSettings = useCallback(() => settingsCall('get'), [settingsCall]);
+  const saveSettings = useCallback((s) => settingsCall('save', s), [settingsCall]);
 
   return {
     payload, loading, error, reload: load,
@@ -183,6 +232,8 @@ export function usePortalDashboard({
     grain, setGrain, basis, setBasis, view, setView,
     plCompare, setPlCompare, bsCompare, setBsCompare,
     fyIdx,
+    invoices, invoicesLoading, invoicesError, loadInvoices,
+    loadSettings, saveSettings,
   };
 }
 

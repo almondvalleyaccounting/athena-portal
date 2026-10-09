@@ -28,6 +28,9 @@ import { usePortalDashboard } from '@dash/usePortalDashboard.js';
                               a realm or a metric.
 */
 
+// The PDF library is fetched on the first statement download, not on sign-in.
+const loadJsPDF = () => import('jspdf').then((m) => m.jsPDF);
+
 export default function DashboardSection({ onHasDashboards }) {
   const [grants, setGrants] = useState(null);   // null = still loading
   const [entityId, setEntityId] = useState('');
@@ -72,6 +75,7 @@ export default function DashboardSection({ onHasDashboards }) {
         grants={grants}
         entityId={entityId}
         setEntityId={setEntityId}
+        getJsPDF={loadJsPDF}
       />
     </div>
   );

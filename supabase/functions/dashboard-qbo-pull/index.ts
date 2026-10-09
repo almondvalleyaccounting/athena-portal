@@ -703,6 +703,126 @@ async function agedAsAt(sb: any, realmId: string, endpoint: "AgedReceivables" | 
     report,
   };
 }
+/*
+  Open sales-ledger items as at a date — the Overdue invoices tab and the
+  customer statements.
+
+  AgedReceivableDetail rather than an Invoice query, because an Invoice's
+  Balance is TODAY's balance: a statement dated at the release date has to show
+  what was outstanding on that date, and only the report answers that. It also
+  brings credit notes and unapplied payments, which a statement must net off or
+  it overstates what the customer owes.
+
+  The report carries the customer's id but not their address, so the customers
+  that appear are fetched (100 per query); the business's own name and address
+  come from CompanyInfo, for the statement letterhead.
+*/
+async function openItemsAsAt(sb: any, realmId: string, asAt: string) {
+  const cols = "tx_date,txn_type,doc_num,cust_name,due_date,subt_amount,subt_open_bal,term_name";
+  const resp = await qboFetch(sb, realmId,
+    `reports/AgedReceivableDetail?report_date=${asAt}&columns=${cols}&minorversion=75`);
+  if (!resp.ok) throw new Error(`AgedReceivableDetail ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const report = await resp.json();
+
+  // Columns by ColKey where QBO gives one, else by title.
+  const colDefs = report?.Columns?.Column || [];
+  const keyAt: string[] = colDefs.map((c: any) => {
+    const k = (c.MetaData || []).find((m: any) => m.Name === "ColKey")?.Value;
+    if (k) return String(k);
+    const t = String(c.ColTitle || "").toLowerCase();
+    if (/^date$/.test(t)) return "tx_date";
+    if (/type/.test(t)) return "txn_type";
+    if (/num/.test(t)) return "doc_num";
+    if (/customer|name/.test(t)) return "cust_name";
+    if (/due/.test(t)) return "due_date";
+    if (/open/.test(t)) return "subt_open_bal";
+    if (/amount/.test(t)) return "subt_amount";
+    if (/term/.test(t)) return "term_name";
+    return t;
+  });
+  const num = (v: unknown) => { const n = parseFloat(String(v ?? "")); return isNaN(n) ? 0 : n; };
+
+  const items: any[] = [];
+  const walk = (rs: any[]) => {
+    for (const r of rs || []) {
+      if (r.Rows?.Row) walk(r.Rows.Row);
+      // Data rows carry ColData; section headers and totals carry Header/Summary.
+      if (!r.ColData) continue;
+      const cd = r.ColData;
+      const get = (k: string) => cd[keyAt.indexOf(k)];
+      const type = get("txn_type")?.value || "";
+      if (!type) continue;
+      const open = num(get("subt_open_bal")?.value);
+      if (Math.abs(open) < 0.005) continue;
+      items.push({
+        txn_id: get("txn_type")?.id || get("doc_num")?.id || null,
+        type,
+        date: get("tx_date")?.value || null,
+        number: get("doc_num")?.value || "",
+        customer_id: get("cust_name")?.id || null,
+        customer: get("cust_name")?.value || "",
+        due_date: get("due_date")?.value || null,
+        amount: num(get("subt_amount")?.value),
+        open,
+        terms: get("term_name")?.value || null,
+      });
+    }
+  };
+  walk(report?.Rows?.Row || []);
+
+  // Customers on the ledger, with what a statement needs to address them.
+  const ids = [...new Set(items.map((i) => i.customer_id).filter(Boolean))] as string[];
+  const customers: Record<string, any> = {};
+  const addr = (a: any) => (a
+    ? {
+        lines: [a.Line1, a.Line2, a.Line3, a.Line4, a.Line5].filter((x: any) => x && String(x).trim()),
+        city: a.City || null, region: a.CountrySubDivisionCode || null,
+        postcode: a.PostalCode || null, country: a.Country || null,
+      }
+    : null);
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100).map((x) => `'${x.replace(/'/g, "")}'`).join(",");
+    const q = await qboQuery(sb, realmId, `select * from Customer where Id in (${chunk}) maxresults 1000`);
+    for (const c of q?.QueryResponse?.Customer || []) {
+      customers[c.Id] = {
+        id: c.Id,
+        name: c.DisplayName || c.CompanyName || "",
+        company: c.CompanyName || null,
+        contact: [c.GivenName, c.FamilyName].filter(Boolean).join(" ") || null,
+        email: c.PrimaryEmailAddr?.Address || null,
+        phone: c.PrimaryPhone?.FreeFormNumber || null,
+        address: addr(c.BillAddr),
+      };
+    }
+  }
+
+  // The business itself — the statement's letterhead.
+  let business: any = null;
+  try {
+    const cr = await qboFetch(sb, realmId, `companyinfo/${realmId}?minorversion=75`);
+    if (cr.ok) {
+      const ci = (await cr.json())?.CompanyInfo || {};
+      business = {
+        name: ci.CompanyName || null,
+        legal_name: ci.LegalName || null,
+        address: addr(ci.CompanyAddr || ci.LegalAddr),
+        email: ci.Email?.Address || ci.CustomerCommunicationEmailAddr?.Address || null,
+        phone: ci.PrimaryPhone?.FreeFormNumber || null,
+        website: ci.WebAddr?.URI || null,
+      };
+    }
+  } catch { /* the letterhead falls back to the statement settings */ }
+
+  return {
+    period: { start: null, end: asAt },
+    as_at: asAt,
+    currency: report?.Header?.Currency || null,
+    items,
+    customers,
+    business,
+  };
+}
+
 // Back-compat wrappers: aged as at today (the default-pull snapshots).
 const pullAgedReceivables = (sb: any, realmId: string) => agedAsAt(sb, realmId, "AgedReceivables", fmt(new Date()));
 const pullAgedPayables = (sb: any, realmId: string) => agedAsAt(sb, realmId, "AgedPayables", fmt(new Date()));
@@ -1322,6 +1442,15 @@ Deno.serve(async (req) => {
           () => agedAsAt(sb, realmId, "AgedReceivables", d));
         await windowMetric(`ap_asat#${d}`, null, d, "ap_asat",
           () => agedAsAt(sb, realmId, "AgedPayables", d));
+      }
+
+      // Open sales-ledger items, invoice by invoice, as at a date: the Overdue
+      // invoices tab and the customer statements. Asked for on its own, so the
+      // tab does not pull the whole balance sheet to list some invoices.
+      if (win.invoices) {
+        const d = String(win.invoices.date);
+        await windowMetric(`open_items#${d}`, null, d, "open_items",
+          () => openItemsAsAt(sb, realmId, d));
       }
 
       return jr({

@@ -374,6 +374,66 @@ Deno.serve(async (req) => {
     // control, because a position and a flow are chosen separately.
     const asAtDate = boundDate(clampDate(body.asAt?.date, lastDay(lastCompleteKey)));
 
+    /*
+      INVOICES MODE — the Overdue invoices tab and the customer statements.
+
+      The same sales ledger the Debtors tab ages, one invoice per row, so it
+      rides on `show_debtors` rather than a flag of its own: a grant that may
+      see who owes the client how much may see which invoices that is. Asked
+      for separately (the tab fetches it on first open) so the main dashboard
+      load does not pay for three extra QuickBooks calls nobody is reading.
+
+      It is bound by the release window like every other as-at figure (Bobby,
+      2026-10-09): a statement is dated at the release, not today.
+    */
+    if (body.mode === "invoices") {
+      if (!grant.show_debtors) return jr({ success: false, error: "Not authorised" }, 403);
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/dashboard-qbo-pull`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          realmId, maxAgeMinutes: MAX_AGE_MIN,
+          window: { kind: "preset", invoices: { date: asAtDate } },
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      const oi = j?.metrics?.open_items;
+      if (!r.ok || !oi) return jr({ success: false, error: "Figures are temporarily unavailable" }, 502);
+      const customers: Record<string, unknown> = {};
+      for (const [id, c] of Object.entries(oi.customers || {}) as [string, any][]) {
+        customers[id] = {
+          id: c.id, name: c.name, company: c.company, contact: c.contact,
+          email: c.email, phone: c.phone, address: c.address,
+        };
+      }
+      return jr({
+        success: true,
+        preview: !!previewEmail,
+        entity_id: entityId,
+        company_name: conn.company_name,
+        as_at: { date: asAtDate },
+        release: release ? { from: release.from, to: release.to } : null,
+        open_items: {
+          as_at: oi.as_at,
+          currency: oi.currency,
+          items: (oi.items || []).map((i: any) => ({
+            txn_id: i.txn_id, type: i.type, date: i.date, number: i.number,
+            customer_id: i.customer_id, customer: i.customer, due_date: i.due_date,
+            amount: i.amount, open: i.open, terms: i.terms,
+          })),
+          customers,
+          business: oi.business
+            ? {
+                name: oi.business.name, legal_name: oi.business.legal_name,
+                address: oi.business.address, email: oi.business.email,
+                phone: oi.business.phone, website: oi.business.website,
+              }
+            : null,
+        },
+        pulled_at: j?.pulled_at || null,
+      });
+    }
+
     // The Overview's bucket columns, counted back from the period end.
     const win = buildWindow(grain, basis, fyIdx, period.end.slice(0, 7));
     // The chart runs whole months, so its last month can end after a mid-month

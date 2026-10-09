@@ -5,6 +5,9 @@ import PortalDashboardView, { portalTabsFor } from './PortalDashboardView';
 import { usePortalDashboard } from './usePortalDashboard';
 import { portalTheme } from './portalTheme';
 
+// Fetched on the first statement download, not with the panel.
+const loadJsPDF = () => import('jspdf').then((m) => m.jsPDF);
+
 const font = "'Outfit', sans-serif";
 
 /*
@@ -121,6 +124,7 @@ export default function ClientViewPreview({ row, onClose, onToggle, busy }) {
               error={ui.error}
               onRetry={ui.reload}
               ui={ui}
+              getJsPDF={loadJsPDF}
             />
             {ui.payload && portalTabsFor(ui.payload).length === 0 && (
               <div style={{ fontSize: 14.5, color: portalTheme.muted, textAlign: 'center', padding: '30px 0' }}>

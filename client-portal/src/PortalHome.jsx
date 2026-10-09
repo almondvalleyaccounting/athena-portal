@@ -7,6 +7,7 @@ import QuoteCard from './QuoteCard';
 import GroupsSection from './GroupsSection';
 import ServicesSection from './ServicesSection';
 import DashboardSection from './DashboardSection';
+import PreferencesPage from './PreferencesPage';
 
 /*
   Onboarding portal home. All data comes from SECURITY DEFINER RPCs that
@@ -71,6 +72,9 @@ export default function PortalHome({ session }) {
   // "nothing here yet" card must not greet someone whose figures are right below
   // it. DashboardSection tells us whether it has anything to show.
   const [hasDashboards, setHasDashboards] = useState(false);
+  // 'home' or 'preferences'. The home view stays mounted underneath so the
+  // dashboard keeps its tab and dates when someone pops into Preferences.
+  const [view, setView] = useState('home');
   const [showIntro, setShowIntro] = useState(() => {
     try { return !localStorage.getItem('ava_seen_intro'); } catch { return false; }
   });
@@ -185,15 +189,27 @@ export default function PortalHome({ session }) {
             <div style={{ color: '#9db6c8', fontSize: 11.5 }}>Client portal</div>
           </div>
         </div>
-        <button
-          onClick={() => supabase.auth.signOut()}
-          style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}
-        >
-          Sign out
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          {hasDashboards && (
+            <button
+              onClick={() => setView(view === 'preferences' ? 'home' : 'preferences')}
+              style={{ background: view === 'preferences' ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+            >
+              Preferences
+            </button>
+          )}
+          <button
+            onClick={() => supabase.auth.signOut()}
+            style={{ background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <main style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px 60px' }}>
+        {view === 'preferences' && <PreferencesPage onBack={() => setView('home')} />}
+        <div style={{ display: view === 'preferences' ? 'none' : 'block' }}>
         {error && (
           <div style={{ fontSize: 13.5, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
             {error} <button onClick={() => { setError(null); load(); }} style={{ border: 'none', background: 'none', color: '#b91c1c', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>Retry</button>
@@ -363,6 +379,7 @@ export default function PortalHome({ session }) {
         <div style={{ textAlign: 'center', fontSize: 12, color: t.faint, marginTop: 10, lineHeight: 1.6 }}>
           Questions? Use “Message us” on any step above, or reply to any of our emails —
           they come straight to the team.
+        </div>
         </div>
       </main>
     </div>
