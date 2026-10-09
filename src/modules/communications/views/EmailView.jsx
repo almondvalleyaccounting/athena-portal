@@ -380,7 +380,7 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left', onOpen
     <div ref={ref} style={{ position: 'relative' }}>
       <span onClick={() => setOpen((o) => !o)}>{trigger}</span>
       {open && (
-        <div style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 4, zIndex: 40, width: 260, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', overflow: 'hidden', fontFamily: font }}>
+        <div style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 4, zIndex: 40, width: 380, maxWidth: '80vw', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', overflow: 'hidden', fontFamily: font }}>
           <input
             autoFocus
             value={term}
@@ -407,9 +407,9 @@ function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left', onOpen
                   onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = '#fff'; }}
                 >
-                  <Tag size={11} color="#94a3b8" />
-                  <span style={{ fontWeight: 600, color: '#0f172a' }}>{seg}</span>
-                  {parts.length > 0 && <span style={{ fontSize: 11.5, color: '#94a3b8' }}>{parts.join(' / ')}</span>}
+                  <Tag size={11} color="#94a3b8" style={{ flexShrink: 0 }} />
+                  <span style={{ fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', flexShrink: 0 }}>{seg}</span>
+                  {parts.length > 0 && <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{parts.join(' / ')}</span>}
                 </div>
               );
             })}
