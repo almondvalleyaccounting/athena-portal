@@ -1216,6 +1216,22 @@ export default function EmailView() {
     }
   }, [mailbox, thread]);
 
+  // Tag one email from its row (hover → Tag). Same as Tag on the open email,
+  // without opening it first.
+  const tagRow = useCallback(async (t, label) => {
+    try {
+      await gmail.modifyMessage(t.mailbox, t.id, { addLabelIds: [label.id] });
+      const sender = parseAddress(t.counterpartFrom || t.from).email.toLowerCase();
+      if (sender && sender !== t.mailbox) recordTagRule(t.mailbox, sender, label);
+      const add = (ids) => [...new Set([...(ids || []), label.id])];
+      setThreads((prev) => prev.map((x) => (x.id === t.id ? { ...x, labelIds: add(x.labelIds) } : x)));
+      setThread((prev) => (prev?.id === t.id ? { ...prev, messages: prev.messages.map((m) => ({ ...m, labelIds: add(m.labelIds) })) } : prev));
+      flash(`Tagged “${label.name}”.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
   // Take a tag off the open thread — the fix for a tag applied by mistake.
   // It also stops the inbox suggesting that tag for the people on the thread:
   // removing it is the same "this is wrong" as × on a suggestion.
@@ -2145,6 +2161,19 @@ export default function EmailView() {
                       <Icon size={13} />
                     </button>
                   ))}
+                  {/* One-off tag from the row, no Tagging mode: adds the tag and
+                      leaves the email where it is, like Tag on an open email. */}
+                  {!isAll && (
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <LabelPicker
+                        labels={userLabels}
+                        onPick={(label) => tagRow(t, label)}
+                        onCreate={ensureLabel}
+                        align="right"
+                        trigger={<button title="Tag" style={rowActionBtn}><Tag size={12} /></button>}
+                      />
+                    </span>
+                  )}
                 </span>
               </span>
             );
