@@ -1588,7 +1588,13 @@ export default function EmailView() {
 
   function renderComposer() {
     return (
-      <div style={{ border: '1px solid #94a3b8', borderRadius: 10, background: '#fff', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      // Ctrl+Enter (Cmd+Enter on a Mac) sends from any box in the composer.
+      <div
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !sending) { e.preventDefault(); sendComposer(); }
+        }}
+        style={{ border: '1px solid #94a3b8', borderRadius: 10, background: '#fff', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
             {composer.mode === 'new' ? 'New email' : composer.mode === 'forward' ? 'Forward' : composer.mode === 'replyAll' ? 'Reply all' : 'Reply'} — from {mailboxLabel[composer.mailbox] || composer.mailbox || mailbox}
@@ -1630,7 +1636,7 @@ export default function EmailView() {
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={sendComposer} disabled={sending}
+          <button onClick={sendComposer} disabled={sending} title="Send — Ctrl+Enter"
             style={{ ...BTN.primary.md, display: 'flex', alignItems: 'center', gap: 8, opacity: sending ? 0.45 : 1, cursor: sending ? 'not-allowed' : 'pointer' }}>
             <Send size={13} /> {sending ? 'Sending…' : 'Send'}
           </button>
@@ -1903,6 +1909,7 @@ export default function EmailView() {
                   ['f', 'Forward'],
                   ['x', 'Tick / untick the open email'],
                   ['u', 'Mark read / unread'],
+                  ['Ctrl+Enter', 'Send (while writing)'],
                   ['Esc', 'Close the email'],
                   ['?', 'Show / hide this list'],
                 ].map(([k, what]) => (
