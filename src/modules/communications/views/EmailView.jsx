@@ -888,6 +888,13 @@ export default function EmailView() {
   const paneRef = useRef(null);
   const [railW, setRailW] = useState(() => readWidth('comms_rail_w', RAIL_W));
   const [listW, setListW] = useState(() => readWidth('comms_list_w', LIST_W));
+  const [railCollapsed, setRailCollapsedState] = useState(() => {
+    try { return localStorage.getItem('comms_rail_collapsed') === '1'; } catch { return false; }
+  });
+  const setRailCollapsed = (v) => {
+    setRailCollapsedState(v);
+    try { localStorage.setItem('comms_rail_collapsed', v ? '1' : '0'); } catch { /* cosmetic */ }
+  };
   useEffect(() => { try { localStorage.setItem('comms_rail_w', String(railW)); } catch { /* cosmetic */ } }, [railW]);
   useEffect(() => { try { localStorage.setItem('comms_list_w', String(listW)); } catch { /* cosmetic */ } }, [listW]);
 
@@ -2389,8 +2396,40 @@ export default function EmailView() {
 
   return (
     <div style={{ display: 'flex', gap: 3, height: '100%', minHeight: 0, fontFamily: font }}>
-      {/* ── Left rail ── */}
+      {/* ── Left rail ── collapsible to a slim strip that keeps New email
+          and the folders one click away. */}
+      {railCollapsed ? (
+        <div style={{ width: 40, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 2 }}>
+          <button onClick={() => setRailCollapsed(false)} title="Show the mailbox panel" style={slimBtn}><ChevronRight size={15} /></button>
+          <button
+            onClick={() => { if (!okToDiscard()) return; composerRef.current = null; setThread(null); startComposer('new'); }}
+            title="New email"
+            style={{ ...slimBtn, background: '#0f172a', color: '#fff', borderColor: '#0f172a' }}
+          >
+            <PenSquare size={14} />
+          </button>
+          {SYSTEM_LABELS.filter((x) => isAll || x.id === 'INBOX' || x.id === 'ALL' || labelById[x.id]).map((x) => {
+            const Icon = x.id === 'INBOX' ? InboxIcon : x.id === 'ALL' ? Layers : x.id === 'TRASH' ? Trash2 : x.id === 'SENT' ? Send : Tag;
+            const on = labelId === x.id && !q;
+            return (
+              <button key={x.id} onClick={() => selectLabel(x.id)} title={x.label}
+                style={{ ...slimBtn, ...(on ? { background: tones.info.bg, color: tones.info.fg, borderColor: tones.info.border } : {}) }}>
+                <Icon size={14} />
+              </button>
+            );
+          })}
+          {sendLaterActive && (
+            <button onClick={() => setRailCollapsed(false)} title={`Send later is on: ${fmtWhen(sendLater.at)}`}
+              style={{ ...slimBtn, background: SEND_LATER_ON.bg, color: SEND_LATER_ON.fg, borderColor: SEND_LATER_ON.border }}>
+              <Clock size={14} />
+            </button>
+          )}
+        </div>
+      ) : (
       <div style={{ width: railW, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto' }}>
+        <button onClick={() => setRailCollapsed(true)} title="Hide the mailbox panel" style={{ ...slimBtn, alignSelf: 'flex-end', width: 26, height: 22, marginBottom: -4 }}>
+          <ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} />
+        </button>
         <select
           value={mailbox}
           onChange={(e) => { if (okToDiscard()) setMailbox(e.target.value); }}
@@ -2577,8 +2616,9 @@ export default function EmailView() {
           })() : labelTree.map((n) => renderTreeNode(n, 0))}
         </div>
       </div>
+      )}
 
-      <Splitter width={railW} onChange={setRailW} min={160} max={380} onReset={() => setRailW(RAIL_W)} />
+      {!railCollapsed && <Splitter width={railW} onChange={setRailW} min={160} max={380} onReset={() => setRailW(RAIL_W)} />}
 
       {/* ── Middle: thread list ── Width is draggable (saved per browser).
           It still shrinks on a laptop so the preview keeps its 380px. */}
@@ -3269,6 +3309,12 @@ const SEND_LATER_ON = { bg: '#14A396', border: '#0F7F75', fg: '#fff' };
 // Read rows: dark grey sender + subject — lighter than unread's near-black,
 // darker than the snippet's #94a3b8 — so read vs unread shows at a glance.
 const READ_INK = '#475569';
+
+// Square icon button for the collapsed rail.
+const slimBtn = {
+  width: 32, height: 32, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#334155', cursor: 'pointer',
+};
 
 const linkBtn = {
   border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: tones.info.solid,
