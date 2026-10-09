@@ -2051,23 +2051,36 @@ export default function EmailView() {
   // removing it is the same "this is wrong" as × on a suggestion.
   const untagThread = useCallback(async (label) => {
     if (!thread) return;
+    // The Inbox is the fallback: taking off an email's LAST tag puts it back
+    // in the Inbox (tagging from the Inbox archived it — this is the reverse).
+    // One of several tags, or an email in the bin, stays where it is.
+    const ids = new Set(thread.messages.flatMap((m) => m.labelIds));
+    const othersLeft = [...ids].some((id) => id !== label.id && labelById[id]?.type === 'user');
+    const backToInbox = !othersLeft && !ids.has('INBOX') && !ids.has('TRASH');
     try {
-      await gmail.modifyMessage(threadMailbox, thread.id, { removeLabelIds: [label.id] });
+      await gmail.modifyMessage(threadMailbox, thread.id, backToInbox
+        ? { removeLabelIds: [label.id], addLabelIds: ['INBOX'] }
+        : { removeLabelIds: [label.id] });
       const ownDomain = threadMailbox.split('@')[1];
       const senders = new Set(thread.messages
         .map((m) => parseAddress(m.from).email.toLowerCase())
         .filter((e) => e && e !== threadMailbox && !(ownDomain && e.endsWith(`@${ownDomain}`))));
       for (const sender of senders) rejectSuggested(sender, label, { quiet: true });
-      setThread((prev) => (prev ? {
-        ...prev,
-        messages: prev.messages.map((m) => ({ ...m, labelIds: m.labelIds.filter((x) => x !== label.id) })),
-      } : prev));
-      setThreads((prev) => prev.map((t) => (t.id === thread.id ? { ...t, labelIds: (t.labelIds || []).filter((x) => x !== label.id) } : t)));
-      flash(`Removed “${label.name}” — it won't be suggested for this sender again.`);
+      const relabel = (list) => {
+        const next = (list || []).filter((x) => x !== label.id);
+        return backToInbox ? [...next, 'INBOX'] : next;
+      };
+      setThread((prev) => (prev ? { ...prev, messages: prev.messages.map((m) => ({ ...m, labelIds: relabel(m.labelIds) })) } : prev));
+      // Viewing that tag's folder: the email no longer belongs in the list.
+      setThreads((prev) => (labelId === label.id
+        ? prev.filter((t) => t.id !== thread.id)
+        : prev.map((t) => (t.id === thread.id ? { ...t, labelIds: relabel(t.labelIds) } : t))));
+      forgetThread(threadMailbox, thread.id);
+      flash(`Removed “${label.name}”${backToInbox ? ' — back in the Inbox' : ''}. It won't be suggested for this sender again.`);
     } catch (e) {
       setError(e.message);
     }
-  }, [thread, threadMailbox, rejectSuggested]);
+  }, [thread, threadMailbox, rejectSuggested, labelById, labelId]);
 
   // Emoji reaction, Gmail-style: a reply to the sender carrying a reaction
   // part. Gmail shows it under their email; other mail apps get the emoji.
