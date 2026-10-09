@@ -14,6 +14,7 @@ import { CinematicPanel } from './LoginPage';
 import useGlobalShortcuts from './useGlobalShortcuts';
 import { ShortcutsModal } from './ShortcutsMap';
 import { checkTrustedDevice, TRUSTED_DEVICE_DAYS, UNTRUSTED_SESSION_DAYS } from '../lib/trustedDevice';
+import CreateModal from './create/CreateModal';
 
 /* ─── Auth context ─────────────────────────────────────────────── */
 const AuthContext = createContext(null);
@@ -390,6 +391,8 @@ export default function AppShell() {
           <main className="flex-1 overflow-auto min-h-0 min-w-0">
             <AccessGuard profile={profile}><Outlet /></AccessGuard>
           </main>
+          {/* "+ Create" (top bar, or an open email) — one modal for the app */}
+          <CreateModal />
         </div>
 
         {/* Keyboard shortcuts map — toggled by "?" anywhere */}

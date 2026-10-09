@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
 import { supabase } from '../../../lib/supabase';
+import { openCreate, setCreateContext } from '../../../shell/create/createBus';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { decodeEntities } from '../../../lib/decodeEntities';
 import {
@@ -1966,6 +1967,23 @@ export default function EmailView() {
     }
   }, [refreshScheduled]);
 
+  // The open email is what "+ Create" is about (here and in the top bar).
+  const createCtx = useMemo(() => {
+    const m = thread?.messages?.[0];
+    if (!m) return null;
+    const from = parseAddress(m.from);
+    const firm = (threadMailbox.split('@')[1] || '').toLowerCase();
+    const others = [m.from, m.to, m.cc].filter(Boolean).join(', ')
+      .match(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+    return {
+      kind: 'email', subject: m.subject, fromName: from.name, fromEmail: from.email, date: m.internalDate,
+      mailbox: threadMailbox, threadId: thread.threadId, messageId: m.id, snippet: m.snippet,
+      emails: [...new Set(others.map((e) => e.toLowerCase()))].filter((e) => !firm || !e.endsWith(`@${firm}`)),
+    };
+  }, [thread, threadMailbox]);
+  useEffect(() => { setCreateContext(createCtx); }, [createCtx]);
+  useEffect(() => () => setCreateContext(null), []);
+
   // Browser tab: say it's email, which folder, and how many unread are
   // loaded — not the generic "Athena — Almond Valley Accounting".
   const folderTitle = q ? `Search “${q}”`
@@ -2288,6 +2306,7 @@ export default function EmailView() {
               <button onClick={() => startComposer('reply')} title="Reply" style={btnText}><ReplyIcon size={14} /> Reply</button>
               <button onClick={() => startComposer('replyAll')} title="Reply all" style={btnText}><ReplyAllIcon size={14} /> All</button>
               <button onClick={() => startComposer('forward')} title="Forward" style={btnText}><ForwardIcon size={14} /> Forward</button>
+              <button onClick={() => openCreate(createCtx)} title="Create a task, agenda item, bill or quote from this email" style={btnText}><Plus size={14} /> Create</button>
               {/* Not on our own email — you react to what someone sent you. */}
               {latestMsg && parseAddress(latestMsg.from).email.toLowerCase() !== threadMailbox && (
                 <div style={{ position: 'relative' }}>
