@@ -153,15 +153,28 @@ Deno.serve(async (req) => {
       case "bill": {
         const entityId = uuidOrNull(p.entity_id);
         if (!entityId) throw new BadRequest("Choose the client to bill.");
+        // Lines as the shared bill editor builds them (billLines.jsx
+        // buildLinesPayload — the same payload the Billing page stores):
+        // service, description, actual hours, qty, rate, net, vat, gross.
+        // Checked here; the totals are re-added from the lines, not trusted.
+        const numOr = (v: unknown, name: string) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) throw new BadRequest(`Every line needs a ${name}.`);
+          return money(n);
+        };
         const lines = (Array.isArray(p.lines) ? p.lines : []).slice(0, 30).map((l: Record<string, unknown>) => {
           const service = str(l.service, 120);
-          const net = Number(l.net);
           if (!service) throw new BadRequest("Every line needs a service.");
-          if (!Number.isFinite(net) || net < 0) throw new BadRequest("Every line needs an amount.");
-          const vat = money(net * VAT_RATE);
+          const net = numOr(l.net, "amount");
+          if (net < 0) throw new BadRequest("Amounts can't be negative.");
+          const vat = numOr(l.vat ?? net * VAT_RATE, "VAT");
+          const qty = Number(l.qty) > 0 ? Number(l.qty) : 1;
+          const rate = Number.isFinite(Number(l.rate)) ? Number(l.rate) : net;
+          const h = Number(l.hours);
           return {
-            service, description: str(l.description, 500) || null, hours: null,
-            qty: 1, rate: money(net), net: money(net), vat, gross: money(net + vat),
+            service, description: str(l.description, 2000) || null,
+            hours: l.hours !== null && l.hours !== undefined && Number.isFinite(h) && h >= 0 ? h : null,
+            qty, rate, net, vat, gross: money(net + vat),
           };
         });
         if (!lines.length) throw new BadRequest("Add at least one line.");

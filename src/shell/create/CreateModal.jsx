@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, ClipboardList, FileText, ListTodo, Mail, MessageSquarePlus, Plus, Receipt, Trash2, X } from 'lucide-react';
+import { CalendarCheck, ClipboardList, FileText, History, ListTodo, Mail, MessageSquare, MessageSquarePlus, Paperclip, Plus, Receipt, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../AppShell';
 import { BTN } from '../../lib/buttonStyles';
@@ -8,6 +8,12 @@ import { tones } from '../../lib/tokens';
 import ClientNamePicker from '../../components/ClientNamePicker';
 import { SERVICES } from '../../modules/work-planner/lib/constants';
 import { fetchAdhocServices } from '../../modules/billing/billingServices';
+import ServicePicker from '../../modules/billing/ServicePicker';
+import NewClientModal from '../../components/NewClientModal';
+import { insertEntity } from '../../modules/work-planner/lib/supabaseQueries';
+// The Billing page's own line editor + past-invoice picker (one shared copy).
+import { blankLine, buildLinesPayload, useBillLines, BillLinesEditor, PastInvoicePicker } from '../../modules/billing/billLines';
+import { gmail } from '../../modules/communications/api';
 import { emailReference } from './createBus';
 
 // "+ Create" — one place to make the things work turns into: a quick task,
@@ -23,7 +29,6 @@ import { emailReference } from './createBus';
 // existing quote form with the client filled in — one set of quote maths.
 
 const font = "'Outfit', sans-serif";
-const VAT_RATE = 0.2;
 const plusDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const gbp = (n) => `£${(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -67,6 +72,13 @@ export default function CreateModal() {
   // per type
   const [f, setF] = useState({});
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+  // Bill: the Billing page's editor, standard descriptions from the products.
+  const serviceDefaults = useMemo(() => Object.fromEntries(adhoc.map((s) => [s.id, s.defaultDescription || ''])), [adhoc]);
+  const lineForm = useBillLines(serviceDefaults);
+  const [newClientOpen, setNewClientOpen] = useState(false);
+  const [invPickerOpen, setInvPickerOpen] = useState(false);
+  const [files, setFiles] = useState([]);              // admin task attachments
+  const [emailAtt, setEmailAtt] = useState(new Set()); // the email's attachments to carry over
 
   const canQuick = !!profile?.work_planner || !!profile?.is_portal_admin;
   const canBill = !!(profile?.can_view_client_fees || profile?.can_view_billing || profile?.is_portal_admin);
@@ -75,11 +87,13 @@ export default function CreateModal() {
     const subject = c?.kind === 'email' ? (c.subject || '').replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '') : '';
     setF({
       title: subject, notes: '', service: 'Admin', assignee: profile?.id || '', due: plusDays(5), planned: '', duration: 15,
-      deadline: '', urgent: false, draft: false, billable: false, serviceId: '', net: '',
-      point: subject, bucket: 'agenda',
-      lines: [{ service: '', description: subject, net: '' }], billNote: '',
+      deadline: '', urgent: false, billable: false, serviceId: '', net: '',
+      point: subject, bucket: 'agenda', billNote: '',
     });
+    lineForm.setFormLines([blankLine()]);
+    setFiles([]); setEmailAtt(new Set());
     setClient(null); setClientText(''); setSuggested([]); setDone(null); setError(''); setLinkEmail(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
   useEffect(() => {
@@ -110,15 +124,33 @@ export default function CreateModal() {
   const ref = linkEmail ? emailReference(ctx) : '';
   const withRef = (text) => [text?.trim(), ref].filter(Boolean).join('\n\n');
 
-  const billTotals = useMemo(() => {
-    const net = (f.lines || []).reduce((t, l) => t + (parseFloat(l.net) || 0), 0);
-    const vat = Math.round(net * VAT_RATE * 100) / 100;
-    return { net, vat, gross: net + vat };
-  }, [f.lines]);
+  const billTotals = lineForm.totals;
 
+  // Admin task attachments, stored exactly as the Admin Task List stores them
+  // (client-documents/admin-tasks/<task>/…, a row in admin_task_documents).
+  const uploadOne = async (taskId, file) => {
+    const safe = (file.name || 'file').replace(/[^\w.\-]+/g, '_');
+    const path = `admin-tasks/${taskId}/${crypto.randomUUID()}-${safe}`;
+    const { error: upErr } = await supabase.storage.from('client-documents').upload(path, file, { contentType: file.type || undefined });
+    if (upErr) throw new Error(`Upload failed for ${file.name}: ${upErr.message}`);
+    const { error: rowErr } = await supabase.from('admin_task_documents').insert({
+      task_id: taskId, storage_path: path, original_name: file.name,
+      mime_type: file.type || null, size_bytes: file.size || null, uploaded_by: profile?.id || null,
+    });
+    if (rowErr) throw new Error(rowErr.message);
+  };
+  // The email's own attachments, fetched from Gmail and stored the same way.
+  const emailFile = async (a) => {
+    const res = await gmail.getAttachment(ctx.mailbox, a.messageId, a.attachmentId);
+    const b64 = String(res.data || '').replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], a.filename || 'attachment', { type: a.mimeType || 'application/octet-stream' });
+  };
   const close = () => { setOpen(false); setCtx(null); };
 
-  const submit = async () => {
+  const submit = async ({ asDraft = false } = {}) => {
     setBusy(true); setError('');
     try {
       if (type === 'quick') {
@@ -131,10 +163,22 @@ export default function CreateModal() {
       } else if (type === 'admin') {
         const r = await callCreate('admin_task', {
           title: f.title, entity_id: client?.id, deadline: f.deadline || null, detail: withRef(f.notes),
-          urgent: f.urgent, draft: f.draft, billable: f.billable, service_id: f.serviceId || null, net: f.net,
+          urgent: f.urgent, draft: asDraft, billable: f.billable, service_id: f.serviceId || null, net: f.net,
         });
+        // Files after the task exists (they hang off its id).
+        const attach = [...files];
+        const failed = [];
+        for (const a of (ctx?.attachments || []).filter((x) => emailAtt.has(x.attachmentId))) {
+          try { attach.push(await emailFile(a)); } catch { failed.push(a.filename); }
+        }
+        for (const file of attach) {
+          try { await uploadOne(r.id, file); } catch { failed.push(file.name); }
+        }
         setDone({
-          text: `Admin task created${f.draft ? ' as a draft' : f.billable ? ' in Bill & Hold' : ''}.${r.billError ? ` The bill wasn't: ${r.billError}` : r.billId ? ' Draft bill raised.' : ''}`,
+          text: `Admin task created${asDraft ? ' as a draft' : f.billable ? ' in Bill & Hold' : ''}.`
+            + `${r.billError ? ` The bill wasn't: ${r.billError}` : r.billId ? ' Draft bill raised.' : ''}`
+            + `${attach.length - failed.length > 0 ? ` ${attach.length - failed.length} file${attach.length - failed.length === 1 ? '' : 's'} attached.` : ''}`
+            + `${failed.length ? ` Couldn't attach: ${failed.join(', ')}.` : ''}`,
           to: `/planner/tasks/${r.id}`,
         });
       } else if (type === 'agenda') {
@@ -146,11 +190,9 @@ export default function CreateModal() {
         setDone({ text: `Added to ${client.name}’s ${f.bucket === 'info' ? 'info for the meeting' : 'meeting agenda'}.`, to: `/clients/${client.id}` });
       } else if (type === 'bill') {
         if (!client) throw new Error('Choose the client to bill.');
-        await callCreate('bill', {
-          entity_id: client.id,
-          lines: f.lines.filter((l) => l.service || l.net).map((l) => ({ service: l.service, description: l.description, net: l.net })),
-          note: withRef(f.billNote),
-        });
+        const { lines } = buildLinesPayload(lineForm.formLines);
+        if (!lines.length) throw new Error('Add at least one line with a service and an amount.');
+        await callCreate('bill', { entity_id: client.id, lines, note: withRef(f.billNote) });
         setDone({ text: `Draft bill for ${client.name} (${gbp(billTotals.gross)} inc VAT) — it needs approving before it goes to QuickBooks.`, to: '/billing' });
       } else if (type === 'quote') {
         close();
@@ -176,12 +218,12 @@ export default function CreateModal() {
     && (type === 'quick' || type === 'admin' ? !!f.title?.trim() : true)
     && (type === 'quick' ? !!f.assignee : true)
     && (type === 'agenda' ? !!f.point?.trim() : true)
-    && (type === 'bill' ? f.lines.some((l) => l.service && l.net !== '') : true);
+    && (type === 'bill' ? lineForm.canSubmit : true);
 
   return (
     // No backdrop click-to-close and no Esc: it stays until you close it.
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, fontFamily: font }}>
-      <div style={{ width: 820, maxWidth: '95vw', height: 'min(640px, calc(100vh - 40px))', background: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(15,23,42,.25)' }}>
+      <div style={{ width: 1100, maxWidth: '96vw', height: 'min(720px, calc(100vh - 40px))', background: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(15,23,42,.25)' }}>
         {/* The shared client picker's input, matched to this form's fields. */}
         <style>{'.create-client-picker input{border:1px solid #cbd5e1!important;border-radius:7px!important;padding:7px 10px!important;font-size:14px!important}'}</style>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid #e2e8f0' }}>
@@ -252,6 +294,18 @@ export default function CreateModal() {
                     linked={client}
                     onUnlink={() => setClient(null)}
                   />
+                  <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                    <button type="button" onClick={() => setNewClientOpen(true)} style={{ ...BTN.secondary.sm, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Plus size={13} /> New client
+                    </button>
+                    {type === 'bill' && (
+                      <button type="button" onClick={() => setInvPickerOpen(true)} disabled={!client}
+                        title="Copy a past QBO invoice into this bill"
+                        style={{ ...BTN.secondary.sm, cursor: client ? 'pointer' : 'not-allowed', opacity: client ? 1 : 0.45, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <History size={13} /> Copy from past invoice
+                      </button>
+                    )}
+                  </div>
                   {suggested.length > 0 && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12.5, color: '#64748b', alignItems: 'center' }}>
                       From the email:
@@ -292,31 +346,52 @@ export default function CreateModal() {
                 {type === 'admin' && (
                   <>
                     <Row>
-                      <Field label="Deadline"><input type="date" value={f.deadline} onChange={(e) => set('deadline', e.target.value)} style={input} /></Field>
+                      <Field label="Target date"><input type="date" value={f.deadline} onChange={(e) => set('deadline', e.target.value)} style={input} /></Field>
                       <Field label=" ">
-                        <div style={{ display: 'flex', gap: 14, alignItems: 'center', height: 36, fontSize: 13.5, color: '#334155' }}>
-                          <label style={check}><input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} /> Urgent</label>
-                          <label style={check}><input type="checkbox" checked={f.draft} onChange={(e) => set('draft', e.target.checked)} /> Save as draft</label>
-                        </div>
+                        <label style={{ ...check, height: 36, fontSize: 13.5, color: '#334155' }}>
+                          <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} style={{ accentColor: '#dc2626' }} /> Urgent
+                        </label>
                       </Field>
                     </Row>
-                    <Field label="Notes"><textarea rows={3} value={f.notes} onChange={(e) => set('notes', e.target.value)} style={{ ...input, resize: 'vertical' }} /></Field>
-                    <label style={{ ...check, fontSize: 13.5, color: '#334155' }}>
-                      <input type="checkbox" checked={f.billable} onChange={(e) => set('billable', e.target.checked)} /> Billable — raise a draft bill with it
-                    </label>
-                    {f.billable && (
-                      <Row>
-                        <Field label="Service to bill" required>
-                          <select value={f.serviceId} onChange={(e) => set('serviceId', e.target.value)} style={input}>
-                            <option value="">Choose…</option>
-                            {adhoc.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                          </select>
-                        </Field>
-                        <Field label="Amount (net)" hint="Blank = standard fee">
-                          <input value={f.net} onChange={(e) => set('net', e.target.value)} inputMode="decimal" placeholder="£" style={input} />
-                        </Field>
-                      </Row>
-                    )}
+                    <Field label="Notes"><textarea rows={3} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Notes (optional)" style={{ ...input, resize: 'vertical' }} /></Field>
+                    <Row>
+                      {/* A div, not a label: ServicePicker is a custom control. */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: '#475569' }}>Service{f.billable && <span style={{ color: '#b91c1c' }}> *</span>}</span>
+                        <ServicePicker value={f.serviceId} options={adhoc} onChange={(v) => set('serviceId', v)} placeholder="— none —" style={input} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <label style={{ ...check, fontSize: 13.5, color: '#334155', height: 22 }}>
+                          <input type="checkbox" checked={f.billable} onChange={(e) => set('billable', e.target.checked)} /> <Receipt size={13} color="#64748b" /> Billable — raise a bill
+                        </label>
+                        {f.billable && (
+                          <input value={f.net} onChange={(e) => set('net', e.target.value)} inputMode="decimal" placeholder="Net amount £ (blank = standard fee)" style={input} />
+                        )}
+                      </div>
+                    </Row>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: '#475569' }}>Attachments</span>
+                      <label style={{ ...BTN.secondary.sm, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'flex-start' }}>
+                        <Paperclip size={13} /> {files.length ? `${files.length} file${files.length === 1 ? '' : 's'} chosen` : 'Attach files'}
+                        <input type="file" multiple style={{ display: 'none' }} onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+                      </label>
+                      {files.length > 0 && <span style={{ fontSize: 12.5, color: '#94a3b8' }}>{files.map((x) => x.name).join(', ')}</span>}
+                      {ctx?.attachments?.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13, color: '#334155' }}>
+                          <span style={{ fontSize: 12, color: '#64748b' }}>From the email:</span>
+                          {ctx.attachments.map((a) => (
+                            <label key={a.attachmentId} style={check}>
+                              <input
+                                type="checkbox"
+                                checked={emailAtt.has(a.attachmentId)}
+                                onChange={(e) => setEmailAtt((prev) => { const n = new Set(prev); if (e.target.checked) n.add(a.attachmentId); else n.delete(a.attachmentId); return n; })}
+                              />
+                              <Paperclip size={12} color="#94a3b8" /> {a.filename} <span style={{ color: '#94a3b8' }}>({Math.max(1, Math.round((a.size || 0) / 1024))} KB)</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 
@@ -336,31 +411,20 @@ export default function CreateModal() {
 
                 {type === 'bill' && (
                   <>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.6fr 110px 28px', gap: 6, fontSize: 12, fontWeight: 700, color: '#64748b' }}>
-                        <span>Service</span><span>Description</span><span>Net £</span><span />
-                      </div>
-                      {f.lines.map((l, i) => (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.6fr 110px 28px', gap: 6 }}>
-                          <select value={l.service} onChange={(e) => {
-                            const s = adhoc.find((x) => x.id === e.target.value);
-                            set('lines', f.lines.map((x, j) => (j === i ? { ...x, service: e.target.value, description: x.description || s?.defaultDescription || '' } : x)));
-                          }} style={input}>
-                            <option value="">Choose…</option>
-                            {adhoc.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                          </select>
-                          <input value={l.description} onChange={(e) => set('lines', f.lines.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))} style={input} />
-                          <input value={l.net} inputMode="decimal" onChange={(e) => set('lines', f.lines.map((x, j) => (j === i ? { ...x, net: e.target.value } : x)))} style={input} />
-                          <button onClick={() => set('lines', f.lines.length > 1 ? f.lines.filter((_, j) => j !== i) : f.lines)} title="Remove line"
-                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}><Trash2 size={14} /></button>
-                        </div>
-                      ))}
-                      <button onClick={() => set('lines', [...f.lines, { service: '', description: '', net: '' }])} style={{ ...BTN.secondary.sm, alignSelf: 'flex-start', cursor: 'pointer' }}>+ Add line</button>
-                      <div style={{ alignSelf: 'flex-end', fontSize: 13, color: '#334155' }}>
-                        Net {gbp(billTotals.net)} · VAT {gbp(billTotals.vat)} · <b>Total {gbp(billTotals.gross)}</b>
-                      </div>
+                    <div>
+                      <BillLinesEditor form={lineForm} services={adhoc} serviceDefaults={serviceDefaults} />
                     </div>
-                    <Field label="Note for the approver"><textarea rows={3} value={f.billNote} onChange={(e) => set('billNote', e.target.value)} style={{ ...input, resize: 'vertical' }} /></Field>
+                    <div style={{ alignSelf: 'flex-end', fontSize: 14, color: '#64748b' }}>
+                      Total: <b style={{ color: '#0f172a' }}>{gbp(billTotals.net)}</b> net · {gbp(billTotals.vat)} VAT · <b style={{ color: '#0e7fe0' }}>{gbp(billTotals.gross)}</b> gross
+                    </div>
+                    <Field label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><MessageSquare size={12} /> Comment for whoever reviews this</span>}>
+                      <textarea rows={2} value={f.billNote} onChange={(e) => set('billNote', e.target.value)}
+                        placeholder="e.g. rebuilt 14 months of bookkeeping after the old bookkeeper left — agreed with the client on the call"
+                        style={{ ...input, resize: 'vertical' }} />
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                        Internal only — stays in Athena. It isn&apos;t sent to QuickBooks and the client never sees it. Use the line Description for anything that should appear on the invoice.
+                      </span>
+                    </Field>
                   </>
                 )}
 
@@ -376,11 +440,35 @@ export default function CreateModal() {
           </div>
         </div>
 
+        <NewClientModal
+          open={newClientOpen}
+          initialName={client ? '' : clientText}
+          onClose={() => setNewClientOpen(false)}
+          onSave={async (fields) => {
+            const data = await insertEntity(fields); // throws → the modal shows it and stays open
+            setClient({ id: data.id, name: data.name }); setClientText(data.name); setNewClientOpen(false);
+            return data;
+          }}
+        />
+        {invPickerOpen && client && (
+          <PastInvoicePicker
+            entityId={client.id} entityName={client.name} fmt={gbp}
+            onCopy={(lines) => { lineForm.setFormLines(lines); setInvPickerOpen(false); }}
+            onClose={() => setInvPickerOpen(false)}
+          />
+        )}
+
         {!done && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderTop: '1px solid #e2e8f0' }}>
             {ref && type !== 'quote' && <span style={{ fontSize: 12, color: '#94a3b8' }}>A link back to the email is added to the notes.</span>}
             <button onClick={close} style={{ ...BTN.secondary.md, cursor: 'pointer', marginLeft: 'auto' }}>Cancel</button>
-            <button onClick={submit} disabled={!ready} style={{ ...BTN.primary.md, cursor: ready ? 'pointer' : 'not-allowed', opacity: ready ? 1 : 0.5 }}>
+            {type === 'admin' && (
+              <button onClick={() => submit({ asDraft: true })} disabled={!ready} title="Held off the live list until you publish it"
+                style={{ ...BTN.secondary.md, cursor: ready ? 'pointer' : 'not-allowed', opacity: ready ? 1 : 0.5 }}>
+                Save as draft
+              </button>
+            )}
+            <button onClick={() => submit()} disabled={!ready} style={{ ...BTN.primary.md, cursor: ready ? 'pointer' : 'not-allowed', opacity: ready ? 1 : 0.5 }}>
               {busy ? 'Creating…' : type === 'quote' ? 'Open quote form' : `Create ${T.label.toLowerCase()}`}
             </button>
           </div>

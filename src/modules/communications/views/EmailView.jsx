@@ -2006,6 +2006,8 @@ export default function EmailView() {
     return {
       kind: 'email', subject: m.subject, fromName: from.name, fromEmail: from.email, date: m.internalDate,
       mailbox: threadMailbox, threadId: thread.threadId, messageId: m.id, snippet: m.snippet,
+      // Its attachments, so an admin task can carry them over.
+      attachments: (m.attachments || []).map((x) => ({ messageId: x.messageId, attachmentId: x.attachmentId, filename: x.filename, mimeType: x.mimeType, size: x.size })),
       emails: [...new Set(others.map((e) => e.toLowerCase()))].filter((e) => !firm || !e.endsWith(`@${firm}`)),
     };
   }, [thread, threadMailbox]);

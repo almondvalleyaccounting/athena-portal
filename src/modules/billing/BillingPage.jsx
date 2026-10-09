@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Download, Check, Send, Trash2, Pencil, Minimize2, Maximize2, AlertTriangle, RefreshCw, History, Ban, RotateCcw, ChevronRight, ChevronDown, MessageSquare } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { pushBillingItems, refreshBillingItems, fetchClientInvoices, fetchQboSettings } from '../../lib/qboApi';
+import { pushBillingItems, refreshBillingItems, fetchQboSettings } from '../../lib/qboApi';
 import { useAuth } from '../../shell/AppShell';
 import NewClientModal from '../../components/NewClientModal';
 import { fetchAdhocServices } from './billingServices';
@@ -13,8 +13,12 @@ import RowMenu from '../../components/RowMenu';
 import SearchInput from '../../components/SearchInput';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import { BTN } from '../../lib/buttonStyles';
-
-const VAT_RATE = 0.20;
+// The line editor (Qty × Rate = Amount, VAT, sums, standard descriptions,
+// copy from past invoice) lives in billLines.jsx — shared with "+ Create".
+import {
+  VAT_RATE, blankLine, splitOf, fmtNum, buildLinesPayload as buildLines,
+  useBillLines, BillLinesEditor, PastInvoicePicker,
+} from './billLines';
 const STATUS_CONFIG = {
   draft: { label: 'Draft', colour: '#64748b', bg: '#f1f5f9' },
   approved: { label: 'Approved', colour: '#059669', bg: '#f0fdf4' },
@@ -89,7 +93,8 @@ export default function BillingPage() {
 
   const [formClient, setFormClient] = useState('');
   // Multi-line bill editor. One client, N service lines → one QBO invoice.
-  const [formLines, setFormLines] = useState([blankLine()]);
+  const lineForm = useBillLines(serviceDefaults);
+  const { formLines, setFormLines } = lineForm;
   const [formNote, setFormNote] = useState(''); // internal comment posted on save
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,14 +103,6 @@ export default function BillingPage() {
   const [newClientName, setNewClientName] = useState(''); // seeds the new-client modal
   // Copy-from-past-invoice picker
   const [showInvoicePicker, setShowInvoicePicker] = useState(false);
-  const [invLoading, setInvLoading] = useState(false);
-  const [invError, setInvError] = useState('');
-  // "No matching QuickBooks customer" is an answer, not a fault — retrying it
-  // gets the same answer. A QBO timeout is worth another go, so only that one
-  // offers the button.
-  const [invRetryable, setInvRetryable] = useState(false);
-  const [clientInvoices, setClientInvoices] = useState([]);
-  const [expandedInv, setExpandedInv] = useState(null);
   const [customTxn, setCustomTxn] = useState(null); // QBO custom-transaction-numbers: null=unknown
 
   useEffect(() => { loadData(); }, []);
@@ -264,33 +261,9 @@ export default function BillingPage() {
     } catch (e) { console.error('[Billing] comment delete error:', e); }
   };
 
-  // Multi-line editor helpers. Qty × Rate = Amount (see applyCalc); the
-  // amount drives VAT (auto 20%) unless the user types a VAT figure
-  // (vatManual); gross is always net + VAT.
-  const changeLineField = (idx, key, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? { ...l, [key]: value } : l));
-  // Picking a service pulls through the standard description held on the
-  // QuickBooks product. A description that's empty, or that was filled in this
-  // way and not since touched (descAuto), is replaced when the service changes;
-  // anything typed by hand stays exactly as typed.
-  const changeLineService = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
-    if (i !== idx) return l;
-    const std = serviceDefaults[value] || '';
-    const takeStd = !String(l.description || '').trim() || l.descAuto;
-    return { ...l, service: value, description: takeStd ? std : l.description, descAuto: takeStd && !!std };
-  }));
-  const changeLineDescription = (idx, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? { ...l, description: value, descAuto: false } : l));
-  const changeLineCalc = (idx, field, value) => setFormLines((prev) => prev.map((l, i) => i === idx ? applyCalc(l, field, value) : l));
-  const changeLineVat = (idx, value) => setFormLines((prev) => prev.map((l, i) => {
-    if (i !== idx) return l;
-    const net = parseFloat(l.net) || 0; const vat = parseFloat(value) || 0;
-    return { ...l, vat: value, vatManual: true, gross: (net + vat).toFixed(2) };
-  }));
-  const addLine = () => setFormLines((prev) => [...prev, blankLine()]);
-  const removeLine = (idx) => setFormLines((prev) => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
-  const formTotals = formLines.reduce((t, l) => ({
-    net: t.net + (parseFloat(l.net) || 0), vat: t.vat + (parseFloat(l.vat) || 0), gross: t.gross + (parseFloat(l.gross) || 0),
-  }), { net: 0, vat: 0, gross: 0 });
-  const formCanSubmit = !!formClient && formLines.some((l) => l.service && l.net !== '');
+  // Line editing lives in useBillLines (billLines.jsx).
+  const formTotals = lineForm.totals;
+  const formCanSubmit = !!formClient && lineForm.canSubmit;
 
   // Create a new client inline (NewClientModal handles the form; we own the
   // insert). Adds it to the dropdown and selects it for this bill.
@@ -302,39 +275,11 @@ export default function BillingPage() {
     return data;
   };
 
-  // Pull the selected client's last 24 months of QBO invoices.
-  const openInvoicePicker = async () => {
-    if (!formClient) return;
-    setShowInvoicePicker(true);
-    setInvLoading(true); setInvError(''); setInvRetryable(false); setClientInvoices([]); setExpandedInv(null);
-    try {
-      const res = await fetchClientInvoices(formClient);
-      if (res?.customer_found === false) setInvError('This client has no matching QuickBooks customer yet.');
-      setClientInvoices(res?.invoices || []);
-    } catch (e) {
-      setInvError(e.message || 'Could not load invoices from QuickBooks');
-      setInvRetryable(true);
-    }
-    setInvLoading(false);
-  };
-
-  // Copy a past invoice's lines into the multi-line editor (review before save).
-  const copyInvoiceToForm = (inv) => {
-    const ls = (inv.lines || []).map((l) => {
-      const net = Number(l.amount) || 0;
-      const vat = Math.round(net * VAT_RATE * 100) / 100;
-      // QBO carries the split, so bring the qty/rate across rather than
-      // flattening a "12 × £50" line into a bare £600.
-      const qty = Number(l.qty) > 0 ? Number(l.qty) : 1;
-      const rate = Number(l.unit_price) || (qty ? net / qty : net);
-      return {
-        service: l.service || '', description: l.description || '', hours: '',
-        qty: net ? fmtNum(qty, 4) : '', rate: net ? fmtNum(rate, 4) : '',
-        net: net ? String(net) : '', vat: net ? vat.toFixed(2) : '', gross: net ? (net + vat).toFixed(2) : '',
-        vatManual: false, touch: ['qty', 'rate'],
-      };
-    });
-    setFormLines(ls.length ? ls : [blankLine()]);
+  // "Copy from past invoice" (PastInvoicePicker loads the client's last 24
+  // months from QBO and hands back editor lines).
+  const openInvoicePicker = () => { if (formClient) setShowInvoicePicker(true); };
+  const copyLinesToForm = (lines) => {
+    setFormLines(lines);
     // Copying into a bill that's open for editing has to stay an edit.
     // Forcing the Add form here saved a second bill and left the original
     // sitting behind it — a silent duplicate.
@@ -405,32 +350,7 @@ export default function BillingPage() {
   // setting — otherwise a per-row choice made earlier would silently survive.
   const setAllSendModes = (mode) => { setSendMode(mode); setSendModes({}); };
 
-  // Turn the editor rows into the stored line array + invoice totals + a
-  // short `service` summary for the list view.
-  const buildLinesPayload = () => {
-    const lines = formLines
-      .filter((l) => l.service && l.net !== '')
-      .map((l) => {
-        const net = parseFloat(l.net) || 0;
-        const vat = l.vat !== '' ? (parseFloat(l.vat) || 0) : Math.round(net * VAT_RATE * 100) / 100;
-        const gross = Math.round((net + vat) * 100) / 100;
-        // Only keep the qty/rate split if it actually multiplies out to the
-        // amount — a stale pair would put a line on the QBO invoice that
-        // doesn't agree with what was approved here.
-        const q = parseFloat(l.qty), r = parseFloat(l.rate);
-        const split = Number.isFinite(q) && q > 0 && Number.isFinite(r) && Math.abs(q * r - net) < 0.005;
-        const h = parseFloat(l.hours);
-        return {
-          service: l.service, description: l.description.trim() || null,
-          hours: Number.isFinite(h) && h >= 0 ? h : null,
-          qty: split ? q : 1, rate: split ? r : net,
-          net, vat, gross,
-        };
-      });
-    const totals = lines.reduce((t, l) => ({ net: t.net + l.net, vat: t.vat + l.vat, gross: t.gross + l.gross }), { net: 0, vat: 0, gross: 0 });
-    const summary = lines.length === 1 ? lines[0].service : `${lines[0].service} +${lines.length - 1} more`;
-    return { lines, totals, summary };
-  };
+  const buildLinesPayload = () => buildLines(formLines);
 
   const handleAdd = async () => {
     if (!formCanSubmit) return;
@@ -834,56 +754,7 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Line items header */}
-      <div style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:4,paddingRight:2}}>
-        <span style={formLabel}>Service *</span><span style={formLabel}>Description</span>
-        <span style={formLabel} title="Athena only: never sent to QuickBooks or shown on the invoice">Actual hrs</span>
-        <span style={formLabel}>Qty</span><span style={formLabel}>Rate (£)</span>
-        <span style={formLabel}>Amount (£) *</span><span style={formLabel}>VAT (£)</span><span style={formLabel}>Gross (£)</span><span/>
-      </div>
-      {formLines.map((l,idx)=>(
-        <div key={idx} style={{display:'grid',gridTemplateColumns:LINE_COLS,gap:8,marginBottom:6,alignItems:'flex-start'}}>
-          {/* Searchable and grouped by QuickBooks category. A service the line
-              already carries but that isn't in the list — copied from a QBO
-              invoice, or unmapped since this bill was drafted — is kept and
-              flagged, so editing an old bill can't silently blank its line. */}
-          <ServicePicker
-            value={l.service}
-            options={services}
-            onChange={(v)=>changeLineService(idx,v)}
-            style={inputStyle}
-          />
-          {/* Textarea so multi-line QBO descriptions keep their line breaks. */}
-          <textarea
-            value={l.description}
-            onChange={(e)=>changeLineDescription(idx,e.target.value)}
-            placeholder={serviceDefaults[l.service] ? 'Standard description — type over it if this one differs' : 'Description for the invoice (visible to client)'}
-            title={l.descAuto ? "The QuickBooks product's standard description — edit it freely" : undefined}
-            rows={2}
-            style={{...inputStyle,resize:'vertical',minHeight:38,lineHeight:1.4,color:l.descAuto?'#475569':undefined}}
-          />
-          {/* Internal record of time actually spent. Not part of Qty × Rate, and
-              the push builds QBO lines from named fields, so it never leaves Athena. */}
-          <CalcInput value={l.hours} onChange={(v)=>changeLineField(idx,'hours',v)} dp={2} placeholder="—" style={{...numInput,background:'#fffbeb'}}/>
-          <CalcInput value={l.qty} onChange={(v)=>changeLineCalc(idx,'qty',v)} dp={4} placeholder="1" style={numInput}/>
-          <CalcInput value={l.rate} onChange={(v)=>changeLineCalc(idx,'rate',v)} dp={4} placeholder="0.00" style={numInput}/>
-          <CalcInput value={l.net} onChange={(v)=>changeLineCalc(idx,'net',v)} dp={2} placeholder="0.00" style={numInput}/>
-          <CalcInput value={l.vat} onChange={(v)=>changeLineVat(idx,v)} dp={2} placeholder="0.00" style={numInput}/>
-          <input value={l.gross} placeholder="0.00" style={{...numInput,background:'#f8fafc'}} readOnly/>
-          <button onClick={()=>removeLine(idx)} disabled={formLines.length===1} title="Remove line"
-            style={{background:'none',border:'none',cursor:formLines.length===1?'default':'pointer',padding:4,opacity:formLines.length===1?0.3:1,display:'inline-flex'}}>
-            <Trash2 size={15} style={{color:'#94a3b8'}}/>
-          </button>
-        </div>
-      ))}
-      <div style={{display:'flex',alignItems:'center',gap:12,marginTop:2}}>
-        <button onClick={addLine} style={{...btnOutline,gap:5,flexShrink:0,whiteSpace:'nowrap'}}><Plus size={14}/> Add line</button>
-        <span style={{fontSize:12,color:'#94a3b8'}}>
-          Qty × Rate = Amount — fill in any two and the third works itself out. Sums work too: type <code style={calcHint}>100*10</code> then Tab.
-          {' '}Not sure of the figure yet? Put <b>0</b> in Amount — it saves as a £0.00 placeholder and can&apos;t be approved until it&apos;s priced.
-          {' '}<b>Actual hrs</b> is for us: it stays in Athena and never reaches QuickBooks or the invoice.
-        </span>
-      </div>
+      <BillLinesEditor form={lineForm} services={services} serviceDefaults={serviceDefaults}/>
 
       {/* Internal comment. Context for whoever reviews the bill — what the work
           actually was, why it's being charged, anything odd about the amount.
@@ -1393,53 +1264,10 @@ export default function BillingPage() {
 
       {/* Copy from a past QBO invoice (last 24 months) */}
       {showInvoicePicker && (
-        <div onClick={()=>setShowInvoicePicker(false)} style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:16,padding:'28px',maxWidth:720,width:'100%',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.15)'}}>
-            <h2 style={{fontFamily:"'Playfair Display', serif",fontSize:20,fontWeight:500,color:'#0f172a',margin:'0 0 4px'}}>Copy from a past invoice</h2>
-            <p style={{fontSize:14,color:'#64748b',marginBottom:16}}>{entityMap[formClient]?.name||'Client'} · last 24 months from QuickBooks</p>
-            {invLoading && <p style={{fontSize:14,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>Loading invoices from QuickBooks…</p>}
-            {invError && (
-              <div style={{fontSize:13,color:'#b91c1c',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
-                <span>{invError}</span>
-                {invRetryable && (
-                  <button onClick={openInvoicePicker} style={{...btnOutline,gap:4,flexShrink:0}}><RefreshCw size={13}/> Try again</button>
-                )}
-              </div>
-            )}
-            {!invLoading && !invError && clientInvoices.length===0 && <p style={{fontSize:14,color:'#94a3b8',padding:'24px 0',textAlign:'center'}}>No invoices in the last 24 months.</p>}
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {clientInvoices.map((inv)=>{
-                const open = expandedInv===inv.id;
-                return (
-                  <div key={inv.id} style={{border:'1px solid #e5e7eb',borderRadius:10,overflow:'hidden'}}>
-                    <div onClick={()=>setExpandedInv(open?null:inv.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',cursor:'pointer',background:open?'#f8fafc':'#fff'}}>
-                      <span style={{fontSize:13,color:'#94a3b8',width:14}}>{open?'▾':'▸'}</span>
-                      <span style={{fontSize:14,fontWeight:600,color:'#0f172a',width:96}}>{inv.doc_number?`INV #${inv.doc_number}`:'—'}</span>
-                      <span style={{fontSize:13,color:'#64748b',flex:1}}>{inv.txn_date} · {inv.lines.length} line{inv.lines.length!==1?'s':''}</span>
-                      <span style={{fontSize:14,fontWeight:600,color:'#0f172a'}}>{fmt(inv.total_amt)}</span>
-                      <button onClick={(e)=>{e.stopPropagation();copyInvoiceToForm(inv);}} style={{...BTN.primary.sm,display:'inline-flex',alignItems:'center',gap:4,cursor:'pointer'}}><Plus size={13}/> Copy</button>
-                    </div>
-                    {open && (
-                      <div style={{borderTop:'1px solid #f1f5f9',padding:'8px 14px',background:'#fafafa'}}>
-                        {inv.lines.map((l,i)=>(
-                          <div key={i} style={{display:'flex',gap:10,fontSize:13,padding:'4px 0',borderBottom:i<inv.lines.length-1?'1px solid #f1f5f9':'none'}}>
-                            <span style={{fontWeight:500,color:'#0f172a',minWidth:150}}>{l.service||'—'}</span>
-                            <span style={{color:'#64748b',flex:1,whiteSpace:'pre-line'}}>{l.description||''}</span>
-                            <span style={{fontFamily:'monospace',color:'#0f172a'}}>{fmt(l.amount)}</span>
-                          </div>
-                        ))}
-                        {inv.lines.length===0 && <p style={{fontSize:13,color:'#94a3b8',padding:'4px 0'}}>No service lines on this invoice.</p>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',marginTop:16}}>
-              <button onClick={()=>setShowInvoicePicker(false)} style={btnOutline}>Close</button>
-            </div>
-          </div>
-        </div>
+        <PastInvoicePicker
+          entityId={formClient} entityName={entityMap[formClient]?.name}
+          onCopy={copyLinesToForm} onClose={()=>setShowInvoicePicker(false)} fmt={fmt}
+        />
       )}
     </div>
   );
@@ -1573,39 +1401,6 @@ function BillComments({ comments, staffMap, meId, draft, onDraft, onAdd, onDelet
 // you Tab or hit Enter. A plain number behaves exactly as before and keeps
 // updating the rest of the line as you type; an expression is held locally
 // until it's committed, so the line doesn't flicker through "100".
-function CalcInput({ value, onChange, dp = 2, placeholder, style }) {
-  const [draft, setDraft] = useState(null);
-  const [bad, setBad] = useState(false);
-  const text = draft !== null ? draft : (value ?? '');
-  const handleChange = (e) => {
-    const raw = e.target.value;
-    setBad(false);
-    if (isExpression(raw)) { setDraft(raw); return; }
-    setDraft(null);
-    onChange(raw);
-  };
-  const commit = () => {
-    if (draft === null) return;
-    const n = evalArithmetic(draft);
-    // An unfinished sum stays put and goes red rather than silently
-    // reverting — the typed figure isn't lost.
-    if (n === null) { setBad(true); return; }
-    setDraft(null); setBad(false);
-    onChange(fmtNum(n, dp));
-  };
-  return (
-    <input
-      value={text}
-      inputMode="decimal"
-      placeholder={placeholder}
-      onChange={handleChange}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
-      style={bad ? { ...style, borderColor: '#dc2626', background: '#fef2f2' } : style}
-      title={bad ? "That isn't a sum this can work out" : undefined}
-    />
-  );
-}
 
 // One main action per row (UI audit, Sprint 4): the bill's obvious next step
 // is the button; everything else is in the ⋮ menu, Delete last and in red.
@@ -1670,16 +1465,10 @@ const sendToggleDraft = {background:'#e2e8f0',color:'#334155'};
 // Wider service column than the rest of the row needs: the product names run
 // to "Business Accounts and Corporation Tax Combined" (sql/186), and a picker
 // you can't read the end of is a picker you can choose wrongly from.
-const LINE_COLS = '1.6fr 1.6fr 0.55fr 0.5fr 0.72fr 0.8fr 0.72fr 0.8fr 30px';
 // Bills per page in the list.
 const LIST_PAGE_SIZE = 50;
 const DETAIL_COLS = '1.5fr 1.9fr 0.5fr 0.4fr 0.7fr 0.7fr 0.6fr 0.7fr';
 const calcHint = { background: '#f1f5f9', borderRadius: 4, padding: '1px 4px', fontFamily: 'monospace', color: '#475569' };
-// A fresh, empty editor line.
-// descAuto: the description was pulled through from the QuickBooks product and
-// hasn't been touched since, so changing the service may replace it. Stored and
-// copied-in lines leave it unset — that text is somebody's own wording.
-function blankLine() { return { service: '', description: '', hours: '', qty: '', rate: '', net: '', vat: '', gross: '', vatManual: false, descAuto: false, touch: [] }; }
 
 // Has someone actually put a figure on this bill? £0.00 is a legitimate way to
 // raise one ("bill this, amount to be decided") — it just can't be approved or
@@ -1724,122 +1513,7 @@ function itemLines(item) {
   }];
 }
 
-// Qty/rate for the editor, falling back to "1 × the amount" for lines
-// stored before the split existed (or where it no longer multiplies out).
-function splitOf(qty, rate, net) {
-  const n = Number(net) || 0;
-  const q = Number(qty), r = Number(rate);
-  const ok = Number.isFinite(q) && q > 0 && Number.isFinite(r) && Math.abs(q * r - n) < 0.005;
-  return ok ? { qty: fmtNum(q, 4), rate: fmtNum(r, 4) } : { qty: n ? '1' : '', rate: n ? fmtNum(n, 4) : '' };
-}
 
-// Trim a number to at most `dp` decimals without leaving trailing zeros —
-// 10 stays "10", 33.333333 becomes "33.3333".
-function fmtNum(n, dp) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return '';
-  const s = v.toFixed(dp);
-  return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s;
-}
-
-// Qty × Rate = Amount. The two boxes you filled in most recently are held
-// and the third is worked out, so: type an amount on a fresh line and you
-// get 1 × that amount; then type a rate and the quantity falls out of it;
-// type a quantity and a rate instead and the amount is calculated.
-const CALC_FIELDS = ['qty', 'rate', 'net'];
-function applyCalc(line, field, value) {
-  const touch = [field, ...(line.touch || []).filter((f) => f !== field)].slice(0, 3);
-  const next = { ...line, [field]: value, touch };
-  const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
-
-  // Which box gives way? Normally the one left untouched longest; on a line
-  // that's only had a single figure entered, assume a quantity of one.
-  let target = touch.length >= 2 ? CALC_FIELDS.find((f) => f !== touch[0] && f !== touch[1]) : null;
-  if (!target) {
-    if (field === 'qty') target = num(next.rate) != null ? 'net' : (num(next.net) != null ? 'rate' : null);
-    else if (field === 'rate') target = num(next.net) != null ? 'qty' : 'net';
-    else target = 'rate';
-    if (field !== 'qty' && num(next.qty) == null) next.qty = value === '' ? '' : '1';
-  }
-
-  // A rate typed against a blank quantity means one of them — the same
-  // "assume a quantity of one" rule the fallback above uses, applied to the
-  // touch-driven branch too. Without it a line whose stored amount was £0.00
-  // sits there ignoring every rate you type: splitOf only recovers a quantity
-  // from a non-zero amount, so the £0.00 placeholders come back with the
-  // quantity empty and nothing for the rate to multiply.
-  if (target === 'net' && num(next.qty) == null && num(next.rate) != null) next.qty = '1';
-
-  const qty = num(next.qty), rate = num(next.rate), net = num(next.net);
-  if (value === '' && field !== 'qty') {
-    // Clearing the amount or the rate clears what was derived from it,
-    // rather than leaving a stale figure behind.
-    if (target === 'net') next.net = '';
-    if (target === 'rate') next.rate = '';
-  } else if (target === 'net' && qty != null && rate != null) next.net = fmtNum(Math.round(qty * rate * 100) / 100, 2);
-  else if (target === 'rate' && net != null && qty) next.rate = fmtNum(net / qty, 4);
-  else if (target === 'qty' && net != null && rate) next.qty = fmtNum(net / rate, 4);
-  return withVat(next);
-}
-
-// Keep VAT + gross in step with the line's amount. A hand-typed VAT figure
-// is left alone; otherwise it's the standard rate.
-function withVat(line) {
-  const net = parseFloat(line.net);
-  if (line.net === '' || !Number.isFinite(net)) return { ...line, vat: line.vatManual ? line.vat : '', gross: '' };
-  const vat = line.vatManual ? (parseFloat(line.vat) || 0) : Math.round(net * VAT_RATE * 100) / 100;
-  return { ...line, vat: line.vatManual ? line.vat : vat.toFixed(2), gross: (net + vat).toFixed(2) };
-}
-
-// Anything that isn't a plain decimal is treated as a sum to work out.
-function isExpression(raw) {
-  const s = String(raw).trim();
-  return s !== '' && !/^-?\d*\.?\d*$/.test(s);
-}
-
-// Work out "100*10", "(120+30)*4", "=250/3". Hand-rolled rather than eval'd
-// so a typo in a billing box can never run anything. Returns null if it
-// isn't a sum this understands.
-function evalArithmetic(input) {
-  const s = String(input).trim().replace(/^=/, '').replace(/[£,\s]/g, '');
-  if (!s || !/^[0-9+\-*/().]+$/.test(s)) return null;
-  let i = 0;
-  const peek = () => s[i];
-  const factor = () => {
-    if (peek() === '+') { i++; return factor(); }
-    if (peek() === '-') { i++; const v = factor(); return v === null ? null : -v; }
-    if (peek() === '(') {
-      i++; const v = expr();
-      if (peek() !== ')') return null;
-      i++; return v;
-    }
-    const start = i;
-    while (i < s.length && /[0-9.]/.test(s[i])) i++;
-    if (i === start) return null;
-    const n = parseFloat(s.slice(start, i));
-    return Number.isFinite(n) ? n : null;
-  };
-  const term = () => {
-    let v = factor();
-    while (peek() === '*' || peek() === '/') {
-      const op = s[i++]; const r = factor();
-      if (v === null || r === null || (op === '/' && r === 0)) return null;
-      v = op === '*' ? v * r : v / r;
-    }
-    return v;
-  };
-  function expr() {
-    let v = term();
-    while (peek() === '+' || peek() === '-') {
-      const op = s[i++]; const r = term();
-      if (v === null || r === null) return null;
-      v = op === '+' ? v + r : v - r;
-    }
-    return v;
-  }
-  const out = expr();
-  return (i === s.length && out !== null && Number.isFinite(out)) ? out : null;
-}
 const ellip = { overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' };
 const modeBtnActive = {borderColor:'#059669',background:'#f0fdf4',boxShadow:'0 0 0 1px #059669'};
 // Link-existing / create-new, in the unmapped-customer panel. Sized down from
