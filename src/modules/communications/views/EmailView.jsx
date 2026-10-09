@@ -150,7 +150,10 @@ function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true }) {
   );
   const from = parseAddress(msg.from);
   return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+    // flexShrink 0: the pane is a flex column, and overflow:hidden lets a flex
+    // item shrink below its content — the card was squeezed to the pane's
+    // height and cut the email off, leaving nothing to scroll.
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden', flexShrink: 0 }}>
       <div
         onClick={() => setOpen((o) => !o)}
         style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '10px 14px', cursor: 'pointer', background: open ? '#fff' : '#f8fafc' }}
@@ -1595,7 +1598,7 @@ export default function EmailView() {
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !sending) { e.preventDefault(); sendComposer(); }
         }}
-        style={{ border: '1px solid #94a3b8', borderRadius: 10, background: '#fff', padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}
+        style={{ border: '1px solid #94a3b8', borderRadius: 10, background: '#fff', padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
@@ -1719,7 +1722,7 @@ export default function EmailView() {
       return (
         <>
           <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{pending.subject || '(no subject)'}</span>
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '10px 14px' }}>
               <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap' }}>{from.name}</span>
               <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>to {pending.to}</span>
