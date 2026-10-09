@@ -75,15 +75,15 @@ export default function ClientDriveTab({ entityId, entityName, entityType }) {
             entityId={entityId}
             refreshKey={map.folder_id}
             action={(folder) => map.status === 'confirmed' && folder.id !== map.folder_id && (
-              <button disabled={busy} title="Year-end folders (YYYY.MM.DD) for this client are made inside this folder"
+              <button disabled={busy} title="For clients not laid out as 04_Accounts / 04_StatutoryAccounts: each year end's folder (e.g. 2025.12.31) and its notes Doc will be made inside this folder instead"
                 onClick={() => run({ action: 'set_accounts_folder', entity_id: entityId, folder_id: folder.id }, `Year ends now live in “${folder.name}”.`)}
                 style={BTN.secondary.sm}>
-                {map.accounts_folder_id === folder.id ? 'Year ends live here' : 'Use for year ends'}
+                {map.accounts_folder_id === folder.id ? '✓ Year-end folders go here' : 'Year-end folders go here'}
               </button>
             )}
           />
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>
-            Year ends normally go in 04_Accounts / 04_StatutoryAccounts / <i>period end</i>. If this client is laid out differently, open the right folder and choose “Use for year ends”.
+            Year ends normally go in 04_Accounts / 04_StatutoryAccounts / <i>period end</i>. If this client is laid out differently, open the folder where its year ends belong and choose “Year-end folders go here”.
             {map.accounts_folder_id && <> <button onClick={() => run({ action: 'set_accounts_folder', entity_id: entityId, folder_id: null }, 'Back to the usual year-end folder.')} style={{ background: 'none', border: 'none', color: '#1E4560', cursor: 'pointer', padding: 0, fontSize: 12, fontFamily: font }}>Go back to the usual folder</button></>}
           </div>
         </div>

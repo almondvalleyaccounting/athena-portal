@@ -12,6 +12,33 @@ export function isGoogleNative(mime) {
   return typeof mime === 'string' && mime.startsWith('application/vnd.google-apps.');
 }
 
+// Chrome ignores a link type nothing on the PC handles, silently. A handled
+// one takes focus away (Chrome's "Open …?" prompt, then the app), so if the
+// page still has focus a couple of seconds later, say what to install.
+function launch(url) {
+  let left = false;
+  const onBlur = () => { left = true; };
+  window.addEventListener('blur', onBlur, { once: true });
+  window.location.href = url;
+  setTimeout(() => {
+    window.removeEventListener('blur', onBlur);
+    if (!left && document.hasFocus()) notice();
+  }, 2500);
+}
+
+function notice() {
+  const id = 'athena-open-notice';
+  if (document.getElementById(id)) return;
+  const el = document.createElement('div');
+  el.id = id;
+  el.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:2000;max-width:360px;background:#0f172a;color:#fff;'
+    + 'font:13px Outfit,sans-serif;line-height:1.45;padding:12px 14px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25)';
+  el.innerHTML = 'Nothing opened? This PC needs the Athena desktop opener. '
+    + '<a href="/settings/me" style="color:#93c5fd">Set it up in My settings</a>.';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 9000);
+}
+
 function athenaUrl(action, segments) {
   return `athena-open://${action}?${segments.map((s) => `p=${encodeURIComponent(s)}`).join('&')}`;
 }
@@ -22,11 +49,11 @@ export function openDriveFile(item, folderPath) {
     window.open(item.link, '_blank', 'noopener');
     return;
   }
-  window.location.href = athenaUrl('open', [...folderPath, item.name]);
+  launch(athenaUrl('open', [...folderPath, item.name]));
 }
 
 /** Open File Explorer at a folder, or at a file's folder with the file selected. */
 export function showInExplorer(segments) {
   if (!Array.isArray(segments) || segments.length === 0) return;
-  window.location.href = athenaUrl('show', segments);
+  launch(athenaUrl('show', segments));
 }
