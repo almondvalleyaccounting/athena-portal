@@ -566,7 +566,8 @@ export default function EmailView() {
   const [compact, setCompact] = useState(() => localStorage.getItem('comms_compact') === '1');
   const [options, setOptions] = useState(loadOptions);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [moveLabel, setMoveLabel] = useState(null); // { label, leaf, parent, busy }
+  const [moveLabel, setMoveLabel] = useState(null);
+  const [labelSearch, setLabelSearch] = useState(''); // { label, leaf, parent, busy }
   const optionsRef = useRef(options);
   optionsRef.current = options;
   useEffect(() => {
@@ -2027,7 +2028,57 @@ export default function EmailView() {
             </button>
           ))}
           {labelTree.length > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', padding: '8px 10px 2px' }}>Labels</div>}
-          {labelTree.map((n) => renderTreeNode(n, 0))}
+          {labelTree.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 4px 4px', padding: '0 8px', border: '1px solid #e2e8f0', borderRadius: 7, background: '#fff' }}>
+              <Search size={12} color="#94a3b8" />
+              <input
+                value={labelSearch}
+                onChange={(e) => setLabelSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setLabelSearch(''); }}
+                placeholder="Find a label"
+                style={{ flex: 1, minWidth: 0, padding: '5px 0', fontSize: 13, fontFamily: font, border: 'none', outline: 'none', background: 'transparent' }}
+              />
+              {labelSearch && (
+                <button onClick={() => setLabelSearch('')} title="Clear" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          )}
+          {/* Searching: a flat list of matches with their path, anywhere in the
+              tree. Otherwise the folding tree. */}
+          {labelSearch.trim() ? (() => {
+            const t = labelSearch.trim().toLowerCase();
+            const hits = [...userLabels].filter((l) => l.name.toLowerCase().includes(t)).sort((a, b) => a.name.localeCompare(b.name));
+            if (!hits.length) return <div style={{ padding: '4px 12px', fontSize: 12.5, color: '#94a3b8' }}>No label matches.</div>;
+            return hits.map((l) => {
+              const parts = l.name.split('/');
+              const leaf = parts.pop();
+              const isActive = labelId === l.id && !q;
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => selectLabel(l.id)}
+                  title={l.name}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0, padding: '4px 10px', fontSize: 13.5,
+                    fontWeight: isActive ? 700 : 500, background: isActive ? tones.info.bg : 'transparent',
+                    color: isActive ? tones.info.fg : '#475569', border: 'none', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: font, minWidth: 0,
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+                    <Tag size={11} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{leaf}</span>
+                  </span>
+                  {parts.length > 0 && (
+                    <span style={{ fontSize: 11, color: '#94a3b8', paddingLeft: 17, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {parts.join(' › ')}
+                    </span>
+                  )}
+                </button>
+              );
+            });
+          })() : labelTree.map((n) => renderTreeNode(n, 0))}
         </div>
       </div>
 
