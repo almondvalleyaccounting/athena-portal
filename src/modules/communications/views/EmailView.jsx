@@ -1990,7 +1990,7 @@ ${sigBody}` : '', mailbox: from }));
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12.5, color: '#64748b' }}>
               {when ? (
                 <>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: tones.warning?.bg || '#fef3c7', color: tones.warning?.fg || '#92400e', fontWeight: 600 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: SEND_LATER_ON.bg, color: SEND_LATER_ON.fg, fontWeight: 600 }}>
                     <Clock size={12} /> Will send {fmtWhen(when)}
                   </span>
                   <input
@@ -2238,7 +2238,9 @@ ${sigBody}` : '', mailbox: from }));
             title="Send later — hold every email you write until a set time"
             style={{
               ...railBtn, width: '100%', justifyContent: 'flex-start',
-              ...(sendLaterActive ? { background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', fontWeight: 700 } : {}),
+              // Solid turquoise while on (Bobby's pick, option C): hard to miss
+              // that everything you write is being held back.
+              ...(sendLaterActive ? { background: SEND_LATER_ON.bg, border: `1px solid ${SEND_LATER_ON.border}`, color: SEND_LATER_ON.fg, fontWeight: 700 } : {}),
               ...(sendLaterLapsed ? { border: '1px dashed #f59e0b', color: '#92400e' } : {}),
             }}
           >
@@ -3016,6 +3018,10 @@ const approveIconBtn = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, padding: 0,
   border: `1px solid ${tones.teal.solid}`, borderRadius: 5, background: '#fff', color: tones.teal.solid, cursor: 'pointer',
 };
+
+// Send later "on" colour — solid turquoise, used on the rail button and the
+// composer's "Will send …" pill so the two read as the same thing.
+const SEND_LATER_ON = { bg: '#14A396', border: '#0F7F75', fg: '#fff' };
 
 const linkBtn = {
   border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: tones.info.solid,
