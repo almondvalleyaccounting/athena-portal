@@ -730,7 +730,10 @@ function RulesDialog({ mailbox, labels, labelById, onReconnect, onClose, onAppli
   useEffect(() => { load(); }, [load]);
 
   const nameOf = (id) => ({ INBOX: 'Inbox', UNREAD: 'Unread', STARRED: 'Starred', TRASH: 'Bin', SPAM: 'Spam', IMPORTANT: 'Important' }[id]
-    || labelById[id]?.name.split('/').join(' › ') || id);
+    || labelById[id]?.name.split('/').join(' › ')
+    // Gmail's category tabs (CATEGORY_PERSONAL → "Primary" etc.).
+    || ({ CATEGORY_PERSONAL: 'Primary', CATEGORY_SOCIAL: 'Social', CATEGORY_PROMOTIONS: 'Promotions', CATEGORY_UPDATES: 'Updates', CATEGORY_FORUMS: 'Forums' }[id])
+    || id);
   const describe = (f) => {
     const c = f.criteria || {};
     const when = [
