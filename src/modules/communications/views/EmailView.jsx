@@ -670,6 +670,7 @@ export default function EmailView() {
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [sendLater, setSendLaterState] = useState(loadSendLater);
   const [sendLaterOpen, setSendLaterOpen] = useState(false);
+  const [slDraft, setSlDraft] = useState({ date: '', time: '08:00' }); // the dialog's working copy
   const setSendLater = (v) => {
     setSendLaterState(v);
     try { localStorage.setItem('comms_send_later', JSON.stringify(v)); } catch { /* cosmetic */ }
@@ -2229,7 +2230,11 @@ ${sigBody}` : '', mailbox: from }));
         {/* Send later mode: everything written while it's on waits until then. */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => setSendLaterOpen((o) => !o)}
+            onClick={() => {
+              const at = sendLater.at && new Date(sendLater.at).getTime() > Date.now() ? new Date(sendLater.at) : nextMorning(8);
+              setSlDraft({ date: toLocalInput(at).slice(0, 10), time: toLocalInput(at).slice(11, 16) });
+              setSendLaterOpen(true);
+            }}
             title="Send later — hold every email you write until a set time"
             style={{
               ...railBtn, width: '100%', justifyContent: 'flex-start',
@@ -2240,33 +2245,6 @@ ${sigBody}` : '', mailbox: from }));
             <Clock size={12} />
             {sendLaterActive ? `Send later: ${fmtWhen(sendLater.at)}` : sendLaterLapsed ? 'Send later: time passed' : 'Send later: off'}
           </button>
-          {sendLaterOpen && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 40, padding: 10, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12.5, color: '#334155' }}>
-              <div style={{ fontWeight: 700, color: '#0f172a' }}>Send later</div>
-              <div style={{ color: '#64748b' }}>While on, every email you write is scheduled for this time instead of sending. You can still send one now from the composer.</div>
-              <input
-                type="datetime-local"
-                value={sendLater.at ? toLocalInput(new Date(sendLater.at)) : ''}
-                onChange={(e) => setSendLater({ ...sendLater, at: e.target.value ? new Date(e.target.value).toISOString() : '' })}
-                style={{ padding: '5px 8px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6 }}
-              />
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {[['Next morning 8:00', nextMorning(8)], ['Next morning 9:00', nextMorning(9)]].map(([label, d]) => (
-                  <button key={label} onClick={() => setSendLater({ on: true, at: d.toISOString() })} style={{ ...railBtn, fontSize: 12 }}>{label}</button>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button
-                  onClick={() => { setSendLater({ ...sendLater, on: !sendLaterActive && !!sendLater.at }); setSendLaterOpen(false); }}
-                  disabled={!sendLater.at}
-                  style={{ ...BTN.primary.sm, flex: 1, cursor: 'pointer' }}
-                >
-                  {sendLaterActive ? 'Turn off' : 'Turn on'}
-                </button>
-                <button onClick={() => setSendLaterOpen(false)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Close</button>
-              </div>
-            </div>
-          )}
         </div>
         {scheduled.length > 0 && (
           <button onClick={() => { refreshScheduled(); setScheduledOpen(true); }} style={{ ...railBtn, width: '100%', justifyContent: 'flex-start' }}>
@@ -2747,6 +2725,69 @@ ${sigBody}` : '', mailbox: from }));
           {paneContent()}
         </div>
       </div>
+
+      {/* ── Send later ── */}
+      {sendLaterOpen && (() => {
+        const at = slDraft.date && slDraft.time ? new Date(`${slDraft.date}T${slDraft.time}`) : null;
+        const valid = at && !isNaN(at.getTime()) && at.getTime() > Date.now() + 60_000;
+        const pick = (d) => setSlDraft({ date: toLocalInput(d).slice(0, 10), time: toLocalInput(d).slice(11, 16) });
+        const tomorrow = (h) => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(h, 0, 0, 0); return d; };
+        const monday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(8, 0, 0, 0); return d; };
+        const quick = [['Tomorrow 8:00', tomorrow(8)], ['Tomorrow 9:00', tomorrow(9)], ['Monday 8:00', monday()]];
+        const field = { padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff' };
+        return (
+          <div onMouseDown={(e) => { if (e.target === e.currentTarget) setSendLaterOpen(false); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+            <div style={{ width: 420, maxWidth: '92vw', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, fontFamily: font }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock size={16} color="#d97706" />
+                <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Send later</span>
+                <button onClick={() => setSendLaterOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+              </div>
+              <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.45 }}>
+                While it&apos;s on, every email you write waits until this time instead of sending. You can still send any one straight away from the composer.
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {quick.map(([label, d]) => {
+                  const on = slDraft.date === toLocalInput(d).slice(0, 10) && slDraft.time === toLocalInput(d).slice(11, 16);
+                  return (
+                    <button key={label} onClick={() => pick(d)} style={{ ...railBtn, ...(on ? { background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e' } : {}) }}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <label style={{ flex: 1.4, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+                  Date
+                  <input type="date" value={slDraft.date} onChange={(e) => setSlDraft((d) => ({ ...d, date: e.target.value }))} style={field} />
+                </label>
+                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+                  Time
+                  <input type="time" step={900} value={slDraft.time} onChange={(e) => setSlDraft((d) => ({ ...d, time: e.target.value }))} style={field} />
+                </label>
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: valid ? '#92400e' : '#b91c1c' }}>
+                {!at ? 'Pick a date and time.' : valid ? `Emails will send ${fmtWhen(at.toISOString())}.` : 'That time has already passed.'}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                {sendLaterActive && (
+                  <button onClick={() => { setSendLater({ ...sendLater, on: false }); setSendLaterOpen(false); }} style={{ ...BTN.secondary.md, cursor: 'pointer', marginRight: 'auto' }}>
+                    Turn off
+                  </button>
+                )}
+                <button onClick={() => setSendLaterOpen(false)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
+                <button
+                  disabled={!valid}
+                  onClick={() => { setSendLater({ on: true, at: at.toISOString() }); setSendLaterOpen(false); }}
+                  style={{ ...BTN.primary.md, cursor: valid ? 'pointer' : 'not-allowed', opacity: valid ? 1 : 0.5 }}
+                >
+                  {sendLaterActive ? 'Update' : 'Turn on'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Send check: the server's warnings, before anything goes ── */}
       {sendWarn && (
