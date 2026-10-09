@@ -301,6 +301,8 @@ function AddressInput({ value, onChange, contacts, placeholder }) {
 // mine) × new / reply / forward. "Import from Gmail" copies the mailbox's
 // Gmail signature exactly, formatting and all.
 const SIG_ACTIONS = [['new', 'New email'], ['reply', 'Reply'], ['forward', 'Forward']];
+const sigTh = { textAlign: 'left', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#64748b', borderBottom: '1px solid #e2e8f0' };
+const sigTd = { padding: '7px 10px', borderBottom: '1px solid #f1f5f9', verticalAlign: 'middle' };
 
 function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, onError }) {
   const [editing, setEditing] = useState(null); // { id?, name, html }
@@ -351,6 +353,12 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
       await reload();
     } catch (e) { onError(e.message); }
   };
+  // What the default row gives for an action, to show beside "Use default".
+  const defaultName = (action) => {
+    const u = useFor('*', action);
+    const t = u?.signature_id && sets.templates.find((x) => x.id === u.signature_id);
+    return ` (${t ? t.name : 'no signature'})`;
+  };
   const cellSelect = (scope, action) => {
     const u = useFor(scope, action);
     const value = u ? (u.signature_id || '') : scope === '*' ? '' : 'inherit';
@@ -360,8 +368,8 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
         onChange={(e) => setUse(scope, action, e.target.value)}
         style={{ width: '100%', padding: '4px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
       >
-        {scope !== '*' && <option value="inherit">Same as all</option>}
-        <option value="">None</option>
+        {scope !== '*' && <option value="inherit">Use default{defaultName(action)}</option>}
+        <option value="">No signature</option>
         {sets.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
     );
@@ -376,7 +384,7 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
         </div>
 
         {editing ? (
-          <>
+          <React.Fragment key="edit">
             <input
               value={editing.name}
               onChange={(e) => setEditing((x) => ({ ...x, name: e.target.value }))}
@@ -411,19 +419,28 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
               <button onClick={() => setEditing(null)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
               <button onClick={save} disabled={busy || !editing.name.trim()} style={{ ...BTN.primary.md, cursor: 'pointer' }}>{busy ? 'Saving…' : 'Save'}</button>
             </div>
-          </>
+          </React.Fragment>
         ) : (
-          <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          // Keyed apart from the editor branch: without keys React re-used the
+          // editor's contentEditable <div> (whose innerHTML it doesn't track)
+          // as the table wrapper, leaving the imported signature stranded in it.
+          <React.Fragment key="list">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {sets.templates.length === 0 && (
                 <div style={{ fontSize: 13.5, color: '#64748b' }}>No signatures yet. Import yours from Gmail, or make a new one.</div>
               )}
               {sets.templates.map((t) => (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                  <PenSquare size={13} color="#94a3b8" />
-                  <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{t.name}</span>
-                  <button onClick={() => { setHtmlMode(false); setEditing({ key: Date.now(), id: t.id, name: t.name, html: t.body_html }); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Edit</button>
-                  <button onClick={() => remove(t)} style={{ ...BTN.secondary.sm, cursor: 'pointer', color: '#b91c1c' }}>Delete</button>
+                <div key={t.id} style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{t.name}</span>
+                    <button onClick={() => { setHtmlMode(false); setEditing({ key: Date.now(), id: t.id, name: t.name, html: t.body_html }); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Edit</button>
+                    <button onClick={() => remove(t)} style={{ ...BTN.secondary.sm, cursor: 'pointer', color: '#b91c1c' }}>Delete</button>
+                  </div>
+                  {/* A short look at it, not the whole thing. */}
+                  <div style={{ maxHeight: 130, overflow: 'hidden', position: 'relative' }}>
+                    <HtmlBody html={t.body_html} />
+                    <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 36, background: 'linear-gradient(rgba(255,255,255,0), #fff)' }} />
+                  </div>
                 </div>
               ))}
               <div style={{ display: 'flex', gap: 8 }}>
@@ -432,25 +449,36 @@ function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, on
               </div>
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Where each is used</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1.3fr) repeat(3, minmax(110px, 1fr))', gap: 6, alignItems: 'center', fontSize: 13 }}>
-              <span />
-              {SIG_ACTIONS.map(([, label]) => <span key={label} style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{label}</span>)}
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>All my mailboxes</span>
-              {SIG_ACTIONS.map(([a]) => <span key={a}>{cellSelect('*', a)}</span>)}
-              {mailboxes.map((m) => (
-                <React.Fragment key={m.account_email}>
-                  <span style={{ color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.account_email}>
-                    {m.display_name || m.account_email}
-                  </span>
-                  {SIG_ACTIONS.map(([a]) => <span key={a}>{cellSelect(m.account_email.toLowerCase(), a)}</span>)}
-                </React.Fragment>
-              ))}
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Which signature goes on which email</div>
+              <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2 }}>
+                Set the default row first. A mailbox left on “Use default” follows it. You can still change the signature on any single email.
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>
-              A mailbox set to “Same as all” uses the All my mailboxes choice. You can still switch or remove the signature on any one email in the composer.
-            </div>
-          </>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  <th style={sigTh}>Mailbox</th>
+                  {SIG_ACTIONS.map(([a, label]) => <th key={a} style={sigTh}>{label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ background: '#f0f9ff' }}>
+                  <td style={{ ...sigTd, fontWeight: 700, color: '#0f172a' }}>Default<div style={{ fontWeight: 400, fontSize: 11.5, color: '#64748b' }}>all my mailboxes</div></td>
+                  {SIG_ACTIONS.map(([a]) => <td key={a} style={sigTd}>{cellSelect('*', a)}</td>)}
+                </tr>
+                {mailboxes.map((m) => (
+                  <tr key={m.account_email}>
+                    <td style={sigTd} title={m.account_email}>
+                      <div style={{ fontWeight: 600, color: '#334155' }}>{m.display_name || m.account_email}</div>
+                      <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{m.account_email}</div>
+                    </td>
+                    {SIG_ACTIONS.map(([a]) => <td key={a} style={sigTd}>{cellSelect(m.account_email.toLowerCase(), a)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </React.Fragment>
         )}
       </div>
     </div>
@@ -2515,6 +2543,36 @@ export default function EmailView() {
               <PenSquare size={12} /> Signature
             </button>
           )}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setKeysOpen((o) => !o)} title="Keyboard shortcuts (?)" style={{ ...railBtn, width: '100%' }}>
+                <Keyboard size={12} /> Shortcuts
+              </button>
+              {keysOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 40, width: 250, padding: '10px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', fontSize: 13, color: '#334155' }}>
+                  <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Keyboard shortcuts</div>
+                  {[
+                    ['↓  or  j', 'Next email'],
+                    ['↑  or  k', 'Previous email'],
+                    ['Delete  or  #', 'Move to bin'],
+                    ['e', 'Archive'],
+                    ['r', 'Reply'],
+                    ['a', 'Reply all'],
+                    ['f', 'Forward'],
+                    ['x', 'Tick / untick the open email'],
+                    ['u', 'Mark read / unread'],
+                    ['Ctrl+Enter', 'Send (while writing)'],
+                    ['Esc', 'Close the email'],
+                    ['?', 'Show / hide this list'],
+                  ].map(([k, what]) => (
+                    <div key={k} style={{ display: 'flex', gap: 10, padding: '2px 0' }}>
+                      <span style={{ flex: '0 0 92px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#0f172a' }}>{k}</span>
+                      <span>{what}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 6, fontSize: 11.5, color: '#94a3b8' }}>Not while typing in a box. After clicking inside an email, click the list to use keys again.</div>
+                </div>
+              )}
+            </div>
         </div>
         {addOpen && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, background: '#f8fafc' }}>
@@ -2691,36 +2749,6 @@ export default function EmailView() {
               <Tag size={13} /> {taggingMode ? 'Tagging on' : 'Tagging'}
             </button>
           )}
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setKeysOpen((o) => !o)} title="Keyboard shortcuts (?)" style={btnIcon}>
-              <Keyboard size={14} />
-            </button>
-            {keysOpen && (
-              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 40, width: 250, padding: '10px 12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 10px 30px rgba(15,23,42,.15)', fontSize: 13, color: '#334155' }}>
-                <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Keyboard shortcuts</div>
-                {[
-                  ['↓  or  j', 'Next email'],
-                  ['↑  or  k', 'Previous email'],
-                  ['Delete  or  #', 'Move to bin'],
-                  ['e', 'Archive'],
-                  ['r', 'Reply'],
-                  ['a', 'Reply all'],
-                  ['f', 'Forward'],
-                  ['x', 'Tick / untick the open email'],
-                  ['u', 'Mark read / unread'],
-                  ['Ctrl+Enter', 'Send (while writing)'],
-                  ['Esc', 'Close the email'],
-                  ['?', 'Show / hide this list'],
-                ].map(([k, what]) => (
-                  <div key={k} style={{ display: 'flex', gap: 10, padding: '2px 0' }}>
-                    <span style={{ flex: '0 0 92px', fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#0f172a' }}>{k}</span>
-                    <span>{what}</span>
-                  </div>
-                ))}
-                <div style={{ marginTop: 6, fontSize: 11.5, color: '#94a3b8' }}>Not while typing in a box. After clicking inside an email, click the list to use keys again.</div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Sort + count. The rest of the view settings live in Options. */}
@@ -3286,7 +3314,9 @@ export default function EmailView() {
       {sigOpen && (
         <SignatureManager
           sets={sigSets}
-          mailboxes={mailboxes || []}
+          // Only mailboxes I send from: shared ones and my own (an admin also
+          // sees colleagues' personal mailboxes in the list, but not to sign).
+          mailboxes={(mailboxes || []).filter((m) => m.kind === 'shared' || m.owner_staff_id === profileId)}
           currentMailbox={isAll ? sendFrom : mailbox}
           onClose={() => setSigOpen(false)}
           reload={async () => setSigSets(await loadSignatureSets(profileId))}

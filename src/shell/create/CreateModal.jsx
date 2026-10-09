@@ -182,6 +182,8 @@ export default function CreateModal() {
     // No backdrop click-to-close and no Esc: it stays until you close it.
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, fontFamily: font }}>
       <div style={{ width: 820, maxWidth: '95vw', height: 'min(640px, calc(100vh - 40px))', background: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(15,23,42,.25)' }}>
+        {/* The shared client picker's input, matched to this form's fields. */}
+        <style>{'.create-client-picker input{border:1px solid #cbd5e1!important;border-radius:7px!important;padding:7px 10px!important;font-size:14px!important}'}</style>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid #e2e8f0' }}>
           <Plus size={18} color={tones.info.solid} />
           <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Create</span>
@@ -243,6 +245,7 @@ export default function CreateModal() {
 
                 <Field label="Client" required={needsClient}>
                   <ClientNamePicker
+                    className="create-client-picker"
                     value={clientText}
                     onChange={setClientText}
                     onPick={(row) => { setClient({ id: row.id, name: row.name }); setClientText(row.name); }}
@@ -392,7 +395,9 @@ const check = { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer'
 
 function Field({ label, required, hint, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+    // No flex-grow here: in the form's column it stretched each field to fill
+    // the height (the gap under Client). Row gives side-by-side fields width.
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
       <span style={{ fontSize: 12.5, fontWeight: 600, color: '#475569' }}>
         {label}{required && <span style={{ color: '#b91c1c' }}> *</span>}
         {hint && <span style={{ fontWeight: 400, color: '#94a3b8' }}> · {hint}</span>}
@@ -403,5 +408,9 @@ function Field({ label, required, hint, children }) {
 }
 
 function Row({ children }) {
-  return <div style={{ display: 'flex', gap: 12 }}>{children}</div>;
+  return (
+    <div style={{ display: 'flex', gap: 12 }}>
+      {React.Children.map(children, (c) => <div style={{ flex: 1, minWidth: 0 }}>{c}</div>)}
+    </div>
+  );
 }
