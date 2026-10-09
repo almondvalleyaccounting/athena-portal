@@ -102,6 +102,10 @@ export const gmail = {
     callGmail('list_messages', { mailbox, labelIds, q, pageToken, maxResults, excludeOwn }),
   getMessage: (mailbox, messageId) => callGmail('get_message', { mailbox, messageId }),
   sentIndex: (mailbox, max) => callGmail('sent_index', { mailbox, max }),
+  gmailSignature: (mailbox) => callGmail('gmail_signature', { mailbox }),
+  sigSave: (mailbox, { id, name, bodyHtml }) => callGmail('sig_save', { mailbox, id, name, bodyHtml }),
+  sigDelete: (mailbox, id) => callGmail('sig_delete', { mailbox, id }),
+  sigUse: (mailbox, opts) => callGmail('sig_use', { mailbox, ...opts }),
   modifyMessage: (mailbox, messageId, { addLabelIds, removeLabelIds }) =>
     callGmail('modify_message', { mailbox, messageId, addLabelIds, removeLabelIds }),
   trashMessage: (mailbox, messageId) => callGmail('trash_message', { mailbox, messageId }),
@@ -326,33 +330,28 @@ export function phoneSuffix(raw, n = 9) {
   return d.slice(-n);
 }
 
-// ── Signatures ────────────────────────────────────────────────────────
+// ── Signatures (sql/365) ──────────────────────────────────────────────
+// Named HTML signatures + where each is used (mailbox or '*' × action).
+// Read directly (own rows); written through comms-gmail.
 
-// Effective signature for a mailbox: exact match wins, '*' (all my
-// mailboxes) is the fallback.
-export async function loadSignatures(staffId) {
-  const { data, error } = await supabase
-    .from('comms_signatures')
-    .select('mailbox_email, body')
-    .eq('staff_id', staffId);
-  if (error) throw error;
-  return data || [];
+export async function loadSignatureSets(staffId) {
+  const [t, u] = await Promise.all([
+    supabase.from('comms_signature_templates').select('id, name, body_html, updated_at').eq('staff_id', staffId).order('name'),
+    supabase.from('comms_signature_use').select('mailbox_email, action, signature_id').eq('staff_id', staffId),
+  ]);
+  if (t.error) throw t.error;
+  if (u.error) throw u.error;
+  return { templates: t.data || [], uses: u.data || [] };
 }
 
-export function effectiveSignature(signatures, mailbox) {
-  const exact = signatures.find((s) => s.mailbox_email === mailbox);
-  if (exact) return exact.body;
-  return signatures.find((s) => s.mailbox_email === '*')?.body || '';
-}
-
-export async function saveSignature(staffId, mailboxEmail, body) {
-  const { error } = await supabase.from('comms_signatures').upsert({
-    staff_id: staffId,
-    mailbox_email: mailboxEmail, // '*' = all my mailboxes
-    body,
-    updated_at: new Date().toISOString(),
-  });
-  if (error) throw error;
+// The signature for a mailbox + action: that mailbox's choice, else the
+// all-mailboxes choice, else none. A choice can be "none" (signature_id null).
+export function pickSignature(sets, mailbox, action) {
+  const mb = String(mailbox || '').toLowerCase();
+  const u = sets.uses.find((x) => x.mailbox_email === mb && x.action === action)
+    || sets.uses.find((x) => x.mailbox_email === '*' && x.action === action);
+  if (!u?.signature_id) return null;
+  return sets.templates.find((t) => t.id === u.signature_id) || null;
 }
 
 // Trigger a browser download from a Gmail attachment (base64url payload).

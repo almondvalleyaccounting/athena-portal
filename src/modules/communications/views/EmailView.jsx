@@ -10,9 +10,9 @@ import { supabase } from '../../../lib/supabase';
 import { chipStyle, tones } from '../../../lib/tokens';
 import { decodeEntities } from '../../../lib/decodeEntities';
 import {
-  buildTagSuggester, startMailboxConnect, downloadAttachment, effectiveSignature, gmail, listMailboxes,
-  loadContacts, loadSignatures, loadTagRules, mailboxNeedsReconnect, parseAddress, recordTagRule,
-  saveSignature, syncContacts,
+  buildTagSuggester, startMailboxConnect, downloadAttachment, gmail, listMailboxes,
+  loadContacts, loadSignatureSets, loadTagRules, mailboxNeedsReconnect, parseAddress, recordTagRule,
+  pickSignature, syncContacts,
 } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
 
@@ -240,11 +240,16 @@ function AddressInput({ value, onChange, contacts, placeholder }) {
 
   const suggestions = useMemo(() => {
     if (!focus || token.length < 2) return [];
+    // Google often holds the same person twice (a saved contact and an
+    // "other contact"), so one address is offered once.
     const out = [];
+    const seen = new Set();
     for (const c of contacts) {
       for (const email of c.emails || []) {
         const name = c.display_name || '';
-        if (email.includes(token) || name.toLowerCase().includes(token)) {
+        const key = String(email).toLowerCase();
+        if (!seen.has(key) && (key.includes(token) || name.toLowerCase().includes(token))) {
+          seen.add(key);
           out.push({ name, email, org: c.organisation });
           break;
         }
@@ -286,6 +291,167 @@ function AddressInput({ value, onChange, contacts, placeholder }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Signatures (sql/365) ───────────────────────────────────────────────
+// Named HTML signatures, and where each is used: per mailbox (or all of
+// mine) × new / reply / forward. "Import from Gmail" copies the mailbox's
+// Gmail signature exactly, formatting and all.
+const SIG_ACTIONS = [['new', 'New email'], ['reply', 'Reply'], ['forward', 'Forward']];
+
+function SignatureManager({ sets, mailboxes, currentMailbox, onClose, reload, onError }) {
+  const [editing, setEditing] = useState(null); // { id?, name, html }
+  const [htmlMode, setHtmlMode] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const editorRef = useRef(null);
+
+  // contentEditable is filled once per edit, then read back on save.
+  useEffect(() => {
+    if (editing && !htmlMode && editorRef.current) editorRef.current.innerHTML = editing.html || '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.key, htmlMode]);
+
+  const readHtml = () => (htmlMode ? editing.html : (editorRef.current?.innerHTML ?? editing.html));
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await gmail.sigSave(currentMailbox, { id: editing.id, name: editing.name, bodyHtml: readHtml() });
+      await reload();
+      setEditing(null);
+    } catch (e) { onError(e.message); } finally { setBusy(false); }
+  };
+  const remove = async (t) => {
+    if (!window.confirm(`Delete the signature “${t.name}”?`)) return;
+    try { await gmail.sigDelete(currentMailbox, t.id); await reload(); } catch (e) { onError(e.message); }
+  };
+  const importGmail = async () => {
+    setBusy(true);
+    try {
+      const res = await gmail.gmailSignature(currentMailbox);
+      const g = (res.signatures || []).find((x) => x.isDefault) || (res.signatures || [])[0];
+      if (!g) { onError(`${currentMailbox} has no signature set in Gmail.`); return; }
+      setHtmlMode(false);
+      setEditing({ key: Date.now(), name: `Gmail — ${g.email.split('@')[0]}@`, html: g.html });
+    } catch (e) { onError(e.message); } finally { setBusy(false); }
+  };
+
+  // The choice in force for a cell: { kind: 'set' | 'inherit', id }.
+  const useFor = (scope, action) => sets.uses.find((u) => u.mailbox_email === scope && u.action === action);
+  const setUse = async (scope, action, value) => {
+    try {
+      const mb = scope === '*' ? currentMailbox : scope;
+      await gmail.sigUse(mb, {
+        scope: scope === '*' ? '*' : 'this', useAction: action,
+        ...(value === 'inherit' ? { clear: true } : { signatureId: value || null }),
+      });
+      await reload();
+    } catch (e) { onError(e.message); }
+  };
+  const cellSelect = (scope, action) => {
+    const u = useFor(scope, action);
+    const value = u ? (u.signature_id || '') : scope === '*' ? '' : 'inherit';
+    return (
+      <select
+        value={value}
+        onChange={(e) => setUse(scope, action, e.target.value)}
+        style={{ width: '100%', padding: '4px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
+      >
+        {scope !== '*' && <option value="inherit">Same as all</option>}
+        <option value="">None</option>
+        {sets.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+    );
+  };
+
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget && !editing) onClose(); }} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+      <div style={{ width: 720, maxWidth: '94vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, fontFamily: font }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>{editing ? (editing.id ? 'Edit signature' : 'New signature') : 'Signatures'}</span>
+          <button onClick={() => (editing ? setEditing(null) : onClose())} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
+        </div>
+
+        {editing ? (
+          <>
+            <input
+              value={editing.name}
+              onChange={(e) => setEditing((x) => ({ ...x, name: e.target.value }))}
+              placeholder="Name, e.g. Full — with disclaimer"
+              style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 7 }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#64748b' }}>
+              {htmlMode ? 'HTML' : 'Type or paste — formatting is kept'}
+              <button
+                onClick={() => { setEditing((x) => ({ ...x, html: readHtml(), key: Date.now() })); setHtmlMode((m) => !m); }}
+                style={{ ...linkBtn, marginLeft: 'auto' }}
+              >
+                {htmlMode ? 'Back to formatted' : 'Edit HTML'}
+              </button>
+            </div>
+            {htmlMode ? (
+              <textarea
+                value={editing.html}
+                onChange={(e) => setEditing((x) => ({ ...x, html: e.target.value }))}
+                rows={12}
+                style={{ padding: '8px 10px', fontSize: 12.5, fontFamily: 'ui-monospace, monospace', border: '1px solid #cbd5e1', borderRadius: 7, resize: 'vertical' }}
+              />
+            ) : (
+              <div
+                ref={editorRef}
+                contentEditable
+                suppressContentEditableWarning
+                style={{ minHeight: 160, maxHeight: 360, overflowY: 'auto', padding: '10px 12px', border: '1px solid #cbd5e1', borderRadius: 7, fontFamily: 'Arial, Helvetica, sans-serif', fontSize: 14, color: '#111', outline: 'none' }}
+              />
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditing(null)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={save} disabled={busy || !editing.name.trim()} style={{ ...BTN.primary.md, cursor: 'pointer' }}>{busy ? 'Saving…' : 'Save'}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sets.templates.length === 0 && (
+                <div style={{ fontSize: 13.5, color: '#64748b' }}>No signatures yet. Import yours from Gmail, or make a new one.</div>
+              )}
+              {sets.templates.map((t) => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  <PenSquare size={13} color="#94a3b8" />
+                  <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>{t.name}</span>
+                  <button onClick={() => { setHtmlMode(false); setEditing({ key: Date.now(), id: t.id, name: t.name, html: t.body_html }); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>Edit</button>
+                  <button onClick={() => remove(t)} style={{ ...BTN.secondary.sm, cursor: 'pointer', color: '#b91c1c' }}>Delete</button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={importGmail} disabled={busy} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>{busy ? 'Importing…' : `Import from Gmail (${currentMailbox.split('@')[0]}@)`}</button>
+                <button onClick={() => { setHtmlMode(false); setEditing({ key: Date.now(), name: '', html: '' }); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>+ New signature</button>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>Where each is used</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1.3fr) repeat(3, minmax(110px, 1fr))', gap: 6, alignItems: 'center', fontSize: 13 }}>
+              <span />
+              {SIG_ACTIONS.map(([, label]) => <span key={label} style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>{label}</span>)}
+              <span style={{ fontWeight: 700, color: '#0f172a' }}>All my mailboxes</span>
+              {SIG_ACTIONS.map(([a]) => <span key={a}>{cellSelect('*', a)}</span>)}
+              {mailboxes.map((m) => (
+                <React.Fragment key={m.account_email}>
+                  <span style={{ color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.account_email}>
+                    {m.display_name || m.account_email}
+                  </span>
+                  {SIG_ACTIONS.map(([a]) => <span key={a}>{cellSelect(m.account_email.toLowerCase(), a)}</span>)}
+                </React.Fragment>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>
+              A mailbox set to “Same as all” uses the All my mailboxes choice. You can still switch or remove the signature on any one email in the composer.
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -483,14 +649,28 @@ const escHtml = (t) => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt
 // What actually goes out: your text, then the original. The plain-text part
 // keeps "> " quoting (that's the convention there and nobody sees it in a
 // normal mail client); the HTML part uses a blockquote.
+// The signature's plain-text twin, for the text/plain part.
+function htmlToText(html) {
+  const d = document.createElement('div');
+  d.innerHTML = String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n');
+  return (d.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function composeBodies(c) {
-  const text = c.body || '';
+  const mineText = c.body || '';
+  const sigHtml = c.sig?.html ? `<br><div class="gmail_signature">${c.sig.html}</div>` : '';
+  const text = c.sig?.html ? `${mineText}\n\n${htmlToText(c.sig.html)}` : mineText;
   const q = c.quote;
-  if (!q || q.include === false) return { bodyText: text };
+  if (!q || q.include === false) {
+    if (!sigHtml) return { bodyText: text };
+    return { bodyText: text, bodyHtml: `<div>${escHtml(mineText).replace(/\r?\n/g, '<br>')}</div>${sigHtml}` };
+  }
   const bodyText = q.kind === 'forward'
     ? `${text}\n\n${q.header}\n\n${q.text}`
     : `${text}\n\n${q.header}\n${q.text.split('\n').map((l) => `> ${l}`).join('\n')}`;
-  const mine = `<div>${escHtml(text).replace(/\r?\n/g, '<br>')}</div>`;
+  const mine = `<div>${escHtml(mineText).replace(/\r?\n/g, '<br>')}</div>${sigHtml}`;
   const original = q.html || `<div style="white-space:pre-wrap">${escHtml(q.text)}</div>`;
   const head = escHtml(q.header).replace(/\n/g, '<br>');
   const bodyHtml = q.kind === 'forward'
@@ -689,10 +869,8 @@ export default function EmailView() {
   const [selected, setSelected] = useState(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [contacts, setContacts] = useState([]);
-  const [signatures, setSignatures] = useState([]);
+  const [sigSets, setSigSets] = useState({ templates: [], uses: [] }); // sql/365
   const [sigOpen, setSigOpen] = useState(false);
-  const [sigDraft, setSigDraft] = useState('');
-  const [sigScope, setSigScope] = useState('*');
   const [syncBusy, setSyncBusy] = useState(false);
   const [tagRules, setTagRules] = useState([]);
   const [learnBusy, setLearnBusy] = useState(false);
@@ -780,7 +958,7 @@ export default function EmailView() {
     if (!profileId) return;
     loadMailboxes();
     loadContacts().then(setContacts).catch(() => {});
-    loadSignatures(profileId).then(setSignatures).catch(() => {});
+    loadSignatureSets(profileId).then(setSigSets).catch(() => {});
   }, [profileId, loadMailboxes]);
   useEffect(() => { if (mailbox) localStorage.setItem('comms_mailbox', mailbox); }, [mailbox]);
 
@@ -1548,13 +1726,16 @@ export default function EmailView() {
   const startComposer = useCallback((mode) => {
     if (!okToDiscard()) return;
     setError(null);
-    // Signature belongs to the account the mail actually leaves from.
-    const sigBody = optionsRef.current.autoSignature
-      ? effectiveSignature(signatures, mode === 'new' ? sendFrom : threadMailbox)
-      : '';
-    const sig = sigBody ? `\n\n${sigBody}` : '';
+    // Signature: the one set for this mailbox + action (Signature → "Where
+    // each is used"), kept beside the text as HTML rather than typed into it.
+    const sigFrom = mode === 'new' ? sendFrom : threadMailbox;
+    const pick = optionsRef.current.autoSignature
+      ? pickSignature(sigSets, sigFrom, mode === 'new' ? 'new' : mode === 'forward' ? 'forward' : 'reply')
+      : null;
+    const sig = pick ? { id: pick.id, name: pick.name, html: pick.body_html } : null;
+    const body = '';
     if (mode === 'new') {
-      setComposer(withStart({ mode, to: '', cc: '', subject: '', body: `${sig}`, mailbox: sendFrom }));
+      setComposer(withStart({ mode, to: '', cc: '', subject: '', body, sig, mailbox: sendFrom }));
       return;
     }
     if (!latestMsg) return;
@@ -1570,25 +1751,26 @@ export default function EmailView() {
           .split(',').map((s) => parseAddress(s).email).filter((e) => e && e.toLowerCase() !== threadMailbox);
         cc = [...new Set(others)].join(', ');
       }
-      setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply', optionsRef.current.includeOriginal), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox, contextId: latestMsg.id }));
+      setComposer(withStart({ mode, to, cc, subject: reSubject, body, sig, quote: originalOf(latestMsg, 'reply', optionsRef.current.includeOriginal), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox, contextId: latestMsg.id }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox, contextId: latestMsg.id, inReplyTo: latestMsg.messageIdHeader, references }));
+      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body, sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox, contextId: latestMsg.id, inReplyTo: latestMsg.messageIdHeader, references }));
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
-  }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
+  }, [latestMsg, thread, threadMailbox, sendFrom, sigSets]);
 
   // A new email to an address clicked in an email body (mailto link). Sent
   // from the mailbox you're reading, with your signature if that's on.
   const composeTo = useCallback(({ to, subject = '' }) => {
     if (!okToDiscard()) return;
     const from = threadMailbox || sendFrom;
-    const sigBody = optionsRef.current.autoSignature ? effectiveSignature(signatures, from) : '';
-    setComposer(withStart({ mode: 'new', to, cc: '', subject, body: sigBody ? `
-
-${sigBody}` : '', mailbox: from }));
+    const pick = optionsRef.current.autoSignature ? pickSignature(sigSets, from, 'new') : null;
+    setComposer(withStart({
+      mode: 'new', to, cc: '', subject, body: '', mailbox: from,
+      sig: pick ? { id: pick.id, name: pick.name, html: pick.body_html } : null,
+    }));
     if (paneRef.current) paneRef.current.scrollTop = 0;
-  }, [threadMailbox, sendFrom, signatures]);
+  }, [threadMailbox, sendFrom, sigSets]);
 
   // ── Row actions ──
   // Reply/forward from a list row needs the full latest message (for the quote)
@@ -1837,23 +2019,6 @@ ${sigBody}` : '', mailbox: from }));
     }
   }, [mailbox]);
 
-  const openSigEditor = () => {
-    const hasExact = signatures.some((s) => s.mailbox_email === mailbox);
-    setSigScope(hasExact ? mailbox : '*');
-    setSigDraft(effectiveSignature(signatures, mailbox));
-    setSigOpen(true);
-  };
-
-  const doSaveSignature = useCallback(async () => {
-    try {
-      await saveSignature(profile.id, sigScope, sigDraft);
-      setSignatures(await loadSignatures(profile.id));
-      setSigOpen(false);
-      flash('Signature saved.');
-    } catch (e) {
-      setError(`Could not save signature: ${e.message}`);
-    }
-  }, [profile, sigScope, sigDraft]);
 
   // ── Connect CTAs ──
   const myPersonal = (mailboxes || []).find((m) => m.kind === 'personal' && m.owner_staff_id === profile?.id);
@@ -1996,6 +2161,30 @@ ${sigBody}` : '', mailbox: from }));
           style={{ padding: '7px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, fontWeight: 600 }} />
         <textarea value={composer.body} onChange={(e) => setComposer((c) => ({ ...c, body: e.target.value }))} rows={10} autoFocus
           style={{ padding: '8px 10px', fontSize: 14, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 7, resize: 'vertical', lineHeight: 1.5 }} />
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 12.5, color: '#64748b' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: '#f8fafc', borderRadius: composer.sig ? '7px 7px 0 0' : 7 }}>
+            Signature
+            <select
+              value={composer.sig?.id || ''}
+              onChange={(e) => {
+                const t = sigSets.templates.find((x) => x.id === e.target.value);
+                setComposer((c) => ({ ...c, sig: t ? { id: t.id, name: t.name, html: t.body_html } : null }));
+              }}
+              style={{ padding: '2px 6px', fontSize: 12.5, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}
+            >
+              <option value="">None</option>
+              {sigSets.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            {!sigSets.templates.length && (
+              <button onClick={() => setSigOpen(true)} style={linkBtn}>Set one up</button>
+            )}
+          </div>
+          {composer.sig?.html && (
+            <div style={{ borderTop: '1px solid #e2e8f0', maxHeight: 220, overflowY: 'auto', background: '#fff', borderRadius: '0 0 7px 7px' }}>
+              <HtmlBody html={composer.sig.html} />
+            </div>
+          )}
+        </div>
         {composer.quote && (
           <div style={{ border: '1px solid #e2e8f0', borderRadius: 7, background: '#f8fafc', fontSize: 12.5, color: '#64748b' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px' }}>
@@ -2251,7 +2440,7 @@ ${sigBody}` : '', mailbox: from }));
             </button>
           )}
           {!isAll && (
-            <button onClick={openSigEditor} style={railBtn}>
+            <button onClick={() => setSigOpen(true)} style={railBtn}>
               <PenSquare size={12} /> Signature
             </button>
           )}
@@ -3021,38 +3210,16 @@ ${sigBody}` : '', mailbox: from }));
         </div>
       )}
 
-      {/* ── Signature editor ── */}
+      {/* ── Signatures ── */}
       {sigOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div style={{ width: 520, maxWidth: '92vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', background: '#fff', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, fontFamily: font }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Email signature</span>
-              <button onClick={() => setSigOpen(false)} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={16} /></button>
-            </div>
-            <textarea
-              value={sigDraft}
-              onChange={(e) => setSigDraft(e.target.value)}
-              rows={7}
-              placeholder={'Kind regards,\nJane Smith\nAlmond Valley Accounting'}
-              style={{ padding: '9px 11px', fontSize: 14, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical', lineHeight: 1.5 }}
-            />
-            <div style={{ display: 'flex', gap: 14, fontSize: 13.5, color: '#334155' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input type="radio" checked={sigScope === '*'} onChange={() => setSigScope('*')} /> All my mailboxes
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input type="radio" checked={sigScope === mailbox} onChange={() => setSigScope(mailbox)} /> Only {mailboxObj?.display_name || mailbox}
-              </label>
-            </div>
-            <div style={{ fontSize: 12.5, color: '#94a3b8' }}>
-              Added automatically when you compose or reply. Plain text for now.
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setSigOpen(false)} style={{ ...BTN.secondary.md, cursor: 'pointer' }}>Cancel</button>
-              <button onClick={doSaveSignature} style={{ ...BTN.primary.md, cursor: 'pointer' }}>Save</button>
-            </div>
-          </div>
-        </div>
+        <SignatureManager
+          sets={sigSets}
+          mailboxes={mailboxes || []}
+          currentMailbox={isAll ? sendFrom : mailbox}
+          onClose={() => setSigOpen(false)}
+          reload={async () => setSigSets(await loadSignatureSets(profileId))}
+          onError={setError}
+        />
       )}
     </div>
   );

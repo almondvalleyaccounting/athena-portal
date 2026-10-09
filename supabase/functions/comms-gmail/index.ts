@@ -11,6 +11,8 @@
 //   get_message    { messageId }       one email, parsed body + attachments
 //   rename_label   { labelId, name }   rename / move a label (and its children)
 //   sent_index     { max? }   my recent sent mail → the Message-ID each answered
+//   gmail_signature           this mailbox's Gmail signature(s), to import
+//   sig_save / sig_delete / sig_use   my signatures and where each is used (sql/365)
 //   queue_send     { …send fields, sendAt?, mode?, contextMessageId?, acknowledged? }
 //                    every composer email: checked (sql/364), then held in
 //                    comms_outbox — 20s for undo, or until a Send later time
@@ -415,6 +417,75 @@ Deno.serve(async (req) => {
           if (i + CHUNK < ids.length) await new Promise((r) => setTimeout(r, 200));
         }
         return jsonResponse({ success: true, sent: out });
+      }
+
+      // ── Signatures (sql/365) ──────────────────────────────────────────
+      // The Gmail signature(s) set on this mailbox, as HTML, to import.
+      case "gmail_signature": {
+        const data = await gmailFetch(tok.accessToken, "/settings/sendAs");
+        const list = (data.sendAs || [])
+          .filter((a: { signature?: string }) => (a.signature || "").trim())
+          .map((a: { sendAsEmail: string; displayName?: string; signature: string; isDefault?: boolean }) => ({
+            email: a.sendAsEmail, name: a.displayName || "", html: a.signature, isDefault: !!a.isDefault,
+          }));
+        return jsonResponse({ success: true, signatures: list });
+      }
+
+      // Save (create or update) one of MY signatures. Scripts and inline
+      // event handlers are stripped — a signature is formatting, not code.
+      case "sig_save": {
+        const name = String(body.name || "").trim().slice(0, 80);
+        if (!name) return jsonResponse({ success: false, error: "Give the signature a name." }, 400);
+        const html = String(body.bodyHtml || "")
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+          .replace(/javascript:/gi, "");
+        if (html.length > 100_000) return jsonResponse({ success: false, error: "That signature is too large." }, 400);
+        const now = new Date().toISOString();
+        const q = body.id
+          ? service.from("comms_signature_templates").update({ name, body_html: html, updated_at: now })
+            .eq("id", body.id).eq("staff_id", user.id).select("id").maybeSingle()
+          : service.from("comms_signature_templates").insert({ staff_id: user.id, name, body_html: html })
+            .select("id").single();
+        const { data: row, error: e } = await q;
+        if (e) throw new Error(e.message);
+        if (!row) return jsonResponse({ success: false, error: "Signature not found." }, 404);
+        return jsonResponse({ success: true, id: row.id });
+      }
+
+      case "sig_delete": {
+        if (!body.id) return jsonResponse({ success: false, error: "id required" }, 400);
+        const { error: e } = await service.from("comms_signature_templates").delete()
+          .eq("id", body.id).eq("staff_id", user.id);
+        if (e) throw new Error(e.message);
+        return jsonResponse({ success: true });
+      }
+
+      // Which signature I use for an action, on this mailbox or all of mine
+      // (scope '*'). signatureId null = none; clear: true = back to the
+      // all-mailboxes choice.
+      case "sig_use": {
+        const action = String(body.useAction || "");
+        if (!["new", "reply", "forward"].includes(action)) {
+          return jsonResponse({ success: false, error: "useAction must be new, reply or forward" }, 400);
+        }
+        const scope = body.scope === "*" ? "*" : tok.accountEmail.toLowerCase();
+        if (body.clear) {
+          await service.from("comms_signature_use").delete()
+            .eq("staff_id", user.id).eq("mailbox_email", scope).eq("action", action);
+          return jsonResponse({ success: true });
+        }
+        const sigId = body.signatureId || null;
+        if (sigId) {
+          const { data: mine } = await service.from("comms_signature_templates").select("id")
+            .eq("id", sigId).eq("staff_id", user.id).maybeSingle();
+          if (!mine) return jsonResponse({ success: false, error: "Signature not found." }, 404);
+        }
+        const { error: e } = await service.from("comms_signature_use").upsert({
+          staff_id: user.id, mailbox_email: scope, action, signature_id: sigId, updated_at: new Date().toISOString(),
+        });
+        if (e) throw new Error(e.message);
+        return jsonResponse({ success: true });
       }
 
       case "get_message": {
