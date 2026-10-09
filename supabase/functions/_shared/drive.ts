@@ -121,6 +121,23 @@ export async function getFile(token: string, fileId: string): Promise<DriveFile>
   return await resp.json();
 }
 
+/**
+ * Folder names from the top of AV.Shared down to this folder (inclusive), e.g.
+ * ["Individuals", "Agnew.James", "04_Accounts"]. Drive for desktop shows the same
+ * tree at <letter>:\Shared drives\AV.Shared\…, which is how athena-open finds it.
+ */
+export async function folderPath(token: string, folderId: string): Promise<string[]> {
+  const names: string[] = [];
+  let id = folderId;
+  for (let depth = 0; depth < 20 && id && id !== SHARED_DRIVE_ID; depth++) {
+    const f = await getFile(token, id);
+    if (f.driveId !== SHARED_DRIVE_ID) throw new DriveError(403, "That folder is not in the AV.Shared drive.");
+    names.unshift(f.name);
+    id = f.parents?.[0] ?? "";
+  }
+  return names;
+}
+
 /** The one guard that keeps a full-scope token inside AV.Shared. */
 export async function assertInSharedDrive(token: string, fileId: string): Promise<DriveFile> {
   const f = await getFile(token, fileId);

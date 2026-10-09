@@ -17,6 +17,7 @@
 //   set_accounts_folder { entity_id, folder_id|null }  where its year-end folders live
 //   clear        { entity_id }                   forget the mapping
 //   roots                                        the top-level folders of AV.Shared
+//   path         { folder_id }                   folder names from AV.Shared down (for athena-open)
 //   browse       { entity_id?, folder_id?, folders_only? }  a folder's contents
 //   year_end     { entity_id, period_end, create? }  the year end's folder
 //   notes_get    { entity_id, period_end }       the notes Doc + its text now
@@ -27,7 +28,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authErrorResponse, requireStaffOrService } from "../_shared/require-staff.ts";
 import {
-  assertInSharedDrive, CATEGORY_FOLDERS, DriveError, type DriveFile, getDriveToken, listChildren,
+  assertInSharedDrive, CATEGORY_FOLDERS, DriveError, type DriveFile, folderPath, getDriveToken, listChildren,
   normaliseName, SHARED_DRIVE_ID, uploadFile,
 } from "../_shared/drive.ts";
 import {
@@ -231,6 +232,13 @@ Deno.serve(async (req) => {
         return json({ success: true, folders: top.map((f) => ({ id: f.id, name: f.name, link: f.webViewLink })) });
       }
 
+      // A folder's place in AV.Shared, for opening it on the PC (athena-open).
+      case "path": {
+        const { token } = await getDriveToken(db);
+        const f = await assertInSharedDrive(token, driveId(p.folder_id, "folder_id"));
+        return json({ success: true, path: await folderPath(token, f.id) });
+      }
+
       case "browse": {
         const { token } = await getDriveToken(db);
         let folderId: string;
@@ -241,10 +249,13 @@ Deno.serve(async (req) => {
           folderId = map.folder_id;
         }
         const folder = await assertInSharedDrive(token, folderId);
-        const items = await listChildren(token, folder.id, { max: 2000, foldersOnly: p.folders_only === true });
+        const [items, path] = await Promise.all([
+          listChildren(token, folder.id, { max: 2000, foldersOnly: p.folders_only === true }),
+          p.folders_only === true ? Promise.resolve(null) : folderPath(token, folder.id),
+        ]);
         return json({
           success: true,
-          folder: { id: folder.id, name: folder.name, link: folder.webViewLink, parent: folder.parents?.[0] ?? null },
+          folder: { id: folder.id, name: folder.name, link: folder.webViewLink, parent: folder.parents?.[0] ?? null, path },
           items: items.map((f) => ({ id: f.id, name: f.name, mime: f.mimeType, link: f.webViewLink, modified: f.modifiedTime, size: f.size ? Number(f.size) : null, is_folder: f.mimeType === "application/vnd.google-apps.folder" })),
         });
       }

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, ExternalLink, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FolderSearch, FileText, ExternalLink, X } from 'lucide-react';
 import { BTN } from '../../lib/buttonStyles';
 import { callDrive, searchFolderIndex, folderLink } from './driveApi';
+import { openDriveFile, showInExplorer } from './desktopOpen';
 
 const font = "'Outfit', sans-serif";
 
@@ -191,7 +192,7 @@ export default function FolderExplorerModal({ title, clientType, currentFolderId
                 {it.is_folder ? <Folder size={15} color="#64748b" /> : <FileText size={15} color="#94a3b8" />}
                 {it.is_folder
                   ? <span style={{ flex: 1 }}>{it.name}</span>
-                  : <a href={it.link} target="_blank" rel="noreferrer" style={{ flex: 1, color: '#0f172a', textDecoration: 'none' }}>{it.name}</a>}
+                  : <span onClick={() => openDriveFile(it, contents.folder.path)} style={{ flex: 1, color: '#0f172a', cursor: 'pointer' }} title="Open">{it.name}</span>}
                 <span style={{ color: '#94a3b8', fontSize: 12 }}>{fmtDate(it.modified)}</span>
               </div>
             ))}
@@ -202,6 +203,11 @@ export default function FolderExplorerModal({ title, clientType, currentFolderId
           <div style={{ flex: 1, fontSize: 13, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {selected ? <>Selected: <b>{path[path.length - 1]}</b></> : 'Choose a folder'}
           </div>
+          {contents?.folder?.path && (
+            <button onClick={() => showInExplorer(contents.folder.path)} style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <FolderSearch size={13} /> File Explorer
+            </button>
+          )}
           {selected && (
             <a href={folderLink(selected)} target="_blank" rel="noreferrer" style={{ ...BTN.secondary.sm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               Open in Drive <ExternalLink size={12} />

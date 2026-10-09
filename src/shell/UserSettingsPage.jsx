@@ -6,8 +6,35 @@ import { BTN } from '../lib/buttonStyles';
 import { useAuth } from './AppShell';
 import { ColourPicker, WorkingDaysEditor } from './AdminPage';
 import { callJobPlan } from '../modules/work-planner/plan/planQueries';
+import { INSTALL_COMMAND, showInExplorer } from '../modules/drive/desktopOpen';
 
 const SIGNOFFS = ['Kind regards', 'Best regards', 'Thanks', 'Cheers', 'Many thanks'];
+
+// Opening Drive files on this PC (athena-open): Excel in desktop Excel, PDFs
+// in Adobe, folders in File Explorer, via Google Drive for desktop. One
+// install per Windows user; nothing to configure in Athena.
+function DesktopOpenerCard({ card, cardTitle, hint }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(INSTALL_COMMAND); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* select it by hand */ }
+  };
+  const step = { fontFamily: font, fontSize: 13.5, color: '#334155', margin: '0 0 6px' };
+  return (
+    <section style={card}>
+      <h2 style={cardTitle}>Open Drive files on this PC</h2>
+      <p style={step}>Clicking a file in Athena opens Excel files in desktop Excel and PDFs in Adobe, from Google Drive for desktop, so saving goes straight back to Drive. Google Sheets and Docs still open in the browser. Set it up once on each PC:</p>
+      <p style={step}>1. Press <b>Start</b>, type <b>PowerShell</b>, open it (not as administrator).</p>
+      <p style={step}>2. Paste this and press Enter:</p>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '4px 0 8px' }}>
+        <code style={{ flex: 1, fontSize: 12, background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 8px', overflowX: 'auto', whiteSpace: 'nowrap' }}>{INSTALL_COMMAND}</code>
+        <button onClick={copy} style={BTN.secondary.sm}>{copied ? 'Copied' : 'Copy'}</button>
+      </div>
+      <p style={step}>3. Test it — this should open AV.Shared in File Explorer. Chrome asks the first time: tick <b>Always allow</b>, then <b>Open</b>.</p>
+      <button onClick={() => showInExplorer(['Individuals'])} style={BTN.secondary.sm}>Test: open AV.Shared ▸ Individuals</button>
+      <p style={hint}>Needs Google Drive for desktop running and signed in, with Shared drives ▸ AV.Shared visible in File Explorer.</p>
+    </section>
+  );
+}
 
 // Email defaults for client comms (sql/316): the draft screen starts from
 // these, and "Save as my defaults" there writes here too.
@@ -218,6 +245,8 @@ export default function UserSettingsPage() {
         </section>
 
         <EmailDefaultsCard card={card} cardTitle={cardTitle} labelStyle={labelStyle} inputStyle={inputStyle} hint={hint} />
+
+        <DesktopOpenerCard card={card} cardTitle={cardTitle} hint={hint} />
 
         {/* Security — status plus the way in (was only in the avatar menu) */}
         <section style={card}>

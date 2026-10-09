@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Folder, FileText, ExternalLink } from 'lucide-react';
+import { Folder, FileText, ExternalLink, FolderSearch } from 'lucide-react';
 import { BTN } from '../../lib/buttonStyles';
 import { callDrive } from './driveApi';
+import { openDriveFile, showInExplorer, isGoogleNative } from './desktopOpen';
 
 const font = "'Outfit', sans-serif";
 
@@ -60,6 +61,12 @@ export default function DriveFolderBrowser({ entityId, folderId, action, refresh
         ))}
         <div style={{ flex: 1 }} />
         {data?.folder && action && action(data.folder)}
+        {data?.folder?.path && (
+          <button onClick={() => showInExplorer(data.folder.path)} title="Open this folder in File Explorer (Drive for desktop)"
+            style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <FolderSearch size={13} /> File Explorer
+          </button>
+        )}
         {data?.folder?.link && (
           <a href={data.folder.link} target="_blank" rel="noreferrer" style={{ ...BTN.secondary.sm, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             Open in Drive <ExternalLink size={12} />
@@ -76,7 +83,14 @@ export default function DriveFolderBrowser({ entityId, folderId, action, refresh
               {it.is_folder ? <Folder size={15} color="#64748b" /> : <FileText size={15} color="#94a3b8" />}
               {it.is_folder
                 ? <button onClick={() => open(it)} style={{ background: 'none', border: 'none', padding: 0, color: '#0f172a', cursor: 'pointer', fontFamily: font, fontSize: 13.5, textAlign: 'left', flex: 1 }}>{it.name}</button>
-                : <a href={it.link} target="_blank" rel="noreferrer" style={{ color: '#0f172a', textDecoration: 'none', flex: 1 }}>{it.name}</a>}
+                : <button onClick={() => openDriveFile(it, data.folder.path)} title={isGoogleNative(it.mime) ? 'Open in Google' : 'Open on this PC'}
+                    style={{ background: 'none', border: 'none', padding: 0, color: '#0f172a', cursor: 'pointer', fontFamily: font, fontSize: 13.5, textAlign: 'left', flex: 1 }}>{it.name}</button>}
+              {data.folder.path && (
+                <button onClick={() => showInExplorer([...data.folder.path, it.name])} title="Show in File Explorer"
+                  style={{ background: 'none', border: 'none', padding: 2, cursor: 'pointer', color: '#94a3b8', display: 'inline-flex' }}>
+                  <FolderSearch size={14} />
+                </button>
+              )}
               <span style={{ color: '#94a3b8', fontSize: 12, width: 70, textAlign: 'right' }}>{fmtSize(it.size)}</span>
               <span style={{ color: '#94a3b8', fontSize: 12, width: 90, textAlign: 'right' }}>{fmtDate(it.modified)}</span>
             </div>

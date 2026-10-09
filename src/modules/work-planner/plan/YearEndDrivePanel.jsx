@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ExternalLink, RefreshCw, FolderSearch } from 'lucide-react';
 import { BTN } from '../../../lib/buttonStyles';
 import { callDrive, fileToBase64, folderLink } from '../../drive/driveApi';
+import { showInExplorer } from '../../drive/desktopOpen';
 
 const font = "'Outfit', sans-serif";
 const card = { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 14px' };
@@ -61,6 +62,9 @@ export default function YearEndDrivePanel({ entityId, periodEnd, planId }) {
         {doc && <>
           <a href={doc.web_link} target="_blank" rel="noreferrer" style={linkBtn}>Open the Doc <ExternalLink size={12} /></a>
           <a href={folderLink(doc.folder_id)} target="_blank" rel="noreferrer" style={linkBtn}>Year-end folder <ExternalLink size={12} /></a>
+          <button disabled={busy} title="Open the year-end folder in File Explorer (Drive for desktop)"
+            onClick={async () => { try { const r = await callDrive({ action: 'path', folder_id: doc.folder_id }); showInExplorer(r.path); } catch (e) { setError(e.message); } }}
+            style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}><FolderSearch size={12} /> File Explorer</button>
           <button onClick={load} disabled={busy} title="Fetch the Doc as it stands in Drive" style={{ ...BTN.secondary.sm, display: 'inline-flex', alignItems: 'center', gap: 4 }}><RefreshCw size={12} /> Refresh</button>
         </>}
       </div>
