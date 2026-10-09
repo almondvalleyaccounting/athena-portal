@@ -1966,6 +1966,19 @@ export default function EmailView() {
     }
   }, [refreshScheduled]);
 
+  // Browser tab: say it's email, which folder, and how many unread are
+  // loaded — not the generic "Athena — Almond Valley Accounting".
+  const folderTitle = q ? `Search “${q}”`
+    : SYSTEM_LABELS.find((x) => x.id === labelId)?.label || labelById[labelId]?.name.split('/').pop() || 'Email';
+  const unreadLoaded = threads.filter((t) => t.unread).length;
+  useEffect(() => {
+    const prev = document.title;
+    return () => { document.title = prev; };
+  }, []);
+  useEffect(() => {
+    document.title = `${folderTitle}${unreadLoaded ? ` (${unreadLoaded})` : ''} · Email · Athena`;
+  }, [folderTitle, unreadLoaded]);
+
   // ── Keyboard ──
   // Ignored while typing in any box, and with Ctrl/Cmd/Alt held (so browser
   // and app shortcuts like "/" search keep working). Clicking inside an
