@@ -1380,7 +1380,7 @@ export default function EmailView() {
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[...new Set(thread.messages.flatMap((m) => m.labelIds))]
-              .filter((id) => labelById[id]?.type === 'user')
+              .filter((id) => taggingMode && labelById[id]?.type === 'user')
               .map((id) => (
                 <span key={id} style={{ ...chipStyle('teal'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   {labelById[id].name}
@@ -1735,7 +1735,8 @@ export default function EmailView() {
           {listThreads.map((t) => {
             const party = rowParty(t, t.mailbox || mailbox, showRecipient);
             const isOpen = thread?.id === t.id;
-            const userLabelChips = (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
+            // Applied tags, like suggestions, only show in tagging mode.
+            const userLabelChips = !taggingMode ? [] : (t.labelIds || []).filter((id) => labelById[id]?.type === 'user').slice(0, 2);
             const sug = sugById.get(t.id);
             // Tagging mode's second line: the suggestion with approve / wrong /
             // change, or a plain tag picker when there's nothing to suggest.
