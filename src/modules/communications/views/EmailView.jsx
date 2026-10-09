@@ -1733,10 +1733,22 @@ export default function EmailView() {
     setSelected((prev) => { const n = new Set(prev); n.delete(t.id); return n; });
   }, []);
 
+  // Undo for any "tagged & archived": take the tag(s) off and put the email
+  // back in the Inbox. Through a ref so it reloads the list as it is now.
+  const loadThreadsRef = useRef(null);
+  loadThreadsRef.current = loadThreads;
+  const undoFiling = (mb, id, labelIds) => async () => {
+    try {
+      await gmail.modifyMessage(mb, id, { addLabelIds: ['INBOX'], removeLabelIds: labelIds });
+      threadCache.current.delete(`${mb}:${id}`);
+      loadThreadsRef.current?.();
+    } catch (e) { setError(e.message); }
+  };
+
   const acceptSuggestion = useCallback(async (t, sug) => {
     try {
       await applySuggestion(t, sug);
-      flash(`Tagged ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} & archived.`);
+      flash(`Tagged ${sug.labels.map((l) => `“${l.name}”`).join(' + ')} & archived.`, undoFiling(t.mailbox, t.id, sug.labels.map((l) => l.id)));
     } catch (e) {
       setError(e.message);
     }
@@ -1793,7 +1805,7 @@ export default function EmailView() {
       threadCache.current.delete(`${t.mailbox}:${t.id}`);
       advanceFrom(t.id);
       setThreads((prev) => prev.filter((x) => x.id !== t.id));
-      flash(`Tagged “${label.name}” & archived.`);
+      flash(`Tagged “${label.name}” & archived.`, undoFiling(t.mailbox, t.id, [label.id]));
     } catch (e) {
       setError(e.message);
     }
@@ -1994,7 +2006,7 @@ export default function EmailView() {
         forgetThread(threadMailbox, thread.id);
         advanceFrom(thread.id);
         setThreads((prev) => prev.filter((t) => t.id !== thread.id));
-        flash(`Tagged “${label.name}” & archived.`);
+        flash(`Tagged “${label.name}” & archived.`, undoFiling(threadMailbox, thread.id, [label.id]));
         return;
       }
       setThread((prev) => (prev ? {
@@ -2022,7 +2034,7 @@ export default function EmailView() {
         forgetThread(t.mailbox, t.id);
         advanceFrom(t.id);
         setThreads((prev) => prev.filter((x) => x.id !== t.id));
-        flash(`Tagged “${label.name}” & archived.`);
+        flash(`Tagged “${label.name}” & archived.`, undoFiling(t.mailbox, t.id, [label.id]));
         return;
       }
       const add = (ids) => [...new Set([...(ids || []), label.id])];
@@ -2786,7 +2798,7 @@ export default function EmailView() {
               )}
               {thread.messages.some((m) => m.labelIds.includes('INBOX'))
                 ? <button onClick={() => archiveThread(thread.id)} title="Archive (remove from inbox) — e" style={btnText}><Archive size={14} /> Archive</button>
-                : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to inbox" style={btnText}><ArchiveRestore size={14} /> To inbox</button>}
+                : !threadInTrash && <button onClick={() => archiveThread(thread.id, true)} title="Move back to the Inbox" style={btnText}><ArchiveRestore size={14} /> Move to Inbox</button>}
               <button
                 onClick={() => setReadState(thread.id, !threadUnread)}
                 title={threadUnread ? 'Mark as read — u' : 'Mark as unread — u'}
@@ -2802,7 +2814,7 @@ export default function EmailView() {
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {[...new Set(thread.messages.flatMap((m) => m.labelIds))]
-              .filter((id) => taggingMode && labelById[id]?.type === 'user')
+              .filter((id) => labelById[id]?.type === 'user') // always shown on the open email; the list hides them outside Tagging
               .map((id) => (
                 <span key={id} style={{ ...chipStyle('teal'), display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   {labelById[id].name}
