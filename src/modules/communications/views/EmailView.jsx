@@ -833,11 +833,22 @@ export default function EmailView() {
   }, [suggested, applySuggestion]);
 
   // "This suggestion is wrong": stored server-side so neither this inbox nor a
-  // re-learn offers sender→label again. Applied locally at once.
-  const rejectSuggested = useCallback(async (sender, label) => {
-    setTagRules((prev) => [...prev, { sender_email: sender, label_id: label.id, label_name: label.name, rejected: true, times_used: 0 }]);
+  // re-learn offers sender→label again. Applied locally at once — by flagging
+  // the rule already loaded, not adding a second copy beside it (the live
+  // copy kept the suggestion on screen, so × looked like it did nothing).
+  const rejectSuggested = useCallback(async (sender, label, { quiet = false } = {}) => {
+    setTagRules((prev) => {
+      let hit = false;
+      const next = prev.map((r) => {
+        if (r.sender_email !== sender || r.label_id !== label.id) return r;
+        hit = true;
+        return { ...r, rejected: true };
+      });
+      return hit ? next : [...next, { sender_email: sender, label_id: label.id, label_name: label.name, rejected: true, times_used: 0 }];
+    });
     try {
       await gmail.rejectTag(mailbox, sender, label);
+      if (!quiet) flash(`Won't suggest “${label.name.split('/').pop()}” for ${sender} again.`);
     } catch (e) {
       setError(`Couldn't save that correction: ${e.message}`);
     }
@@ -1034,22 +1045,27 @@ export default function EmailView() {
   }, [mailbox, thread]);
 
   // Take a tag off the open thread — the fix for a tag applied by mistake.
-  // The learned rule is left alone: one wrong filing doesn't make the sender
-  // wrong for that client (tagging mode's × is where a rule is corrected).
+  // It also stops the inbox suggesting that tag for the people on the thread:
+  // removing it is the same "this is wrong" as × on a suggestion.
   const untagThread = useCallback(async (label) => {
     if (!thread) return;
     try {
       await gmail.modifyThread(threadMailbox, thread.id, { removeLabelIds: [label.id] });
+      const ownDomain = threadMailbox.split('@')[1];
+      const senders = new Set(thread.messages
+        .map((m) => parseAddress(m.from).email.toLowerCase())
+        .filter((e) => e && e !== threadMailbox && !(ownDomain && e.endsWith(`@${ownDomain}`))));
+      for (const sender of senders) rejectSuggested(sender, label, { quiet: true });
       setThread((prev) => (prev ? {
         ...prev,
         messages: prev.messages.map((m) => ({ ...m, labelIds: m.labelIds.filter((x) => x !== label.id) })),
       } : prev));
       setThreads((prev) => prev.map((t) => (t.id === thread.id ? { ...t, labelIds: (t.labelIds || []).filter((x) => x !== label.id) } : t)));
-      flash(`Removed “${label.name}”.`);
+      flash(`Removed “${label.name}” — it won't be suggested for this sender again.`);
     } catch (e) {
       setError(e.message);
     }
-  }, [thread, threadMailbox]);
+  }, [thread, threadMailbox, rejectSuggested]);
 
   // ── Bulk actions ──
   const toggleSelect = (id) => setSelected((prev) => {

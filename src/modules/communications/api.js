@@ -198,6 +198,7 @@ export function buildTagSuggester(rules) {
       return [...exact]
         .sort((a, b) => b.times_used - a.times_used
           || (b.last_used_at || '').localeCompare(a.last_used_at || ''))
+        .filter((r) => !rejected.has(`${email}|${r.label_id}`))
         .filter((r) => !seen.has(r.label_id) && seen.add(r.label_id))
         .map((r) => ({ label_id: r.label_id, label_name: r.label_name }));
     }
