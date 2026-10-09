@@ -868,7 +868,9 @@ export default function EmailView() {
         if (byId?.type === 'user') return byId;
         return userLabels.find((l) => l.name === s.label_name) || null;
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      // Already on the email: nothing to suggest (it showed the same tag twice).
+      .filter((l) => !(t.labelIds || []).includes(l.id));
     if (!labelsFor.length) return null;
     return { labels: labelsFor, sender };
   }, [taggingMode, isAll, labelId, q, suggestTag, labelById, userLabels, mailbox, ownDomain]);
@@ -2344,7 +2346,8 @@ const sweepBtn = {
 // Tagging mode, per row: a quiet tag pill, an icon ✓, an icon tag picker.
 const suggPill = {
   display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 8px', fontSize: 11.5, fontWeight: 600,
-  color: tones.teal.fg, background: tones.teal.bg, borderRadius: 999,
+  // Dashed and white: a suggestion, not a tag the email already has.
+  color: tones.teal.fg, background: '#fff', border: `1px dashed ${tones.teal.solid}`, borderRadius: 999,
   fontFamily: font, whiteSpace: 'nowrap', maxWidth: 170,
 };
 const chipX = {
