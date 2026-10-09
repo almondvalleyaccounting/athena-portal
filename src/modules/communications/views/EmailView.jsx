@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Archive, ArchiveRestore, BookUser, CalendarPlus, ChevronDown, ChevronRight,
   Forward as ForwardIcon, Inbox as InboxIcon, Layers, Mail, MailOpen, Paperclip,
@@ -173,8 +174,9 @@ function HtmlBody({ html, onMailto }) {
   );
 }
 
-function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true, onMailto }) {
+function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true, onMailto, contacts }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [card, setCard] = useState(null); // { name, email, at: DOMRect }
   const [showImages, setShowImages] = useState(false);
   const held = useMemo(
     () => (msg.bodyHtml && !remoteImages && !showImages ? holdRemoteImages(msg.bodyHtml) : null),
@@ -190,7 +192,15 @@ function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true, onMailto 
         onClick={() => setOpen((o) => !o)}
         style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '10px 14px', cursor: 'pointer', background: open ? '#fff' : '#f8fafc' }}
       >
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap' }}>{from.name}</span>
+        {/* Click the name for their contact details. */}
+        <span
+          onClick={(e) => { e.stopPropagation(); setCard({ name: from.name, email: from.email, at: e.currentTarget.getBoundingClientRect() }); }}
+          title="Contact details"
+          style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', whiteSpace: 'nowrap', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: '#cbd5e1', textUnderlineOffset: 3 }}
+        >
+          {from.name}
+        </span>
+        {card && <SenderCard {...card} contacts={contacts} onEmail={onMailto} onClose={() => setCard(null)} />}
         {open && <span style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>to {msg.to}{msg.cc ? `, cc ${msg.cc}` : ''}</span>}
         {!open && <span style={{ fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{decodeEntities(msg.snippet)}</span>}
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{fmtDate(msg.internalDate)}</span>
@@ -228,6 +238,102 @@ function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true, onMailto 
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Sender's contact details (click the name in the reading pane) ─────────
+// The basics, each with Copy: name, email, phone(s), and the clients they're
+// linked to. Phones come from the client record (people — BrightManager has a
+// mobile for most) and Google Contacts (rarely has one). Fixed-position so
+// the card isn't clipped by the email's box.
+function SenderCard({ name, email, at, contacts, onEmail, onClose }) {
+  const navigate = useNavigate();
+  const ref = useRef(null);
+  const [people, setPeople] = useState(null);
+  const [copied, setCopied] = useState('');
+  const addr = String(email || '').toLowerCase();
+
+  useEffect(() => {
+    let live = true;
+    supabase.from('people')
+      .select('id, name, phone, email, entity_people(entity_id, entities(id, name))')
+      .ilike('email', addr)
+      .then(({ data }) => { if (live) setPeople(data || []); });
+    return () => { live = false; };
+  }, [addr]);
+
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const esc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [onClose]);
+
+  const g = (contacts || []).find((c) => (c.emails || []).some((e) => String(e).toLowerCase() === addr));
+  const p = (people || [])[0];
+  const displayName = p?.name || g?.display_name || name || addr;
+  const phones = [...new Set([p?.phone, ...(g?.phones || [])].filter(Boolean).map((x) => String(x).trim()))];
+  const clients = [];
+  for (const row of people || []) for (const ep of row.entity_people || []) {
+    if (ep.entities && !clients.some((c) => c.id === ep.entities.id)) clients.push(ep.entities);
+  }
+
+  const copy = async (label, text) => {
+    try { await navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(''), 1500); } catch { /* clipboard blocked */ }
+  };
+  const allText = [displayName, addr, ...phones, g?.organisation, ...clients.map((c) => c.name)].filter(Boolean).join('\n');
+
+  const left = Math.min(at.left, window.innerWidth - 340);
+  const top = Math.min(at.bottom + 6, window.innerHeight - 320);
+  const row = (label, value, href) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+      <span style={{ width: 52, flexShrink: 0, fontSize: 11.5, color: '#94a3b8' }}>{label}</span>
+      {href
+        ? <a href={href} style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: tones.info.solid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</a>
+        : <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>}
+      <button onClick={() => copy(label + value, value)} title={`Copy ${label.toLowerCase()}`}
+        style={{ flexShrink: 0, padding: '2px 8px', fontSize: 11.5, fontFamily: font, border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', cursor: 'pointer', color: copied === label + value ? '#15803d' : '#475569' }}>
+        {copied === label + value ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div ref={ref} onClick={(e) => e.stopPropagation()}
+      style={{ position: 'fixed', left, top, zIndex: 150, width: 320, padding: '12px 14px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, boxShadow: '0 12px 32px rgba(15,23,42,.18)', fontFamily: font, cursor: 'default' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <span style={{ width: 34, height: 34, borderRadius: '50%', background: tones.info.bg, color: tones.info.fg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+          {displayName.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
+        </span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+          {g?.organisation && <div style={{ fontSize: 12, color: '#64748b' }}>{g.organisation}</div>}
+        </div>
+        <button onClick={onClose} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}><X size={14} /></button>
+      </div>
+      {row('Name', displayName)}
+      {row('Email', addr, `mailto:${addr}`)}
+      {phones.map((ph) => <React.Fragment key={ph}>{row('Phone', ph, `tel:${ph.replace(/\s+/g, '')}`)}</React.Fragment>)}
+      {people !== null && phones.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8', padding: '4px 0' }}>No phone number on file.</div>}
+      {clients.length > 0 && (
+        <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #f1f5f9' }}>
+          <div style={{ fontSize: 11.5, color: '#94a3b8', marginBottom: 3 }}>Client{clients.length > 1 ? 's' : ''}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {clients.map((c) => (
+              <button key={c.id} onClick={() => { onClose(); navigate(`/clients/${c.id}`); }}
+                style={{ padding: '2px 9px', fontSize: 12.5, fontFamily: font, borderRadius: 999, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', color: '#334155' }}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <button onClick={() => copy('all', allText)} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>{copied === 'all' ? 'Copied' : 'Copy all'}</button>
+        {onEmail && <button onClick={() => { onClose(); onEmail({ to: addr }); }} style={{ ...BTN.secondary.sm, cursor: 'pointer' }}>New email</button>}
+      </div>
     </div>
   );
 }
@@ -2731,7 +2837,7 @@ export default function EmailView() {
           })()}
           {composer && renderComposer()}
           {thread.messages.map((m, i) => (
-            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} remoteImages={options.remoteImages} onMailto={composeTo} />
+            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} remoteImages={options.remoteImages} onMailto={composeTo} contacts={contacts} />
           ))}
         </>
       );
