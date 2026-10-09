@@ -330,8 +330,18 @@ function ParentPicker({ labels, value, onChange, maxHeight = 180 }) {
 
 // Searchable label picker with create ("Tax/VAT" nests) — used for the
 // bulk Tag+archive and the single-thread Tag action.
-function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left' }) {
+function LabelPicker({ labels, onPick, onCreate, trigger, align = 'left', onOpenChange }) {
   const [open, setOpen] = useState(false);
+  // Lets a hover-only toolbar stay up while its picker is open.
+  // Only on a real open/close (the callback is a fresh arrow every render, and
+  // 500 rows re-firing it on each render would be wasted work).
+  const openChangeRef = useRef(onOpenChange);
+  openChangeRef.current = onOpenChange;
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    openChangeRef.current?.(open);
+  }, [open]);
   const [term, setTerm] = useState('');
   const [busy, setBusy] = useState(false);
   const [parent, setParent] = useState(''); // full name of the label to create inside
@@ -597,7 +607,8 @@ export default function EmailView() {
   const [options, setOptions] = useState(loadOptions);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [moveLabel, setMoveLabel] = useState(null);
-  const [labelSearch, setLabelSearch] = useState(''); // { label, leaf, parent, busy }
+  const [labelSearch, setLabelSearch] = useState('');
+  const [pickerRow, setPickerRow] = useState(null); // row whose Tag picker is open // { label, leaf, parent, busy }
   const optionsRef = useRef(options);
   optionsRef.current = options;
   useEffect(() => {
@@ -2344,11 +2355,12 @@ ${sigBody}` : '', mailbox: from }));
                     </button>
                   </span>
                 ))}
-                <span data-picker className="opacity-0 group-hover:opacity-100">
+                <span data-picker className={pickerRow === t.id ? '' : 'opacity-0 group-hover:opacity-100'}>
                   <LabelPicker
                     labels={userLabels}
                     onPick={(label) => tagRowAs(t, label, sug)}
                     onCreate={ensureLabel}
+                    onOpenChange={(o) => setPickerRow((cur) => (o ? t.id : cur === t.id ? null : cur))}
                     align="right"
                     trigger={<button title={sug ? 'Pick a different tag (and archive)' : 'Tag (and archive)'} style={tagIconBtn}><Tag size={11} /></button>}
                   />
@@ -2390,11 +2402,14 @@ ${sigBody}` : '', mailbox: from }));
               <span style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtDate(t.internalDate)}</span>
             ) : (
               <span className="relative flex-shrink-0" style={{ display: 'inline-flex', alignItems: 'center' }}>
-                <span className="group-hover:invisible" style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                <span className={pickerRow === t.id ? 'invisible' : 'group-hover:invisible'} style={{ fontSize: 11.5, color: '#94a3b8', whiteSpace: 'nowrap' }}>
                   {fmtDate(t.internalDate)}
                 </span>
+                {/* Stays up while this row's Tag picker is open, so moving the
+                    mouse off the row doesn't close it — only picking, clicking
+                    elsewhere or Esc does. */}
                 <span
-                  className="invisible group-hover:visible"
+                  className={pickerRow === t.id ? 'visible' : 'invisible group-hover:visible'}
                   style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 2, background: isOpen ? tones.info.bg : '#fff', paddingLeft: 6, borderRadius: 6 }}
                 >
                   {[
@@ -2421,6 +2436,7 @@ ${sigBody}` : '', mailbox: from }));
                         labels={userLabels}
                         onPick={(label) => tagRow(t, label)}
                         onCreate={ensureLabel}
+                        onOpenChange={(o) => setPickerRow((cur) => (o ? t.id : cur === t.id ? null : cur))}
                         align="right"
                         trigger={<button title={labelId === 'INBOX' ? 'Tag (and archive)' : 'Tag'} style={rowActionBtn}><Tag size={12} /></button>}
                       />
