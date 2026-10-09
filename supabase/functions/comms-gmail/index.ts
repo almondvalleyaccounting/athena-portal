@@ -10,6 +10,7 @@
 //                    one row per EMAIL rather than per conversation
 //   get_message    { messageId }       one email, parsed body + attachments
 //   rename_label   { labelId, name }   rename / move a label (and its children)
+//   sent_index     { max? }   my recent sent mail → the Message-ID each answered
 //   queue_send     { …send fields, sendAt?, mode?, contextMessageId?, acknowledged? }
 //                    every composer email: checked (sql/364), then held in
 //                    comms_outbox — 20s for undo, or until a Send later time
@@ -187,7 +188,7 @@ async function fetchMessageSummaries(accessToken: string, ids: string[], self: S
   const pace = ids.length > CHUNK * 2 ? 250 : 0;
   let missed = 0;
   const meta = (id: string) =>
-    gmailFetch(accessToken, `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`);
+    gmailFetch(accessToken, `/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID`);
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
     const got = await Promise.all(chunk.map((id) =>
@@ -213,6 +214,9 @@ async function fetchMessageSummaries(accessToken: string, ids: string[], self: S
         subject: header(h, "Subject") || "(no subject)",
         from,
         to: header(h, "To"),
+        // Matched against the In-Reply-To of my sent mail (sent_index) to show
+        // "you replied / forwarded".
+        messageIdHeader: header(h, "Message-ID"),
         internalDate: Number(m.internalDate || 0),
         unread: labelIds.includes("UNREAD"),
         labelIds,
@@ -368,6 +372,49 @@ Deno.serve(async (req) => {
           success: true, messages, missed, scanned: ids.length,
           nextPageToken: list.nextPageToken || null,
         });
+      }
+
+      // What I've answered: my recent sent mail, each with the Message-ID it
+      // replied to or forwarded (In-Reply-To — Gmail and Athena both set it,
+      // forwards included). The screen matches these against the emails it
+      // lists. Newest first, up to `max` (≤500), paced like the list.
+      case "sent_index": {
+        const max = Math.min(Math.max(Number(body.max) || 300, 10), 500);
+        const ids: string[] = [];
+        let pageToken: string | undefined;
+        while (ids.length < max) {
+          const params = new URLSearchParams({ maxResults: String(Math.min(100, max - ids.length)) });
+          params.append("labelIds", "SENT");
+          if (pageToken) params.set("pageToken", pageToken);
+          const list = await gmailFetch(tok.accessToken, `/messages?${params.toString()}`);
+          const batch = (list.messages || []).map((m: { id: string }) => m.id);
+          ids.push(...batch);
+          pageToken = list.nextPageToken;
+          if (!pageToken || !batch.length) break;
+        }
+        const out: Array<Record<string, unknown>> = [];
+        const CHUNK = 20;
+        for (let i = 0; i < ids.length; i += CHUNK) {
+          const got = await Promise.all(ids.slice(i, i + CHUNK).map((id) =>
+            gmailFetch(tok.accessToken,
+              `/messages/${id}?format=metadata&metadataHeaders=In-Reply-To&metadataHeaders=Subject&metadataHeaders=To`)
+              .catch(() => null)));
+          for (const m of got) {
+            if (!m) continue;
+            const h = m.payload?.headers;
+            const inReplyTo = header(h, "In-Reply-To").trim();
+            if (!inReplyTo) continue; // a new email answers nothing
+            out.push({
+              id: m.id,
+              inReplyTo,
+              forward: /^\s*(fwd?|fw)\s*:/i.test(header(h, "Subject")),
+              to: header(h, "To"),
+              date: Number(m.internalDate || 0),
+            });
+          }
+          if (i + CHUNK < ids.length) await new Promise((r) => setTimeout(r, 200));
+        }
+        return jsonResponse({ success: true, sent: out });
       }
 
       case "get_message": {

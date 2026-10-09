@@ -876,6 +876,43 @@ export default function EmailView() {
   const busyRef = useRef(false);
   useEffect(() => { busyRef.current = listLoading; }, [listLoading]);
 
+  // ── What I've replied to / forwarded ──
+  // mailbox → Map(Message-ID of the email answered → [{ id, forward, to, date }]),
+  // built from my recent Sent mail (comms-gmail sent_index) so replies made in
+  // Gmail itself count too. Loaded once per mailbox, topped up after a send.
+  const [answeredIdx, setAnsweredIdx] = useState({});
+  const mergeAnswered = useCallback((mb, rows) => {
+    setAnsweredIdx((prev) => {
+      const m = new Map(prev[mb] || []);
+      for (const r of rows) {
+        const key = String(r.inReplyTo || '').trim().toLowerCase();
+        if (!key) continue;
+        const list = (m.get(key) || []).filter((x) => x.id !== r.id);
+        m.set(key, [...list, r].sort((a, b) => b.date - a.date));
+      }
+      return { ...prev, [mb]: m };
+    });
+  }, []);
+  const loadAnswered = useCallback(async (mb, max) => {
+    try {
+      const res = await gmail.sentIndex(mb, max);
+      mergeAnswered(mb, res.sent || []);
+    } catch { /* the icons are a nicety; the inbox works without them */ }
+  }, [mergeAnswered]);
+  const answeredLoaded = useRef(new Set());
+  useEffect(() => {
+    for (const mb of activeMailboxes) {
+      if (answeredLoaded.current.has(mb)) continue;
+      answeredLoaded.current.add(mb);
+      loadAnswered(mb, 300);
+    }
+  }, [activeMailboxes, loadAnswered]);
+  // { reply, forward } — the latest of each for one email, or nulls.
+  const answeredFor = useCallback((mb, messageIdHeader) => {
+    const list = answeredIdx[mb]?.get(String(messageIdHeader || '').trim().toLowerCase()) || [];
+    return { reply: list.find((x) => !x.forward) || null, forward: list.find((x) => x.forward) || null };
+  }, [answeredIdx]);
+
   const checkForMail = useCallback(async () => {
     if (!activeMailboxes.length || busyRef.current) return;
     const gen = loadGen.current; // observe, never cancel, an in-flight walk
@@ -888,6 +925,7 @@ export default function EmailView() {
       } catch { /* a background check stays quiet */ }
     }));
     if (gen !== loadGen.current) return;
+    for (const mb of activeMailboxes) loadAnswered(mb, 25);
     if (incoming.length) {
       setThreads((prev) => {
         const byId = new Map(prev.map((t) => [t.id, t]));
@@ -896,7 +934,7 @@ export default function EmailView() {
       });
     }
     setLastChecked(Date.now());
-  }, [activeMailboxes, listQuery]);
+  }, [activeMailboxes, listQuery, loadAnswered]);
 
   useEffect(() => {
     if (!autoRefresh) return undefined;
@@ -1535,7 +1573,7 @@ export default function EmailView() {
       setComposer(withStart({ mode, to, cc, subject: reSubject, body: sig, quote: originalOf(latestMsg, 'reply', optionsRef.current.includeOriginal), threadId: thread.threadId, inReplyTo: latestMsg.messageIdHeader, references, mailbox: threadMailbox, contextId: latestMsg.id }));
     } else if (mode === 'forward') {
       const fwdSubject = /^fwd?:/i.test(subject) ? subject : `Fwd: ${subject}`;
-      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox, contextId: latestMsg.id }));
+      setComposer(withStart({ mode, to: '', cc: '', subject: fwdSubject, body: sig, quote: originalOf(latestMsg, 'forward', optionsRef.current.includeOriginal), mailbox: threadMailbox, contextId: latestMsg.id, inReplyTo: latestMsg.messageIdHeader, references }));
     }
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
@@ -1628,11 +1666,16 @@ ${sigBody}` : '', mailbox: from }));
 
   const sendNowFromOutbox = useCallback(async (item) => {
     try {
-      await gmail.sendQueued(item.mailbox, item.id);
+      const res = await gmail.sendQueued(item.mailbox, item.id);
+      // Show "you replied / forwarded" at once, without re-reading Sent.
+      const d = item.draft || item.payload?.draft || item.payload;
+      if (res?.id && d?.inReplyTo) {
+        mergeAnswered(item.mailbox, [{ id: res.id, inReplyTo: d.inReplyTo, forward: d.mode === 'forward', to: d.to, date: Date.now() }]);
+      }
     } catch (e) {
       setError(`Send failed: ${e.message}`);
     }
-  }, []);
+  }, [mergeAnswered]);
 
   // The 20-second undo window, counted down in the notice bar.
   const [, setTick] = useState(0);
@@ -2103,6 +2146,24 @@ ${sigBody}` : '', mailbox: from }));
               <span style={chipStyle('neutral')}>{mailboxLabel[threadMailbox] || threadMailbox}</span>
             )}
           </div>
+          {(() => {
+            const a = latestMsg ? answeredFor(threadMailbox, latestMsg.messageIdHeader) : {};
+            const items = [
+              a.reply && { Icon: ReplyIcon, text: `You replied ${fmtWhen(new Date(a.reply.date).toISOString())}`, id: a.reply.id, view: 'View reply' },
+              a.forward && { Icon: ForwardIcon, text: `You forwarded it to ${parseAddress(a.forward.to).name} ${fmtWhen(new Date(a.forward.date).toISOString())}`, id: a.forward.id, view: 'View' },
+            ].filter(Boolean);
+            if (!items.length) return null;
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '6px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12.5, color: '#475569' }}>
+                {items.map(({ Icon, text, id, view }) => (
+                  <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon size={12} color="#64748b" /> {text}
+                    <button onClick={() => openThread({ id, mailbox: threadMailbox, unread: false })} style={linkBtn}>{view}</button>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
           {composer && renderComposer()}
           {thread.messages.map((m, i) => (
             <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} remoteImages={options.remoteImages} onMailto={composeTo} />
@@ -2585,6 +2646,21 @@ ${sigBody}` : '', mailbox: from }));
                   </span>
                 )}
                 {userLabelChips.map((id) => <span key={id} style={{ ...chipStyle('teal'), flexShrink: 0 }}>{labelById[id].name.split('/').pop()}</span>)}
+                {(() => {
+                  // ↩ replied / ↪ forwarded, Outlook-style, beside the date.
+                  const a = answeredFor(t.mailbox, t.messageIdHeader);
+                  if (!a.reply && !a.forward) return null;
+                  const tip = [
+                    a.reply && `You replied ${fmtWhen(new Date(a.reply.date).toISOString())}`,
+                    a.forward && `You forwarded it to ${parseAddress(a.forward.to).name} ${fmtWhen(new Date(a.forward.date).toISOString())}`,
+                  ].filter(Boolean).join(' · ');
+                  return (
+                    <span title={tip} style={{ display: 'inline-flex', gap: 2, color: '#94a3b8', flexShrink: 0 }}>
+                      {a.reply && <ReplyIcon size={12} />}
+                      {a.forward && <ForwardIcon size={12} />}
+                    </span>
+                  );
+                })()}
                 {tagControls}
               </>
             );

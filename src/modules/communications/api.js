@@ -101,6 +101,7 @@ export const gmail = {
   listMessages: (mailbox, { labelIds, q, pageToken, maxResults, excludeOwn } = {}) =>
     callGmail('list_messages', { mailbox, labelIds, q, pageToken, maxResults, excludeOwn }),
   getMessage: (mailbox, messageId) => callGmail('get_message', { mailbox, messageId }),
+  sentIndex: (mailbox, max) => callGmail('sent_index', { mailbox, max }),
   modifyMessage: (mailbox, messageId, { addLabelIds, removeLabelIds }) =>
     callGmail('modify_message', { mailbox, messageId, addLabelIds, removeLabelIds }),
   trashMessage: (mailbox, messageId) => callGmail('trash_message', { mailbox, messageId }),
