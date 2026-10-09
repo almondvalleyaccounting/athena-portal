@@ -533,10 +533,12 @@ export default function EmailView() {
   const loadGen = useRef(0);
   const [thread, setThread] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
-  // An unsent draft is kept in this browser as you type and comes back after a
-  // reload, a crash or a sign-out. Cleared on send or discard.
+  // An unsent draft is kept as you type and comes back after a reload of this
+  // tab. Per TAB (sessionStorage), not per browser: a shared copy was picked
+  // up by a second Athena tab, and discarding there deleted the first tab's.
+  // Cleared on send or discard.
   const [composer, setComposer] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('comms_draft') || 'null'); } catch { return null; }
+    try { return JSON.parse(sessionStorage.getItem('comms_draft') || 'null'); } catch { return null; }
   });
   const [sending, setSending] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
@@ -1043,8 +1045,8 @@ export default function EmailView() {
   useEffect(() => {
     composerRef.current = composer;
     try {
-      if (composerDirty(composer)) localStorage.setItem('comms_draft', JSON.stringify(composer));
-      else localStorage.removeItem('comms_draft');
+      if (composerDirty(composer)) sessionStorage.setItem('comms_draft', JSON.stringify(composer));
+      else sessionStorage.removeItem('comms_draft');
     } catch { /* storage full or blocked — the draft still lives on screen */ }
   }, [composer]);
   // Anything that would close the composer asks first when it holds typing.
