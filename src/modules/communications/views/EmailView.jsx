@@ -89,7 +89,36 @@ function fmtDate(ms) {
 // waits for every remote image, so a newsletter sat in a 160px box with its
 // own scrollbar for seconds. A ResizeObserver then follows the document as
 // images arrive and grow it.
-function HtmlBody({ html }) {
+// Links: the sandbox (no scripts, no popups) also blocked every click, so an
+// email address or web link in an email did nothing. Clicks are caught here
+// instead — a mailto starts a new email in Athena, a web link opens in a new
+// tab. The email itself still can't run anything.
+function handleEmailLink(e, onMailto) {
+  const a = e.target.closest?.('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  e.preventDefault();
+  if (/^mailto:/i.test(href)) {
+    const [addr, query] = href.replace(/^mailto:/i, '').split('?');
+    const params = new URLSearchParams(query || '');
+    onMailto?.({ to: decodeURIComponent(addr || ''), subject: params.get('subject') || '' });
+  } else if (/^https?:/i.test(href)) {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+}
+
+// Plain-text emails: email addresses become clickable (new email to them).
+function linkifyEmails(text, onMailto) {
+  if (!onMailto) return text;
+  const parts = String(text).split(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g);
+  return parts.map((p, i) => (i % 2
+    ? <a key={i} href={`mailto:${p}`} onClick={(e) => { e.preventDefault(); onMailto({ to: p }); }} style={{ color: tones.info.solid }}>{p}</a>
+    : p));
+}
+
+function HtmlBody({ html, onMailto }) {
+  const mailtoRef = useRef(onMailto);
+  mailtoRef.current = onMailto;
   const ref = useRef(null);
   const [height, setHeight] = useState(160);
 
@@ -119,6 +148,7 @@ function HtmlBody({ html }) {
           measure();
           observer = new RO(measure);
           observer.observe(doc.body);
+          doc.addEventListener('click', (e) => handleEmailLink(e, mailtoRef.current));
           return;
         }
       } catch { /* sandbox quirks — onLoad still measures */ }
@@ -141,7 +171,7 @@ function HtmlBody({ html }) {
   );
 }
 
-function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true }) {
+function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true, onMailto }) {
   const [open, setOpen] = useState(defaultOpen);
   const [showImages, setShowImages] = useState(false);
   const held = useMemo(
@@ -174,8 +204,8 @@ function MessageCard({ msg, mailbox, defaultOpen, remoteImages = true }) {
             </div>
           )}
           {msg.bodyHtml
-            ? <HtmlBody html={held ? held.html : msg.bodyHtml} />
-            : <div style={{ padding: 14, fontSize: 14, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.bodyText || decodeEntities(msg.snippet)}</div>}
+            ? <HtmlBody html={held ? held.html : msg.bodyHtml} onMailto={onMailto} />
+            : <div style={{ padding: 14, fontSize: 14, color: '#1e293b', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{linkifyEmails(msg.bodyText || decodeEntities(msg.snippet), onMailto)}</div>}
           {msg.attachments.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderTop: '1px solid #f1f5f9' }}>
               {msg.attachments.map((a) => (
@@ -1459,6 +1489,18 @@ export default function EmailView() {
     if (paneRef.current) paneRef.current.scrollTop = 0;
   }, [latestMsg, thread, threadMailbox, sendFrom, signatures]);
 
+  // A new email to an address clicked in an email body (mailto link). Sent
+  // from the mailbox you're reading, with your signature if that's on.
+  const composeTo = useCallback(({ to, subject = '' }) => {
+    if (!okToDiscard()) return;
+    const from = threadMailbox || sendFrom;
+    const sigBody = optionsRef.current.autoSignature ? effectiveSignature(signatures, from) : '';
+    setComposer(withStart({ mode: 'new', to, cc: '', subject, body: sigBody ? `
+
+${sigBody}` : '', mailbox: from }));
+    if (paneRef.current) paneRef.current.scrollTop = 0;
+  }, [threadMailbox, sendFrom, signatures]);
+
   // ── Row actions ──
   // Reply/forward from a list row needs the full latest message (for the quote)
   // and the thread's own mailbox, so it opens the thread first and lets the
@@ -1887,7 +1929,7 @@ export default function EmailView() {
           </div>
           {composer && renderComposer()}
           {thread.messages.map((m, i) => (
-            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} remoteImages={options.remoteImages} />
+            <MessageCard key={m.id} msg={m} mailbox={threadMailbox} defaultOpen={i === 0} remoteImages={options.remoteImages} onMailto={composeTo} />
           ))}
         </>
       );
