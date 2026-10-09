@@ -560,7 +560,7 @@ export default function EmailView() {
   // just mail. On, every row gets a tag line and the list can be filtered
   // down to one suggested tag to eyeball and approve as a batch.
   const [taggingMode, setTaggingMode] = useState(false);
-  const [tagFilter, setTagFilter] = useState('suggested'); // all | suggested | none | <labelId>
+  const [tagFilter, setTagFilter] = useState('all'); // all | suggested | none | <labelId>
   const [expanded, setExpanded] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('comms_labels_expanded') || '[]')); }
     catch { return new Set(); }
@@ -919,7 +919,7 @@ export default function EmailView() {
   // A filter on a tag that's just been cleared falls back to the rest.
   useEffect(() => {
     if (!['all', 'suggested', 'none'].includes(tagFilter)
-      && !suggestedLabelCounts.some((c) => c.label.id === tagFilter)) setTagFilter('suggested');
+      && !suggestedLabelCounts.some((c) => c.label.id === tagFilter)) setTagFilter('all');
   }, [tagFilter, suggestedLabelCounts]);
 
   // Applies the whole suggested set in one modify, then archives.
@@ -1848,7 +1848,7 @@ export default function EmailView() {
           {/* Labels and learned rules are per-account, so tagging needs one mailbox. */}
           {!isAll && (
             <button
-              onClick={() => { setTaggingMode((on) => !on); setTagFilter('suggested'); }}
+              onClick={() => { setTaggingMode((on) => !on); setTagFilter('all'); }}
               title={taggingMode ? 'Leave tagging mode' : 'Tagging mode — see suggested tags and tag emails in bulk'}
               style={{ ...btnIcon, ...(taggingMode ? { background: tones.teal.bg, borderColor: tones.teal.solid, color: tones.teal.fg } : {}) }}
             >
@@ -1930,9 +1930,9 @@ export default function EmailView() {
                         onChange={(e) => setTagFilter(e.target.value)}
                         style={{ padding: '3px 6px', fontSize: 12.5, fontFamily: font, border: `1px solid ${tones.teal.border}`, borderRadius: 6, background: '#fff', color: '#334155', maxWidth: 260 }}
                       >
+                        <option value="all">Everything ({visibleThreads.length})</option>
                         <option value="suggested">With a suggestion ({sugById.size})</option>
                         <option value="none">No suggestion ({visibleThreads.length - sugById.size})</option>
-                        <option value="all">Everything ({visibleThreads.length})</option>
                         {suggestedLabelCounts.length > 0 && (
                           <optgroup label="Suggested tag">
                             {suggestedLabelCounts.map(({ label, n }) => (
