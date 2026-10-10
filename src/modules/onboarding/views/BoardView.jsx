@@ -53,7 +53,7 @@ function Cell({ step, groupStart }) {
   return (
     <td style={tdStyle} title={title}>
       <div style={{
-        width: 26, height: 20, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 26, height: 20, margin: '0 auto', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 12, fontWeight: 700, ...boxStyle,
       }}>
         {glyph}
@@ -168,10 +168,13 @@ export default function BoardView() {
                         position: 'sticky', top: 26, zIndex: 1, background: '#fff',
                         padding: '6px 3px', fontSize: 10.5, fontWeight: 600, color: '#94a3b8',
                         borderBottom: '1px solid #e5e7eb', borderLeft: isGroupStart ? '1px solid #e5e7eb' : 'none',
-                        writingMode: 'vertical-rl', transform: 'rotate(180deg)', height: 90, whiteSpace: 'nowrap',
+                        height: 90, textAlign: 'center', verticalAlign: 'bottom',
                       }}
                     >
-                      {col.label}
+                      {/* Rotate an inner box, not the cell, so the label centres over the column's box. */}
+                      <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap', margin: '0 auto', display: 'inline-block' }}>
+                        {col.label}
+                      </div>
                     </th>
                   );
                 })}
