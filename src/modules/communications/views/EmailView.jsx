@@ -2516,7 +2516,21 @@ export default function EmailView() {
     }
   }, [refreshScheduled]);
 
-  // The open email is what "+ Create" is about (here and in the top bar).
+  // "+ Create" from a list row (hover bar): the same context, from the row's
+  // summary — no attachments until the email is opened.
+  const rowCreateCtx = (t) => {
+    const from = parseAddress(t.from);
+    const mb = t.mailbox || mailbox;
+    const firm = (mb.split('@')[1] || '').toLowerCase();
+    const all = [t.from, t.to].filter(Boolean).join(', ').match(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+    return {
+      kind: 'email', subject: t.subject, fromName: from.name, fromEmail: from.email, date: t.internalDate,
+      mailbox: mb, threadId: t.threadId, messageId: t.id, snippet: t.snippet, attachments: [],
+      emails: [...new Set(all.map((e) => e.toLowerCase()))].filter((e) => !firm || !e.endsWith(`@${firm}`)),
+    };
+  };
+
+  // The open email is what "+ Create" is about.
   const createCtx = useMemo(() => {
     const m = thread?.messages?.[0];
     if (!m) return null;
@@ -3531,6 +3545,7 @@ export default function EmailView() {
                     { key: 'replyAll', title: 'Reply all', Icon: ReplyAllIcon, run: () => rowCompose(t, 'replyAll') },
                     { key: 'forward', title: 'Forward', Icon: ForwardIcon, run: () => rowCompose(t, 'forward') },
                     { key: 'diarise', title: 'Diarise — open a prefilled Google Calendar event', Icon: CalendarPlus, run: () => diarise(t) },
+                    { key: 'create', title: 'Create a task, agenda item, bill or quote from this email', Icon: Plus, run: () => openCreate(rowCreateCtx(t)) },
                     { key: 'trash', title: 'Move to bin', Icon: Trash2, run: () => rowTrash(t), danger: true },
                   ].map(({ key, title, Icon, run, danger }) => (
                     <button

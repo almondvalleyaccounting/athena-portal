@@ -8,8 +8,7 @@ import { useAuth } from './AppShell';
 import QuickSearch from './QuickSearch';
 import ActivityBell from './ActivityBell';
 import HelpButton from './HelpButton';
-import { openCreate } from './create/createBus';
-import { Plus } from 'lucide-react';
+
 
 /* ─── Known sub-page labels keyed by pathname prefix ──────────
  * These are detail/feature routes accessed via in-page buttons rather
@@ -165,17 +164,6 @@ export default function TopBar() {
 
       {/* ── Right: Bell + Avatar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 'auto' }}>
-        {/* Create a task, bill, quote… — from an open email it fills in the details */}
-        <button
-          onClick={() => openCreate()}
-          title="Create a task, agenda item, bill or quote"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 13.5, fontWeight: 600,
-            borderRadius: 8, border: 'none', background: '#0f172a', color: '#fff', cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
-          }}
-        >
-          <Plus size={14} /> Create
-        </button>
         <HelpButton />
         <ActivityBell />
 
