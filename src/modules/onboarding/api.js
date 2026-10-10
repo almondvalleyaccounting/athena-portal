@@ -1214,7 +1214,7 @@ export async function listCrossCheckOrphans() {
 export async function listCrossCheckBillingMissing() {
   const { data, error } = await supabase
     .from('v_onboarding_crosscheck_billing_missing')
-    .select('entity_id, billing_missing_taxes');
+    .select('entity_id, billing_missing_taxes, sa_linked_billed');
   if (error) throw error;
   return data || [];
 }

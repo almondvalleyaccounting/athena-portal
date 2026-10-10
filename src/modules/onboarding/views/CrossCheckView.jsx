@@ -194,7 +194,14 @@ function billingCell(r) {
   if (r.brightpay_without_payroll_service) {
     issues.push({ type: 'billing', text: `BrightPay runs a payroll for this client (${r.brightpay_employer || 'employer'}) but no fee or scheduled work covers it` });
   }
-  if (issues.length) return finding(issues);
+  if (issues.length) {
+    // Where SA may sit inside another client's fee. Shown in the modal, kept
+    // out of the title so a change in that client's billing doesn't void an override.
+    const hint = r.sa_linked_billed && inList(r.billing_missing_taxes, 'sa')
+      ? `Linked to ${r.sa_linked_billed}, which ${r.sa_linked_billed.includes(', ') ? 'are' : 'is'} billed — the SA may be inside that fee.`
+      : null;
+    return { ...finding(issues), hint };
+  }
   if (!(r.does_accounts_ct || r.does_sa || r.does_vat || r.does_payroll)) return null;
   return { state: 'ok', types: [], title: 'Every service BrightManager schedules has a fee line' };
 }
@@ -497,6 +504,12 @@ function MarkModal({ row, check, cell, onClose, onChanged }) {
           </div>
         </div>
 
+        {cell.hint && (
+          <div style={{ fontSize: 13.5, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', marginTop: 12, lineHeight: 1.45 }}>
+            {cell.hint}
+          </div>
+        )}
+
         {check.tax && !companySa && (
           <div style={{ marginTop: 16 }}><TaxDetail entityId={row.entity_id} tax={check.tax} /></div>
         )}
@@ -530,7 +543,7 @@ function MarkModal({ row, check, cell, onClose, onChanged }) {
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   rows={3}
-                  placeholder="e.g. Billed through the parent company's fee"
+                  placeholder={cell.hint ? `e.g. SA billed inside ${row.sa_linked_billed.split(', ')[0]}'s fee` : "e.g. Billed through the parent company's fee"}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 14, fontFamily: font,
                            border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical' }}
                 />
@@ -573,8 +586,12 @@ export default function CrossCheckView() {
   const load = useCallback(() => {
     Promise.all([listCrossCheck(), listCrossCheckBillingMissing()])
       .then(([board, billing]) => {
-        const byEntity = Object.fromEntries(billing.map((b) => [b.entity_id, b.billing_missing_taxes]));
-        setRows(board.map((r) => ({ ...r, billing_missing_taxes: byEntity[r.entity_id] || null })));
+        const byEntity = Object.fromEntries(billing.map((b) => [b.entity_id, b]));
+        setRows(board.map((r) => ({
+          ...r,
+          billing_missing_taxes: byEntity[r.entity_id]?.billing_missing_taxes || null,
+          sa_linked_billed: byEntity[r.entity_id]?.sa_linked_billed || null,
+        })));
       })
       .catch((e) => setError(e.message));
     loadOverrides();
