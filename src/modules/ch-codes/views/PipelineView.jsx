@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle, PhoneCall, Mail, Send, IdCard, KeyRound, Check, Rows3, LayoutGrid,
-  ArrowRight, Ban, RotateCcw, FileText, Building2, ChevronDown, ChevronRight,
+  ArrowRight, Ban, RotateCcw, FileText, Building2, ChevronDown, ChevronRight, MoreHorizontal,
 } from 'lucide-react';
 import { chipStyle, pillStyle, tones } from '../../../lib/tokens';
 import ChSubNav from '../components/ChSubNav';
@@ -116,9 +116,10 @@ function EmailCounter({ value, onSave }) {
         style={{ width: 52, padding: '3px 6px', fontSize: 13, fontFamily: font, border: '1px solid #93c5fd', borderRadius: 7 }} />
     );
   }
-  // Colour the counter by how many emails have gone: 0 grey, 1 blue, 2 amber, 3+ red.
+  // Grey until the ladder runs out; red at 3+ (a call is due). The status pill
+  // carries the rest, so the counter doesn't add a colour of its own per row.
   const n = value ?? 0;
-  const t = n >= 3 ? tones.danger : n === 2 ? tones.warning : n === 1 ? tones.info : { bg: '#f8fafc', border: '#e5e7eb', fg: '#475569' };
+  const t = n >= 3 ? tones.danger : { bg: '#f8fafc', border: '#e5e7eb', fg: '#475569' };
   return (
     <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} title="Emails sent this stage — click to set"
       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: t.bg, border: `1px solid ${t.border}`, borderRadius: 999, padding: '3px 9px', fontSize: 13, fontWeight: 700, color: t.fg, cursor: 'pointer', fontFamily: font }}>
@@ -127,62 +128,13 @@ function EmailCounter({ value, onSave }) {
   );
 }
 
-// Chips for the escalation/call/reply states — the coloured email counter
-// already conveys the 0/1/2/3 email progress, so we don't duplicate it here.
-// These stack rather than override each other: an escalated request that has
-// since been called shows both, because the escalation doesn't go away.
-function CommsChip({ r }) {
-  const chips = [];
-  // Reply hold comes first — they answered; process it before chasing.
-  if (r.client_replied_at) {
-    chips.push(
-      <span key="replied" style={{ ...chipStyle('success'), display: 'inline-flex', alignItems: 'center', gap: 3 }}
-        title={`Email reply received ${new Date(r.client_replied_at).toLocaleString('en-GB')} — reminders held until the stage moves`}>
-        📩 Replied</span>,
-    );
-  }
-  if (isEscalated(r)) {
-    chips.push(
-      <span key="esc" style={{ ...chipStyle('danger'), display: 'inline-flex', alignItems: 'center', gap: 3 }}
-        title="Escalated — stays on the record until someone removes it deliberately">
-        <AlertTriangle size={10} /> Escalated</span>,
-    );
-  }
-  if (r.called_at || r.escalation_status === 'call_needed') {
-    const oc = callOutcomeMeta(r.last_call_outcome);
-    const when = r.called_at ? new Date(r.called_at) : null;
-    const title = [
-      when ? `Called ${when.toLocaleString('en-GB')}` : 'Call needed',
-      oc ? `— ${oc.label}` : null,
-      r.last_call_note || null,
-    ].filter(Boolean).join(' ');
-    chips.push(
-      <span key="call" style={{ ...chipStyle(oc?.tone || 'accent'), display: 'inline-flex', alignItems: 'center', gap: 3 }} title={title}>
-        <PhoneCall size={10} />
-        {when ? `${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}${oc && oc.value !== 'other' ? ` · ${oc.label}` : ''}` : 'Call needed'}
-      </span>,
-    );
-  }
-  return chips.length ? <>{chips}</> : null;
-}
-
-function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = false, title }) {
-  const t = tones[tone] || tones.info;
-  // The plain main action ("Record decision") is the shared primary button;
-  // neutral and danger outlines are the shared secondary/danger buttons.
-  // Green, amber and purple keep their status meaning.
-  const kind = solid ? (tone === 'info' ? 'primary' : null)
-    : tone === 'neutral' ? 'secondary' : tone === 'danger' ? 'danger' : null;
-  const status = {
-    fontFamily: font, fontSize: 13, fontWeight: 600, padding: '5px 10px', borderRadius: 8,
-    background: solid ? (disabled ? '#e5e7eb' : t.solid) : '#fff',
-    color: solid ? '#fff' : (disabled ? '#cbd5e1' : t.fg),
-    border: `1px solid ${disabled ? '#eef2f6' : (solid ? t.solid : t.border)}`,
-  };
+// One look for every row button: the shared primary / secondary / danger kinds.
+// Colour is kept for status (the pill), not spread across the actions.
+function Btn({ icon: Icon, label, onClick, disabled, kind = 'secondary', title }) {
   return (
-    <button onClick={(e) => { e.stopPropagation(); onClick(); }} disabled={disabled} title={title}
+    <button onClick={(e) => { e.stopPropagation(); onClick?.(); }} disabled={disabled} title={title}
       style={{
-        ...(kind ? { ...BTN[kind].sm, opacity: disabled ? 0.45 : 1 } : status),
+        ...BTN[kind].sm, opacity: disabled ? 0.45 : 1, whiteSpace: 'nowrap',
         display: 'inline-flex', alignItems: 'center', gap: 5, cursor: disabled ? 'not-allowed' : 'pointer',
       }}>
       {Icon && <Icon size={13} />} {label}
@@ -190,12 +142,58 @@ function Btn({ icon: Icon, label, onClick, disabled, tone = 'info', solid = fals
   );
 }
 
+// The ⋯ menu at the end of each row: the less-used and destructive actions
+// (escalate, reject/exit, other emails, a call when it isn't the next step).
+function RowMenu({ items, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  // Keep the column the same width on rows with nothing to offer.
+  if (!items.length) return <span style={{ width: 30 }} />;
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-flex' }} onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setOpen((o) => !o)} disabled={disabled} title="More actions" aria-label="More actions"
+        style={{ ...BTN.secondary.sm, width: 30, padding: '5px 0', display: 'inline-flex', justifyContent: 'center', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1 }}>
+        <MoreHorizontal size={14} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: 4, minWidth: 190 }}>
+          {items.map((it) => (
+            <button key={it.key} title={it.title}
+              onClick={() => { setOpen(false); it.onClick(); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', background: 'none', border: 'none', borderRadius: 7, padding: '7px 10px', fontSize: 13, fontFamily: font, cursor: 'pointer', color: it.danger ? tones.danger.fg : '#334155', whiteSpace: 'nowrap' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}>
+              {it.icon && <it.icon size={13} />} {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
 const QUEUE_BUTTONS = {
-  s1_offer: [['offer', 'Queue offer', Send, 'info'], ['reminder', 'Remind: decision', Mail, 'warning']],
-  s3a_client: [['self_verify', 'Remind: self-verify', Mail, 'info']],
-  s3b_us: [['id_poa', 'Remind: ID & POA', IdCard, 'accent']],
-  s4_code: [['code', 'Remind: code', KeyRound, 'success']],
+  s1_offer: [['offer', 'Queue offer', Send], ['reminder', 'Remind: decision', Mail]],
+  s3a_client: [['self_verify', 'Remind: self-verify', Mail]],
+  s3b_us: [['id_poa', 'Remind: ID & POA', IdCard]],
+  s4_code: [['code', 'Remind: code', KeyRound]],
 };
+
+// The chase ladder: offer + 2 reminders = 3 emails, then a call.
+//  - offer: the first email IS the offer, so once anything has gone it's done.
+//  - reminders: greyed at 3 emails — the next action is a call.
+const queueDisabled = (kind, emailsSent) => (kind === 'offer' ? emailsSent >= 1 : emailsSent >= 3);
+
+// Columns shared by every row in a stage (subgrid), so pills and buttons line up:
+// person · status · emails · next step · stage actions · ⋯
+const ROW_COLUMNS = 'minmax(0, 1fr) auto auto auto auto auto';
+
 
 export default function PipelineView() {
   const navigate = useNavigate();
@@ -352,128 +350,189 @@ export default function PipelineView() {
     actGroup(group, (row) => rejectRequest(row, reason, { actorId }), `${group.rows[0].person?.name || 'Request'} moved to Rejected / exit.`);
   }
 
-  // The stage-specific action row (used in both densities). Operates on a
-  // tile group — for person-level stages this may fan out across >1 company.
-  function StageControls({ group }) {
+  // Every state worth flagging on a row, most urgent first. The row shows only
+  // the first as a pill; the rest sit in its tooltip and on the detail page.
+  function statusItems(group) {
+    const rep = repRow(group);
+    const first = group.rows[0];
+    const chasing = stageMeta(rep.stage).chasing;
+    const out = [];
+    const pill = (key, tone, label, title, Icon) => out.push({
+      key, title: title || label,
+      node: (
+        <span key={key} title={title || label}
+          style={{ ...chipStyle(tone), display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+          {Icon && <Icon size={11} />}{label}
+        </span>
+      ),
+    });
+
+    if (chasing && isEscalated(rep)) pill('esc', 'danger', 'Escalated', 'Escalated — stays on the record until someone removes it deliberately', AlertTriangle);
+    if (rep.stage === 's5_entered' && rep.bm_code_mismatch) pill('mismatch', 'danger', 'Code mismatch');
+    if (chasing && rep.client_replied_at) {
+      pill('replied', 'success', 'Replied', `Email reply received ${new Date(rep.client_replied_at).toLocaleString('en-GB')} — reminders held until the stage moves`, Mail);
+    }
+    if (!stageMeta(rep.stage).terminal && first.person?.id && !isEmail(first.person?.email)) {
+      out.push({
+        key: 'email', title: 'No email on file',
+        node: <PersonEmail key="email" person={first.person} requestId={first.id} actorId={actorId} onSaved={load} />,
+      });
+    }
+    if (chasing && (rep.called_at || rep.escalation_status === 'call_needed')) {
+      const oc = callOutcomeMeta(rep.last_call_outcome);
+      const when = rep.called_at ? new Date(rep.called_at) : null;
+      const title = [
+        when ? `Called ${when.toLocaleString('en-GB')}` : 'Call needed',
+        oc ? `— ${oc.label}` : null,
+        rep.last_call_note || null,
+      ].filter(Boolean).join(' ');
+      const label = when
+        ? `${when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}${oc && oc.value !== 'other' ? ` · ${oc.label}` : ''}`
+        : 'Call needed';
+      pill('call', oc?.tone || 'accent', label, title, PhoneCall);
+    } else if (chasing && (rep.emails_sent || 0) >= 3) {
+      pill('calldue', 'warning', 'Call due', '3 emails sent — a call is now required', PhoneCall);
+    }
+    if (rep.stage === 's3b_us' && group.rows.some((r) => r.billing_item_id)) pill('invoiced', 'accent', '£20+VAT invoiced');
+    const queued = group.rows.reduce((sum, row) => sum + (queuedCounts[row.id] || 0), 0);
+    if (queued > 0) pill('queued', 'info', `${queued} queued`, `${queued} email${queued === 1 ? '' : 's'} waiting in the send queue`);
+    return out;
+  }
+
+  function StatusCell({ group }) {
+    const items = statusItems(group);
+    if (!items.length) return <span />;
+    const [top, ...rest] = items;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+        {top.node}
+        {rest.length > 0 && (
+          <span title={rest.map((i) => i.title).join('\n')} style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>+{rest.length}</span>
+        )}
+      </span>
+    );
+  }
+
+  // The one chase step that comes next on the ladder: offer → reminder → call.
+  // Returns the button plus what it used, so the menu doesn't repeat it.
+  function nextStep(group) {
+    const rep = repRow(group);
+    const first = group.rows[0];
+    const busy = busyId === group.key;
+    if (!stageMeta(rep.stage).chasing) return { node: <span />, kind: null, isCall: false };
+    const emailsSent = rep.emails_sent || 0;
+    if (emailsSent >= 3) {
+      return { node: <Btn icon={PhoneCall} label="Log call" disabled={busy} onClick={() => setCallFor(group)} />, kind: null, isCall: true };
+    }
+    const qbtns = QUEUE_BUTTONS[rep.stage] || [];
+    const pick = qbtns.find(([kind]) => !queueDisabled(kind, emailsSent));
+    if (!pick) return { node: <span />, kind: null, isCall: false };
+    const [kind, label, Icon] = pick;
+    // One email covers every company in the group, so queue against the first request only.
+    if ((queuedKinds[first.id] || {})[kind]) {
+      return {
+        node: <Btn icon={Check} label="In queue" title="Already in the send queue — open the queue to review it"
+          onClick={() => navigate('/onboarding/ch-codes/queue')} />,
+        kind, isCall: false,
+      };
+    }
+    return { node: <Btn icon={Icon} label={label} disabled={busy} onClick={() => queueFor(group, first, kind, label)} />, kind, isCall: false };
+  }
+
+  function menuItems(group, next) {
+    const rep = repRow(group);
+    const first = group.rows[0];
+    const stage = rep.stage;
+    const chasing = stageMeta(stage).chasing;
+    const emailsSent = rep.emails_sent || 0;
+    const items = [];
+    if (chasing && !next.isCall) items.push({ key: 'call', label: 'Log call', icon: PhoneCall, onClick: () => setCallFor(group) });
+    for (const [kind, label, Icon] of QUEUE_BUTTONS[stage] || []) {
+      if (kind === next.kind || queueDisabled(kind, emailsSent) || (queuedKinds[first.id] || {})[kind]) continue;
+      items.push({ key: `q:${kind}`, label, icon: Icon, onClick: () => queueFor(group, first, kind, label) });
+    }
+    if (chasing && !isEscalated(rep)) {
+      items.push({ key: 'esc', label: 'Escalate', icon: AlertTriangle, danger: true, title: 'Escalate (stays until removed).',
+        onClick: () => actGroup(group, (row) => setComms(row, 'escalated', { actorId })) });
+    }
+    if (chasing && isEscalated(rep)) {
+      items.push({ key: 'unesc', label: 'Remove escalation', icon: Ban, title: 'Only if escalated by mistake.',
+        onClick: () => {
+          if (!window.confirm(`Remove the escalation on ${first.person?.name || 'this request'}?
+
+Escalation is meant to be permanent — only do this if it was applied by mistake.`)) return;
+          actGroup(group, (row) => clearEscalation(row, { actorId }), 'Escalation removed.');
+        } });
+    }
+    if (!stageMeta(stage).terminal) items.push({ key: 'reject', label: 'Reject / exit', icon: Ban, danger: true, onClick: () => reject(group) });
+    return items;
+  }
+
+  // The stage-specific advance controls. Operates on a tile group — for
+  // person-level stages this may fan out across >1 company.
+  function StageActions({ group }) {
     const rep = repRow(group);
     const busy = busyId === group.key;
     const stage = rep.stage;
-    const qbtns = QUEUE_BUTTONS[stage] || [];
-    const chasing = stageMeta(stage).chasing;
-    const emailsSent = rep.emails_sent || 0;
     const first = group.rows[0];
-
-    // Grey out queue buttons the chase ladder has moved past:
-    //  - offer: the first email IS the offer, so once anything has gone
-    //    (emails_sent >= 1) the offer has been made — next is a reminder.
-    //  - reminders: policy is offer + 2 reminders = 3 emails, then a call.
-    //    At 3 emails the reminder is greyed — the next action is a call
-    //    (surfaced on the Wednesday call list to Sophie).
-    const queueDisabled = (kind) => kind === 'offer' ? emailsSent >= 1 : emailsSent >= 3;
-    const queueTitle = (kind, disabled) => !disabled ? undefined
-      : kind === 'offer'
-        ? 'Offer already sent — the offer is the first email'
-        : '3 emails sent — a call is now required (see the Wednesday call list)';
-
     return (
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Queue emails for this stage — one email covers every company in
-            the group, so this always targets the first request only. */}
-        {qbtns.map(([kind, label, Icon, tone]) => {
-          if ((queuedKinds[first.id] || {})[kind]) {
-            return <Btn key={kind} icon={Check} label="Queued" tone="success" disabled
-              title="This email is already in the send queue — review it under Queue" />;
-          }
-          const qd = queueDisabled(kind);
-          return (
-            <Btn key={kind} icon={Icon} label={label} tone={tone} disabled={busy || qd} title={queueTitle(kind, qd)}
-              onClick={() => queueFor(group, first, kind, label)} />
-          );
-        })}
-
-        {/* Comms ladder: call + escalate for chasing stages — applies to every company at once */}
-        {chasing && (
-          <>
-            <Btn icon={PhoneCall} label="Log call" tone="accent" disabled={busy} onClick={() => setCallFor(group)} />
-            {!isEscalated(rep) && (
-              <Btn icon={AlertTriangle} label="Escalate" tone="danger" disabled={busy}
-                title="Escalate (stays until removed)."
-                onClick={() => actGroup(group, (row) => setComms(row, 'escalated', { actorId }))} />
-            )}
-            {/* Clearing the call flag lives on the detail page, next to the
-                call record it undoes — the board is for moving things on. */}
-            {isEscalated(rep) && (
-              <Btn icon={Ban} label="Remove escalation" tone="neutral" disabled={busy}
-                title="Only if escalated by mistake."
-                onClick={() => {
-                  if (!window.confirm(`Remove the escalation on ${first.person?.name || 'this request'}?
-
-Escalation is meant to be permanent — only do this if it was applied by mistake.`)) return;
-                  actGroup(group, (row) => clearEscalation(row, { actorId }), 'Escalation removed.');
-                }} />
-            )}
-          </>
-        )}
-
-        {/* Stage-specific advance controls */}
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
         {stage === 's1_offer' && (
-          <Btn icon={ArrowRight} label="Record decision" tone="info" solid disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's2_decision', { actorId }))} />
+          <Btn icon={ArrowRight} label="Record decision" kind="primary" disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's2_decision', { actorId }))} />
         )}
         {stage === 's2_decision' && (
           <>
-            <Btn icon={Check} label="Client is doing it" tone="info" solid disabled={busy} onClick={() => actGroup(group, (row) => recordDecision(row, 'self', { actorId }), `${first.person?.name || 'Client'} → self-verifying (Stage 3a).`)} />
-            <Btn icon={FileText} label="We're doing it (£20+VAT)" tone="accent" solid disabled={busy} onClick={() => decideWeDoIt(group)} />
-            <Btn icon={RotateCcw} label="Back to Stage 1" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's1_offer', { actorId }))} />
+            <Btn icon={Check} label="Client is doing it" kind="primary" disabled={busy} onClick={() => actGroup(group, (row) => recordDecision(row, 'self', { actorId }), `${first.person?.name || 'Client'} → self-verifying (Stage 3a).`)} />
+            <Btn icon={FileText} label="We're doing it (£20+VAT)" disabled={busy} onClick={() => decideWeDoIt(group)} />
+            <Btn icon={RotateCcw} label="Back to Stage 1" disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's1_offer', { actorId }))} />
           </>
         )}
         {stage === 's3a_client' && (
-          <Btn icon={ArrowRight} label="Move to awaiting code" tone="warning" solid disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's4_code', { actorId }), `${first.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
+          <Btn icon={ArrowRight} label="Move to awaiting code" kind="primary" disabled={busy} onClick={() => actGroup(group, (row) => advanceStage(row, 's4_code', { actorId }), `${first.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
         )}
         {stage === 's3b_us' && (
-          <Btn icon={ArrowRight} label="ID & POA received" tone="warning" solid disabled={busy} onClick={() => actGroup(group, (row) => recordIdPoaReceived(row, { actorId }), `${first.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
+          <Btn icon={ArrowRight} label="ID & POA received" kind="primary" disabled={busy} onClick={() => actGroup(group, (row) => recordIdPoaReceived(row, { actorId }), `${first.person?.name || 'Client'} → awaiting code (Stage 4).`)} />
         )}
         {stage === 's4_code' && (
           <span style={{ display: 'inline-flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
             <input value={codeDraft[group.key] || ''} onChange={(e) => setCodeDraft((d) => ({ ...d, [group.key]: e.target.value }))}
               placeholder="FT5-15ED-7JY5"
-              style={{ padding: '5px 9px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 8, width: 130 }} />
-            <Btn icon={Check} label="Save code" tone="success" solid disabled={busy || !(codeDraft[group.key] || '').trim()}
+              style={{ padding: '5px 9px', fontSize: 13, fontFamily: font, border: '1px solid #cbd5e1', borderRadius: 6, width: 130 }} />
+            <Btn icon={Check} label="Save code" kind="primary" disabled={busy || !(codeDraft[group.key] || '').trim()}
               onClick={() => actGroup(group, (row) => recordCodeReceived(row, codeDraft[group.key], { actorId }), `Code saved for ${first.person?.name || 'client'} (Stage 5).`).then(() => setCodeDraft((d) => ({ ...d, [group.key]: '' })))} />
           </span>
         )}
         {stage === 's5_entered' && (
           <>
-            <Btn icon={Building2} label={rep.entered_inform_direct_at ? 'Inform Direct ✓' : 'Inform Direct'} tone="info" solid={!!rep.entered_inform_direct_at} disabled={busy}
+            <Btn icon={rep.entered_inform_direct_at ? Check : Building2} label="Inform Direct" disabled={busy}
+              title={rep.entered_inform_direct_at ? 'Entered in Inform Direct — click to undo' : 'Mark as entered in Inform Direct'}
               onClick={() => actGroup(group, (row) => markInformDirect(row, !row.entered_inform_direct_at, { actorId }))} />
-            <Btn icon={Building2} label={rep.entered_bm_at ? 'BM ✓' : 'BM'} tone="info" solid={!!rep.entered_bm_at} disabled={busy}
+            <Btn icon={rep.entered_bm_at ? Check : Building2} label="BM" disabled={busy}
+              title={rep.entered_bm_at ? 'Entered in BM — click to undo' : 'Mark as entered in BM'}
               onClick={() => actGroup(group, (row) => markEnteredBm(row, !row.entered_bm_at, { actorId }))} />
-            <Btn icon={Check} label="Mark submitted" tone="success" solid
+            <Btn icon={Check} label="Mark submitted" kind="primary"
               disabled={busy || !rep.entered_inform_direct_at || !rep.entered_bm_at}
               onClick={() => actGroup(group, (row) => submitRequest(row, { actorId }), `${first.person?.name || 'Request'} filed (Stage 6).`)} />
           </>
         )}
         {stage === 's6_submitted' && (
           <>
-            <span style={{ fontSize: 13, color: tones.success.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 13, color: tones.success.fg, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
               <Check size={13} /> Filed{rep.submitted_at ? ` ${new Date(rep.submitted_at).toLocaleDateString('en-GB')}` : ''}
             </span>
-            <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
+            <Btn icon={RotateCcw} label="Reopen" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
           </>
         )}
         {stage === 's7_rejected' && (
           <>
-            <span style={{ fontSize: 13, color: tones.danger.fg, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 13, color: tones.danger.fg, display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              title={rep.rejected_reason || 'Rejected / exited'}>
               <Ban size={12} /> {rep.rejected_reason || 'Rejected / exited'}
             </span>
-            <Btn icon={RotateCcw} label="Reopen" tone="neutral" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
+            <Btn icon={RotateCcw} label="Reopen" disabled={busy} onClick={() => actGroup(group, (row) => reopenRequest(row, { actorId }))} />
           </>
         )}
-
-        {/* Reject / exit — available from any live stage */}
-        {!stageMeta(stage).terminal && (
-          <Btn icon={Ban} label="Reject / exit" tone="danger" disabled={busy} onClick={() => reject(group)} />
-        )}
-      </div>
+      </span>
     );
   }
 
@@ -481,68 +540,59 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
     const rep = repRow(group);
     const first = group.rows[0];
     const busy = busyId === group.key;
-    const queued = group.rows.reduce((sum, row) => sum + (queuedCounts[row.id] || 0), 0);
     const chasing = stageMeta(rep.stage).chasing;
     const age = daysSince(rep.requested_at);
     // Every company held up by this person's missing code, not only the ones
-    // a request is anchored on — those extra ones are the point of the list.
+    // a request is anchored on. One line on the row; the full list in the tooltip.
     const companies = affectedCompanies(group.rows);
-    const entityLabel = companies.length ? companies.map((c, i) => (
-      <span key={c.id} title={c.chased ? 'Chase is on this company' : 'Also needs this code — no chase on this company'}
-        style={c.chased ? undefined : { fontStyle: 'italic' }}>
-        {i ? ', ' : ''}{c.name}
-      </span>
-    )) : '—';
-
-    const badges = (
-      <>
-        {queued > 0 && <span style={chipStyle('info')}>{queued} queued</span>}
-        {chasing && <CommsChip r={rep} />}
-        {rep.stage === 's3b_us' && group.rows.some((r) => r.billing_item_id) && <span style={chipStyle('accent')}>£20+VAT invoiced</span>}
-        {rep.stage === 's5_entered' && rep.bm_code_mismatch && <span style={chipStyle('danger')}>Code mismatch</span>}
-        {!stageMeta(rep.stage).terminal && (
-          <PersonEmail person={first.person} requestId={first.id} actorId={actorId} onSaved={load} />
-        )}
-        {companies.length > 1 && <span style={chipStyle('neutral')}
-          title={`${companies.length} companies need this code`}>{companies.length} companies</span>}
-      </>
-    );
+    const companyLabel = companies.length
+      ? `${companies[0].name}${companies.length > 1 ? ` +${companies.length - 1} more` : ''}`
+      : '—';
+    const companyTitle = companies.map((c) => `${c.name}${c.chased ? '' : ' (also needs this code — no chase on it)'}`).join('\n');
+    const next = nextStep(group);
+    const menu = <RowMenu items={menuItems(group, next)} disabled={busy} />;
+    const emails = chasing
+      ? <EmailCounter value={rep.emails_sent} onSave={(v) => actGroup(group, (row) => setEmailsSent(row.id, v))} />
+      : <span />;
+    const open = () => navigate(`/onboarding/ch-codes/${first.id}`);
 
     if (compact) {
       return (
-        <div onClick={() => navigate(`/onboarding/ch-codes/${first.id}`)}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 14px', cursor: 'pointer', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 150, flex: '1 1 150px' }}>
+        <div onClick={open}
+          style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'subgrid', alignItems: 'center', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '9px 14px', cursor: 'pointer', minHeight: 46, boxSizing: 'border-box' }}>
+          <div style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={companyTitle}>
             <span style={{ fontSize: 14.5, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</span>
-            <span style={{ fontSize: 13, color: '#94a3b8' }}> · {entityLabel}</span>
+            <span style={{ fontSize: 13, color: '#94a3b8' }}> · {companyLabel}</span>
           </div>
-          {badges}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {chasing && <EmailCounter value={rep.emails_sent} onSave={(v) => actGroup(group, (row) => setEmailsSent(row.id, v))} />}
-            <StageControls group={group} />
-          </div>
+          <StatusCell group={group} />
+          {emails}
+          {next.node}
+          <StageActions group={group} />
+          {menu}
         </div>
       );
     }
 
     return (
-      <div onClick={() => navigate(`/onboarding/ch-codes/${first.id}`)}
+      <div onClick={open}
         style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', cursor: 'pointer' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 180 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0 }} title={companyTitle}>
             <div style={{ fontSize: 15.5, fontWeight: 600, color: '#0f172a' }}>{first.person?.name || '—'}</div>
-            <div style={{ fontSize: 13.5, color: '#94a3b8', marginTop: 2 }}>{entityLabel}</div>
+            <div style={{ fontSize: 13.5, color: '#94a3b8', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{companyLabel}</div>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>{badges}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+            <StatusCell group={group} />
+            {emails}
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-          {chasing && <EmailCounter value={rep.emails_sent} onSave={(v) => actGroup(group, (row) => setEmailsSent(row.id, v))} />}
-          <span style={{ marginLeft: 'auto', fontSize: 13, color: '#64748b' }}>
-            {age != null ? `${age}d in stage` : ''}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, color: '#64748b' }}>{age != null ? `${age}d in stage` : ''}</span>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            {next.node}
+            <StageActions group={group} />
+            {menu}
           </span>
-        </div>
-        <div style={{ borderTop: '1px solid #f1f5f9', marginTop: 12, paddingTop: 12 }}>
-          <StageControls group={group} />
         </div>
       </div>
     );
@@ -639,7 +689,9 @@ Escalation is meant to be permanent — only do this if it was applied by mistak
                 {!isCollapsed && (groups.length === 0 ? (
                   <div style={{ fontSize: 13.5, color: '#cbd5e1', padding: '2px 2px 12px' }}>Nobody at this stage.</div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 6 : 12 }}>
+                  <div style={compact
+                    ? { display: 'grid', gridTemplateColumns: ROW_COLUMNS, columnGap: 12, rowGap: 6 }
+                    : { display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {groups.map((group) => <Tile key={group.key} group={group} />)}
                   </div>
                 ))}
