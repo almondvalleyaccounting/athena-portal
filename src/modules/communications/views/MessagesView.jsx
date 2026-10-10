@@ -1,13 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { MessageSquare, Phone, Plus, RefreshCw, Send, X } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Check, MessageSquare, Phone, Plus, RefreshCw, RotateCcw, Send, X } from 'lucide-react';
 import { useAuth } from '../../../shell/AppShell';
+import { supabase } from '../../../lib/supabase';
 import {
-  contactsByPhoneSuffix, counterpartNumber, fmtTime, listMessages,
+  contactsByPhoneSuffix, counterpartNumber, fmtTime, listMessages, listThreads,
   loadContacts, loadPeoplePhones, peopleByPhoneSuffix, phoneSuffix,
-  resolveEntityNames, sendMessage,
+  resolveEntityNames, sendMessage, threadAction,
 } from '../api';
 import { BTN } from '../../../lib/buttonStyles';
+import { tones } from '../../../lib/tokens';
+import { openCreate } from '../../../shell/create/createBus';
+import ClientNamePicker from '../../../components/ClientNamePicker';
+
+// The queue views (sql/369). Open = an inbound text since it was last cleared.
+const FILTERS = [
+  { id: 'open', label: 'Open' },
+  { id: 'mine', label: 'Assigned to me' },
+  { id: 'cleared', label: 'Cleared' },
+  { id: 'all', label: 'All' },
+];
 
 const font = "'Outfit', sans-serif";
 
@@ -38,13 +50,24 @@ export default function MessagesView({ channel }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [newNumber, setNewNumber] = useState(null); // null = closed, '' = open empty
+  const [threads, setThreads] = useState(() => new Map()); // number → v_sms_threads row
+  const [filter, setFilter] = useState('open');
+  const [staff, setStaff] = useState([]);
+  const [busyAction, setBusyAction] = useState('');
+  const [clientEdit, setClientEdit] = useState(false);
+  const [clientText, setClientText] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
   const scrollRef = useRef(null);
 
   const load = useCallback(async (silent = false) => {
     try {
-      const rows = await listMessages(channel);
+      const [rows, threadRows] = await Promise.all([listMessages(channel), listThreads(channel)]);
       setMessages(rows);
-      const nameMap = await resolveEntityNames(rows.map((m) => m.entity_id));
+      setThreads(new Map(threadRows.map((t) => [t.number, t])));
+      const nameMap = await resolveEntityNames([
+        ...rows.map((m) => m.entity_id),
+        ...threadRows.flatMap((t) => [t.entity_id, ...(t.candidate_entity_ids || [])]),
+      ]);
       setNames(nameMap);
       if (!silent) setError(null);
     } catch (e) {
@@ -59,6 +82,22 @@ export default function MessagesView({ channel }) {
     const iv = setInterval(() => load(true), 30000);
     return () => clearInterval(iv);
   }, [load]);
+
+  // A notification ("assigned to you") links here with ?number=…
+  useEffect(() => {
+    const n = searchParams.get('number');
+    if (n && messages) {
+      setActive(n);
+      setFilter('all');
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, messages, setSearchParams]);
+
+  useEffect(() => {
+    supabase.from('staff_profiles').select('id, name').eq('is_active', true).order('name')
+      .then(({ data }) => setStaff(data || []));
+  }, []);
+  const staffName = (id) => staff.find((s) => s.id === id)?.name || 'someone';
 
   // Google Contacts (synced in the Email tab) — second source for
   // matching numbers to names, after the client record.
@@ -94,12 +133,73 @@ export default function MessagesView({ channel }) {
         const sorted = [...msgs].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         const entityId = sorted.findLast?.((m) => m.entity_id)?.entity_id
           || [...sorted].reverse().find((m) => m.entity_id)?.entity_id || null;
-        return { number, msgs: sorted, last: sorted[sorted.length - 1], entityId };
+        const t = threads.get(number) || {};
+        return {
+          number, msgs: sorted, last: sorted[sorted.length - 1],
+          // The thread's client wins (set by hand, or the only phone match).
+          entityId: t.entity_id || entityId,
+          candidates: t.candidate_entity_ids || [],
+          open: !!t.is_open, assignedTo: t.assigned_to || null,
+          clearedAt: t.cleared_at || null, clearedBy: t.cleared_by || null, clearedNote: t.cleared_note || null,
+          setByHand: !!t.set_entity_id,
+        };
       })
       .sort((a, b) => new Date(b.last.created_at) - new Date(a.last.created_at));
-  }, [messages]);
+  }, [messages, threads]);
 
+  const counts = useMemo(() => ({
+    open: conversations.filter((c) => c.open).length,
+    mine: conversations.filter((c) => c.open && c.assignedTo === profile?.id).length,
+    cleared: conversations.filter((c) => !c.open).length,
+    all: conversations.length,
+  }), [conversations, profile?.id]);
+
+  const shown = conversations.filter((c) => (
+    filter === 'open' ? c.open
+      : filter === 'mine' ? c.open && c.assignedTo === profile?.id
+        : filter === 'cleared' ? !c.open
+          : true));
+
+  // From the whole list, not the filtered one: clearing the open conversation
+  // keeps it on screen until you pick another.
   const activeConv = conversations.find((c) => c.number === active) || null;
+  useEffect(() => { setClientEdit(false); setClientText(''); }, [active]);
+
+  // Client line for a conversation: the client, "N possible clients", or Other.
+  const clientLabel = (c) => {
+    if (c.entityId) return names[c.entityId] || 'Client';
+    if (c.candidates.length > 1) return `${c.candidates.length} possible clients`;
+    return 'Other';
+  };
+
+  const act = useCallback(async (action, conv, extra = {}) => {
+    setBusyAction(action);
+    setError(null);
+    try {
+      await threadAction(action, { channel, number: conv.number, ...extra });
+      await load(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyAction('');
+    }
+  }, [channel, load]);
+
+  // "+ Create": the Create modal, about this conversation. The action
+  // existing is what clears it.
+  const raiseAction = (conv) => {
+    const lastIn = [...conv.msgs].reverse().find((m) => m.direction === 'in') || conv.last;
+    openCreate({
+      kind: 'sms', channel, number: conv.number, fromName: displayName(conv),
+      body: lastIn.body, date: lastIn.created_at,
+      client: conv.entityId ? { id: conv.entityId, name: names[conv.entityId] || '' } : null,
+      candidates: conv.entityId ? [] : conv.candidates.map((id) => ({ id, name: names[id] || id })),
+      onCreated: () => {
+        threadAction('clear', { channel, number: conv.number, note: 'Action raised' })
+          .then(() => load(true)).catch((e) => setError(e.message));
+      },
+    });
+  };
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -144,27 +244,64 @@ export default function MessagesView({ channel }) {
             <RefreshCw size={14} />
           </button>
         </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              style={{
+                fontSize: 12, padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
+                fontWeight: filter === f.id ? 600 : 500,
+                background: filter === f.id ? tones.info.bg : '#fff',
+                color: filter === f.id ? tones.info.fg : '#475569',
+                border: `1px solid ${filter === f.id ? tones.info.border : '#e2e8f0'}`,
+              }}
+            >
+              {f.label} ({counts[f.id]})
+            </button>
+          ))}
+        </div>
         <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}>
-          {conversations.length === 0 && (
+          {shown.length === 0 && (
             <div style={{ padding: 24, fontSize: 14, color: '#94a3b8', textAlign: 'center' }}>
-              {channel === 'whatsapp'
-                ? 'No WhatsApp messages yet. Inbound messages to the practice number will appear here automatically.'
-                : 'No text messages yet.'}
+              {conversations.length === 0
+                ? (channel === 'whatsapp'
+                  ? 'No WhatsApp messages yet. Inbound messages to the practice number will appear here automatically.'
+                  : 'No text messages yet.')
+                : filter === 'open' ? 'All clear — nothing waiting.'
+                  : filter === 'mine' ? 'Nothing open is assigned to you.'
+                    : 'Nothing here.'}
             </div>
           )}
-          {conversations.map((c) => (
+          {shown.map((c) => (
             <div
               key={c.number}
               onClick={() => { setActive(c.number); setNewNumber(null); setError(null); }}
-              style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: active === c.number ? '#eff6ff' : '#fff' }}
+              style={{
+                padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                background: active === c.number ? '#eff6ff' : '#fff',
+                borderLeft: `3px solid ${c.open ? tones.info.solid : 'transparent'}`,
+              }}
             >
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                <span style={{ fontSize: 14, fontWeight: c.open ? 700 : 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {displayName(c)}
                 </span>
                 <span style={{ fontSize: 11.5, color: '#94a3b8', flexShrink: 0 }}>{fmtTime(c.last.created_at)}</span>
               </div>
-              {displayName(c) !== c.number && <div style={{ fontSize: 12, color: '#64748b' }}>{c.number}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, fontSize: 12 }}>
+                <span style={{
+                  color: c.entityId ? '#0f172a' : '#64748b', fontStyle: c.entityId ? 'normal' : 'italic',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                }}>
+                  {clientLabel(c)}
+                </span>
+                {c.assignedTo && (
+                  <span style={{ flexShrink: 0, padding: '0 7px', borderRadius: 999, background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                    {c.assignedTo === profile?.id ? 'Me' : staffName(c.assignedTo)}
+                  </span>
+                )}
+              </div>
               <div style={{ fontSize: 13, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                 {c.last.direction === 'out' ? 'You: ' : ''}{maskCodes(c.last.body)}
               </div>
@@ -218,16 +355,112 @@ export default function MessagesView({ channel }) {
           </div>
         ) : activeConv ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <MessageSquare size={15} color="#64748b" />
               <span style={{ fontSize: 14.5, fontWeight: 700, color: '#0f172a' }}>
                 {displayName(activeConv)}
               </span>
               <span style={{ fontSize: 13, color: '#94a3b8' }}>{activeConv.number}</span>
-              {activeConv.entityId && (
-                <Link to={`/clients/${activeConv.entityId}`} style={{ fontSize: 13, color: '#0e7fe0', textDecoration: 'none', fontWeight: 600 }}>
-                  Client record →
+              <span style={{
+                fontSize: 12, fontWeight: 600, padding: '1px 8px', borderRadius: 999,
+                background: activeConv.open ? tones.info.bg : '#f1f5f9',
+                color: activeConv.open ? tones.info.fg : '#64748b',
+              }}>
+                {activeConv.open ? 'Open' : 'Cleared'}
+              </span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <select
+                  value={activeConv.assignedTo || ''}
+                  disabled={!!busyAction}
+                  onChange={(e) => act('assign', activeConv, { assignee_id: e.target.value || null })}
+                  title="Who deals with it — they get a notification"
+                  style={{ fontSize: 13, fontFamily: font, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 7, background: '#fff', color: '#0f172a' }}
+                >
+                  <option value="">Unassigned</option>
+                  {staff.map((s) => <option key={s.id} value={s.id}>{s.id === profile?.id ? `${s.name} (me)` : s.name}</option>)}
+                </select>
+                <button
+                  onClick={() => raiseAction(activeConv)}
+                  title="Create a task, agenda item, bill or quote from this message — clears it once made"
+                  style={{ ...BTN.secondary.md, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <Plus size={14} /> Create
+                </button>
+                {activeConv.open ? (
+                  <button
+                    onClick={() => act('clear', activeConv)}
+                    disabled={!!busyAction}
+                    title="Nothing to do — take it off the open queue (a new message reopens it)"
+                    style={{ ...BTN.primary.md, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <Check size={14} /> {busyAction === 'clear' ? 'Clearing…' : 'Clear'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => act('reopen', activeConv)}
+                    disabled={!!busyAction || !activeConv.msgs.some((m) => m.direction === 'in')}
+                    title="Put it back on the open queue"
+                    style={{ ...BTN.secondary.md, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  >
+                    <RotateCcw size={14} /> Reopen
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Client: matched on the phone number, or set by hand. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 13, color: '#475569' }}>
+              <span style={{ color: '#94a3b8' }}>Client:</span>
+              {activeConv.entityId ? (
+                <Link to={`/clients/${activeConv.entityId}`} style={{ color: '#0e7fe0', textDecoration: 'none', fontWeight: 600 }}>
+                  {names[activeConv.entityId] || 'Client record'} →
                 </Link>
+              ) : activeConv.candidates.length > 1 ? (
+                <>
+                  <span>This number belongs to</span>
+                  {activeConv.candidates.map((id) => (
+                    <button
+                      key={id}
+                      onClick={() => act('set_client', activeConv, { entity_id: id })}
+                      disabled={!!busyAction}
+                      style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
+                    >
+                      {names[id] || 'Client'}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <span style={{ fontStyle: 'italic' }}>Other — no client has this number</span>
+              )}
+              {!clientEdit ? (
+                <button onClick={() => setClientEdit(true)} style={{ border: 'none', background: 'none', padding: 0, color: '#0e7fe0', cursor: 'pointer', fontSize: 13, fontFamily: font }}>
+                  {activeConv.entityId ? 'Change' : 'Choose a client'}
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 280 }}>
+                  <div style={{ flex: 1 }}>
+                    <ClientNamePicker
+                      value={clientText}
+                      onChange={setClientText}
+                      onPick={(row) => { setClientEdit(false); act('set_client', activeConv, { entity_id: row.id }); }}
+                    />
+                  </div>
+                  {activeConv.setByHand && (
+                    <button
+                      onClick={() => { setClientEdit(false); act('set_client', activeConv, { entity_id: null }); }}
+                      title="Forget the client chosen by hand and go back to the phone-number match"
+                      style={{ ...BTN.secondary.sm, cursor: 'pointer' }}
+                    >
+                      Use phone match
+                    </button>
+                  )}
+                  <button onClick={() => setClientEdit(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={14} /></button>
+                </div>
+              )}
+              {!activeConv.open && activeConv.clearedAt && (
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>
+                  Cleared {fmtTime(activeConv.clearedAt)}{activeConv.clearedBy ? ` by ${staffName(activeConv.clearedBy)}` : ''}{activeConv.clearedNote ? ` · ${activeConv.clearedNote}` : ''}
+                </span>
               )}
             </div>
             <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>

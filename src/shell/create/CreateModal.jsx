@@ -33,6 +33,15 @@ const font = "'Outfit', sans-serif";
 const plusDays = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const gbp = (n) => `£${(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// A task title from a text: its first line, cut at a word near 60 characters.
+function smsTitle(body) {
+  const line = String(body || '').split('\n')[0].trim();
+  if (line.length <= 60) return line;
+  const cut = line.slice(0, 60);
+  const sp = cut.lastIndexOf(' ');
+  return `${sp > 30 ? cut.slice(0, sp) : cut}…`;
+}
+
 const TYPES = [
   { id: 'quick', label: 'Quick task', Icon: ListTodo, hint: 'A to-do on someone’s Work Planner.' },
   { id: 'admin', label: 'Admin task', Icon: ClipboardList, hint: 'On the Admin Task List — can carry a bill.' },
@@ -89,7 +98,8 @@ export default function CreateModal() {
   const canBill = !!(profile?.can_view_client_fees || profile?.can_view_billing || profile?.is_portal_admin);
 
   const reset = useCallback((c) => {
-    const subject = c?.kind === 'email' ? (c.subject || '').replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '') : '';
+    const subject = c?.kind === 'email' ? (c.subject || '').replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '')
+      : c?.kind === 'sms' ? smsTitle(c.body) : '';
     setF({
       title: subject, notes: '', service: 'Admin', assignee: profile?.id || '', due: plusDays(5), planned: '', duration: 15,
       deadline: '', urgent: false, billable: false, serviceId: '', net: '',
@@ -107,6 +117,11 @@ export default function CreateModal() {
       setCtx(c);
       reset(c);
       setOpen(true);
+      // From a text: the client the number matched, or the ones it might be.
+      if (c?.kind === 'sms') {
+        setSuggested(c.candidates || []);
+        if (c.client) { setClient(c.client); setClientText(c.client.name); }
+      }
       // From an email: which client is this? (sender + other parties)
       if (c?.emails?.length) {
         callCreate('match_clients', { emails: c.emails }).then((r) => {
@@ -167,6 +182,8 @@ export default function CreateModal() {
 
   const submit = async ({ asDraft = false } = {}) => {
     setBusy(true); setError('');
+    // A text the action came from comes off the open queue once it exists.
+    const fromText = ctx?.kind === 'sms' ? ctx.onCreated : null;
     try {
       if (type === 'quick') {
         await callCreate('quick_task', {
@@ -233,8 +250,10 @@ export default function CreateModal() {
       } else if (type === 'quote') {
         close();
         navigate(client ? `/manage/quotes/new?entity=${client.id}` : '/manage/quotes/new');
+        fromText?.();
         return;
       }
+      fromText?.();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -268,6 +287,18 @@ export default function CreateModal() {
           <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Create</span>
           <button onClick={close} title="Close" style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}><X size={18} /></button>
         </div>
+
+        {ctx?.kind === 'sms' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 13, color: '#475569' }}>
+            <MessageSquare size={14} color="#64748b" />
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              From {ctx.channel === 'whatsapp' ? 'WhatsApp' : 'text'}: <b style={{ color: '#0f172a' }}>{ctx.body}</b> — {ctx.fromName || ctx.number}
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+              <input type="checkbox" checked={linkEmail} onChange={(e) => setLinkEmail(e.target.checked)} /> Quote the message
+            </label>
+          </div>
+        )}
 
         {ctx?.kind === 'email' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 13, color: '#475569' }}>

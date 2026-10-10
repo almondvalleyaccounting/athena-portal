@@ -4,6 +4,7 @@
 //   { action, mailbox, ... }   mailbox = connected account email
 //
 //   list_labels    → user's labels (system + custom)
+//   inbox_unread   → { unread } emails unread in the Inbox
 //   list_threads   { labelIds?, q?, pageToken?, maxResults?, excludeOwn? }
 //   get_thread     { threadId }        full messages, parsed bodies + attachments
 //   list_messages  { labelIds?, q?, pageToken?, maxResults?, excludeOwn? }
@@ -291,6 +292,12 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
+      // The Inbox's unread count, for the Communications tab counter.
+      case "inbox_unread": {
+        const data = await gmailFetch(tok.accessToken, "/labels/INBOX");
+        return jsonResponse({ success: true, unread: Number(data.messagesUnread) || 0 });
+      }
+
       case "list_labels": {
         const data = await gmailFetch(tok.accessToken, "/labels");
         return jsonResponse({ success: true, labels: data.labels || [] });

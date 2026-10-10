@@ -7,6 +7,9 @@
 //
 // context (all optional): { kind: 'email', subject, fromName, fromEmail, date,
 //   mailbox, threadId, messageId, snippet, emails: [other party addresses] }
+// or, from Text Messages / WhatsApp (sql/369): { kind: 'sms', channel, number,
+//   fromName, body, date, client: { id, name } | null, candidates: [{ id, name }],
+//   onCreated() } — onCreated clears the conversation once the action exists.
 
 let current = null;
 
@@ -19,6 +22,7 @@ export function openCreate(ctx) {
 
 // The line a task/bill carries back to the email it came from.
 export function emailReference(ctx) {
+  if (ctx?.kind === 'sms') return smsReference(ctx);
   if (!ctx || ctx.kind !== 'email') return '';
   const when = ctx.date ? new Date(ctx.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
   const link = ctx.mailbox && ctx.threadId
@@ -26,4 +30,14 @@ export function emailReference(ctx) {
     : '';
   return [`From email: “${ctx.subject || '(no subject)'}” — ${ctx.fromName || ctx.fromEmail || ''}${when ? `, ${when}` : ''}`, link]
     .filter(Boolean).join('\n');
+}
+
+// The same for a text / WhatsApp: the message itself, and a link back to the
+// conversation in Communications.
+function smsReference(ctx) {
+  const kind = ctx.channel === 'whatsapp' ? 'WhatsApp' : 'text';
+  const when = ctx.date ? new Date(ctx.date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  const body = String(ctx.body || '').slice(0, 500);
+  const link = `${window.location.origin}/comms/${ctx.channel === 'whatsapp' ? 'whatsapp' : 'sms'}?number=${encodeURIComponent(ctx.number || '')}`;
+  return [`From ${kind}: “${body}” — ${ctx.fromName || ctx.number}${when ? `, ${when}` : ''}`, link].join('\n');
 }

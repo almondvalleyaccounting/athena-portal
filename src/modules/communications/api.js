@@ -64,10 +64,14 @@ export function mailboxNeedsReconnect(mailbox) {
 
 // ── Gmail proxy ───────────────────────────────────────────────────────
 
+// Actions that can change the Inbox's unread count (tab counter).
+const INBOX_CHANGING = new Set(['modify_message', 'modify_thread', 'trash_message', 'untrash_message', 'trash_thread', 'untrash_thread']);
+
 async function callGmail(action, payload = {}) {
   const { data, error } = await supabase.functions.invoke('comms-gmail', {
     body: { action, ...payload },
   });
+  if (!error && INBOX_CHANGING.has(action)) commsCountsChanged();
   if (error) {
     // FunctionsHttpError carries the response — surface the real message.
     let detail = error.message;
@@ -444,6 +448,65 @@ export async function sendMessage({ to, body, channel, entityId }) {
   }
   if (data && data.success === false) throw new Error(data.error || 'Send failed');
   return data;
+}
+
+// ── The texts queue (sql/369) ─────────────────────────────────────────
+// One row per conversation: open (an inbound text since it was last
+// cleared), who it's assigned to, and the client the number matched.
+
+export async function listThreads(channel) {
+  const { data, error } = await supabase
+    .from('v_sms_threads')
+    .select('channel, number, last_at, last_in_at, is_open, assigned_to, assigned_at, cleared_at, cleared_by, cleared_note, set_entity_id, entity_id, candidate_entity_ids')
+    .eq('channel', channel);
+  if (error) throw error;
+  return data || [];
+}
+
+// assign { assignee_id } · clear { note } · reopen · set_client { entity_id }
+export async function threadAction(action, { channel, number, ...rest }) {
+  const { data, error } = await supabase.functions.invoke('sms-thread', {
+    body: { action, channel, number, ...rest },
+  });
+  if (error) {
+    let detail = error.message;
+    try {
+      const b = await error.context?.json();
+      if (b?.error) detail = b.error;
+    } catch { /* keep generic message */ }
+    throw new Error(detail);
+  }
+  if (data && data.success === false) throw new Error(data.error || 'Failed');
+  commsCountsChanged();
+  return data;
+}
+
+// The tab counters: unread in the Inbox of your own + the shared mailboxes,
+// and open text / WhatsApp conversations. Each part fails on its own, so a
+// mailbox needing reconnection doesn't blank the text counts.
+export async function loadCommsCounts(profile) {
+  const emailPart = (async () => {
+    const boxes = (await listMailboxes(profile))
+      .filter((m) => (m.kind === 'shared' || m.owner_staff_id === profile?.id) && !mailboxNeedsReconnect(m));
+    const counts = await Promise.all(boxes.map((m) => callGmail('inbox_unread', { mailbox: m.account_email })
+      .then((r) => r.unread || 0).catch(() => 0)));
+    return counts.reduce((a, b) => a + b, 0);
+  })().catch(() => null);
+  const openPart = supabase.from('v_sms_threads').select('channel').eq('is_open', true)
+    .then(({ data, error }) => {
+      if (error) return null;
+      const n = { sms: 0, whatsapp: 0 };
+      for (const r of data || []) n[r.channel] = (n[r.channel] || 0) + 1;
+      return n;
+    });
+  const [email, open] = await Promise.all([emailPart, openPart]);
+  return { email, sms: open?.sms ?? null, whatsapp: open?.whatsapp ?? null };
+}
+
+// Something changed a counter (a text cleared, an email read): the header
+// re-counts now rather than on its next 30-second tick.
+export function commsCountsChanged() {
+  window.dispatchEvent(new Event('athena:comms-counts'));
 }
 
 // The conversation partner's number for a message row.
