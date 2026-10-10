@@ -11,6 +11,7 @@ import ClientDriveTab from './ClientDriveTab';
 import ClientAgendaCard from './ClientAgendaCard';
 import ClientHmrcPanel from '../hmrc/ClientHmrcPanel';
 import { BTN } from '../../lib/buttonStyles';
+import { openTemplates } from '../../shell/templates/templateBus';
 
 const TIME_PERIODS = [
   { value: '1', label: 'Last month' },
@@ -432,6 +433,7 @@ export default function ClientDetailView() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Btn onClick={goRaiseAction}>Raise action</Btn>
+          <Btn variant="secondary" onClick={() => openTemplates({ entityId: entity.id })}>Email templates</Btn>
           {canSeeQuotes && <Btn variant="secondary" onClick={() => navigate(`/manage/quotes/new?entity=${entity.id}`)}>New quote</Btn>}
           <MoreMenu
             entity={entity}

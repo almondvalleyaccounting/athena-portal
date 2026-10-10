@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { pillStyle } from '../../lib/tokens';
 import { useAuth } from '../../shell/AppShell';
 import { loadCommsCounts } from './api';
+import { openTemplates } from '../../shell/templates/templateBus';
 import EmailView from './views/EmailView';
 import MessagesView from './views/MessagesView';
 import PreferencesView from './views/PreferencesView';
@@ -88,6 +89,9 @@ export default function CommunicationsModule() {
             </button>
           ))}
         </div>
+        <button onClick={() => openTemplates()} style={{ ...pillStyle({ tone: 'info', active: false }), marginLeft: 'auto' }}>
+          Email templates
+        </button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <Routes>
