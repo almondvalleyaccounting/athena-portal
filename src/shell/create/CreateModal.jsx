@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, ClipboardList, FileText, History, ListTodo, Mail, MessageSquare, MessageSquarePlus, Paperclip, Plus, Receipt, X } from 'lucide-react';
+import { CalendarCheck, ClipboardList, FileText, GitBranch, History, ListTodo, Mail, MessageSquare, MessageSquarePlus, Paperclip, Plus, Receipt, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../AppShell';
 import { BTN } from '../../lib/buttonStyles';
@@ -14,6 +14,7 @@ import { insertEntity } from '../../modules/work-planner/lib/supabaseQueries';
 // The Billing page's own line editor + past-invoice picker (one shared copy).
 import { blankLine, buildLinesPayload, useBillLines, BillLinesEditor, PastInvoicePicker } from '../../modules/billing/billLines';
 import { gmail } from '../../modules/communications/api';
+import { callJobPlan } from '../../modules/work-planner/plan/planQueries';
 import { emailReference } from './createBus';
 
 // "+ Create" — one place to make the things work turns into: a quick task,
@@ -36,6 +37,7 @@ const TYPES = [
   { id: 'quick', label: 'Quick task', Icon: ListTodo, hint: 'A to-do on someone’s Work Planner.' },
   { id: 'admin', label: 'Admin task', Icon: ClipboardList, hint: 'On the Admin Task List — can carry a bill.' },
   { id: 'agenda', label: 'Agenda item', Icon: MessageSquarePlus, hint: 'A point for the client’s next review meeting.' },
+  { id: 'workflow', label: 'Workflow update', Icon: GitBranch, hint: 'Move a job on — e.g. the client’s records have arrived.' },
   { id: 'bill', label: 'Bill', Icon: Receipt, hint: 'A one-off bill, saved as a draft for approval.' },
   { id: 'quote', label: 'Quote', Icon: FileText, hint: 'Opens the quote form for this client.' },
 ];
@@ -79,6 +81,9 @@ export default function CreateModal() {
   const [invPickerOpen, setInvPickerOpen] = useState(false);
   const [files, setFiles] = useState([]);              // admin task attachments
   const [emailAtt, setEmailAtt] = useState(new Set()); // the email's attachments to carry over
+  // Workflow update: the client's jobs still waiting on records.
+  const [wfJobs, setWfJobs] = useState(null);
+  const [wfJob, setWfJob] = useState('');
 
   const canQuick = !!profile?.work_planner || !!profile?.is_portal_admin;
   const canBill = !!(profile?.can_view_client_fees || profile?.can_view_billing || profile?.is_portal_admin);
@@ -125,6 +130,16 @@ export default function CreateModal() {
   const withRef = (text) => [text?.trim(), ref].filter(Boolean).join('\n\n');
 
   const billTotals = lineForm.totals;
+
+  useEffect(() => {
+    if (type !== 'workflow' || !client) { setWfJobs(null); setWfJob(''); return undefined; }
+    let live = true;
+    setWfJobs(null);
+    callJobPlan({ action: 'records_candidates', entity_ids: [client.id] })
+      .then((r) => { if (!live) return; setWfJobs(r.jobs || []); if (r.jobs?.length === 1) setWfJob(`${r.jobs[0].period_end}|${r.jobs[0].template_key}`); })
+      .catch((e) => { if (live) { setWfJobs([]); setError(e.message); } });
+    return () => { live = false; };
+  }, [type, client]);
 
   // Admin task attachments, stored exactly as the Admin Task List stores them
   // (client-documents/admin-tasks/<task>/…, a row in admin_task_documents).
@@ -188,6 +203,27 @@ export default function CreateModal() {
         });
         if (err || data?.success === false) throw new Error(data?.error || err?.message || 'Failed');
         setDone({ text: `Added to ${client.name}’s ${f.bucket === 'info' ? 'info for the meeting' : 'meeting agenda'}.`, to: `/clients/${client.id}` });
+      } else if (type === 'workflow') {
+        const j = (wfJobs || []).find((x) => `${x.period_end}|${x.template_key}` === wfJob);
+        if (!client || !j) throw new Error('Choose the job.');
+        const fromEmail = ctx?.kind === 'email' && linkEmail;
+        const r = await callJobPlan({
+          action: 'records_received', entity_id: client.id, period_end: j.period_end, template: j.template_key,
+          note: f.notes,
+          email: fromEmail ? {
+            subject: ctx.subject, from: ctx.fromName || ctx.fromEmail, date: ctx.date,
+            link: ctx.mailbox && ctx.threadId ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(ctx.mailbox)}#all/${ctx.threadId}` : '',
+          } : {},
+        });
+        const parts = [
+          r.created ? (r.committed ? 'workflow set up' : 'workflow drafted (needs owners)') : 'workflow updated',
+          r.preparer ? (r.notified ? `${r.preparer} told` : `${r.preparer}'s job`) : null,
+          r.bm_request ? '“Set BrightManager status to Records Received” added to the Admin Task List' : null,
+        ].filter(Boolean).join(' · ');
+        setDone({
+          text: `${client.name} · ${r.label}: records received — ${parts}.`,
+          to: `/planner/plan/${client.id}/${j.period_end}${j.template_key === 'self_assessment' ? '?template=self_assessment' : ''}`,
+        });
       } else if (type === 'bill') {
         if (!client) throw new Error('Choose the client to bill.');
         const { lines } = buildLinesPayload(lineForm.formLines);
@@ -212,13 +248,14 @@ export default function CreateModal() {
   const blocked = (type === 'quick' && !canQuick) ? 'Quick tasks need Work Planner access.'
     : (type === 'bill' && !canBill) ? 'Bills need billing access.'
       : (type === 'admin' && f.billable && !canBill) ? 'You can make the task, but billing it needs billing access.' : '';
-  const needsClient = type === 'agenda' || type === 'bill' || (type === 'admin' && f.billable);
+  const needsClient = type === 'agenda' || type === 'bill' || type === 'workflow' || (type === 'admin' && f.billable);
   const ready = !busy && !(type === 'quick' && !canQuick) && !(type === 'bill' && !canBill)
     && (type === 'quote' || (needsClient ? !!client : true))
     && (type === 'quick' || type === 'admin' ? !!f.title?.trim() : true)
     && (type === 'quick' ? !!f.assignee : true)
     && (type === 'agenda' ? !!f.point?.trim() : true)
-    && (type === 'bill' ? lineForm.canSubmit : true);
+    && (type === 'bill' ? lineForm.canSubmit : true)
+    && (type === 'workflow' ? !!wfJob : true);
 
   return (
     // No backdrop click-to-close and no Esc: it stays until you close it.
@@ -392,6 +429,42 @@ export default function CreateModal() {
                         </div>
                       )}
                     </div>
+                  </>
+                )}
+
+                {type === 'workflow' && client && (
+                  <>
+                    <Field label="Job" required>
+                      {wfJobs === null ? <span style={{ fontSize: 13, color: '#94a3b8' }}>Looking up their jobs…</span>
+                        : wfJobs.length === 0 ? <span style={{ fontSize: 13, color: '#64748b' }}>No job of theirs is waiting on records (their year hasn’t ended, or BrightManager already shows records received).</span>
+                          : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {wfJobs.map((j) => {
+                                const k = `${j.period_end}|${j.template_key}`;
+                                return (
+                                  <label key={k} style={{ ...check, fontSize: 13.5, color: '#334155', padding: '6px 10px', border: `1px solid ${wfJob === k ? tones.info.solid : '#e2e8f0'}`, borderRadius: 8, background: wfJob === k ? tones.info.bg : '#fff' }}>
+                                    <input type="radio" name="wfjob" checked={wfJob === k} onChange={() => setWfJob(k)} />
+                                    <b>{j.label}</b>
+                                    <span style={{ color: '#64748b' }}>· preparer {j.preparer_name || '—'} · BrightManager: {j.bm_status || '—'}{j.plan_status ? '' : ' · no workflow yet'}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                    </Field>
+                    <Field label="Update">
+                      <select value="records_in" onChange={() => {}} style={input}>
+                        <option value="records_in">Records received</option>
+                      </select>
+                    </Field>
+                    <Field label="Note (optional)"><textarea rows={2} value={f.notes} onChange={(e) => set('notes', e.target.value)} placeholder="e.g. bank statements and P60; still waiting on the rental figures" style={{ ...input, resize: 'vertical' }} /></Field>
+                    {wfJob && (
+                      <div style={{ fontSize: 12.5, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', lineHeight: 1.55 }}>
+                        This marks records received on the workflow (setting one up from the default if there isn’t one) and stops chasers;
+                        tells the preparer they can start{ctx?.kind === 'email' && linkEmail ? ', with a link to this email' : ''};
+                        and adds “Set BrightManager status to Records Received” to the Admin Task List, which clears itself once the import shows it.
+                      </div>
+                    )}
                   </>
                 )}
 

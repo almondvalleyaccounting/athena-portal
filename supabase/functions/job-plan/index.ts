@@ -48,7 +48,7 @@
 //   progress_reports  {}                                      delay/stuck reports still open (sql/350)
 //   report_dealt_with { id, note? }                           close a report
 //   set_deprioritised { entity_id, reason | null }            the client-level flag (Ready Now, Job Selector, Priority)
-//   records_candidates { emails[] }                           an email's clients → jobs still waiting on records (sql/366)
+//   records_candidates { entity_ids[] | emails[] }            a client's jobs still waiting on records (sql/366)
 //   records_received { entity_id, period_end, template, email } records in from an email: workflow, preparer told, BM status asked for
 //   company_directors { entity_id }                           directors with their next self assessment (sql/351)
 //   income_items / income_item_add / income_item_received / income_item_remove   directors' other income
@@ -1162,12 +1162,16 @@ Deno.serve(async (req) => {
       // "Waiting" = BrightManager short of Records Received AND, if there is
       // a workflow, its records_in stage still open. Year must have ended.
       case "records_candidates": {
-        const emails = (Array.isArray(p.emails) ? p.emails : []).map((e: unknown) => String(e).toLowerCase().trim())
-          .filter((e: string) => e.includes("@")).slice(0, 20);
-        if (!emails.length) return json({ success: true, jobs: [] });
-        const { data: hits, error: hErr } = await db.rpc("comms_recipient_entities", { p_emails: emails });
-        if (hErr) throw new Error(hErr.message);
-        const ids = [...new Set((hits || []).map((h: { entity_id: string }) => h.entity_id))];
+        // By client (Create → Workflow update) or by email addresses.
+        let ids: string[] = (Array.isArray(p.entity_ids) ? p.entity_ids : []).map(String).filter((x: string) => UUID.test(x)).slice(0, 10);
+        if (!ids.length) {
+          const emails = (Array.isArray(p.emails) ? p.emails : []).map((e: unknown) => String(e).toLowerCase().trim())
+            .filter((e: string) => e.includes("@")).slice(0, 20);
+          if (!emails.length) return json({ success: true, jobs: [] });
+          const { data: hits, error: hErr } = await db.rpc("comms_recipient_entities", { p_emails: emails });
+          if (hErr) throw new Error(hErr.message);
+          ids = [...new Set((hits || []).map((h: { entity_id: string }) => h.entity_id))];
+        }
         if (!ids.length) return json({ success: true, jobs: [] });
         const today = now.slice(0, 10);
         const [sa, acc] = await Promise.all([
@@ -1226,7 +1230,11 @@ Deno.serve(async (req) => {
 
         const ms = await milestonesOf(plan.id);
         const rec = ms.find((m) => m.stage_key === "records_in");
-        const note = `Records received by email${emDate ? ` ${emDate}` : ""}: “${emSubject}”${emFrom ? ` from ${emFrom}` : ""}`;
+        const extra = p.note ? String(p.note).trim().slice(0, 1000) : "";
+        const note = (emSubject
+          ? `Records received by email${emDate ? ` ${emDate}` : ""}: “${emSubject}”${emFrom ? ` from ${emFrom}` : ""}`
+          : "Records received")
+          + (extra ? ` — ${extra}` : "");
         if (rec && rec.status === "pending") {
           await db.from("job_milestones").update({ status: "done", done_at: now, done_signal: "client", note: rec.note ? `${rec.note}\n${note}` : note, updated_at: now }).eq("id", rec.id);
         }
