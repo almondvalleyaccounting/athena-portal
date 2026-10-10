@@ -98,6 +98,11 @@ export default function BillingTabs({ active }) {
       ? [{ id: 'standard-fees', label: 'Standard fees', route: '/manage/billing/standard-fees', badge: null }]
       : []),
     { id: 'emails',    label: 'Emails',    route: '/manage/billing/emails', badge: null },
+    // Overdue invoices from QBO, chased in DCM's stages (sql/371). Invoice
+    // balances are fee data: fee admins and billing approvers only.
+    ...(canViewFees || profile?.can_approve_billing || profile?.is_portal_admin
+      ? [{ id: 'debt', label: 'Debt chasing', route: '/manage/billing/debt', badge: null }]
+      : []),
   ];
 
   return (

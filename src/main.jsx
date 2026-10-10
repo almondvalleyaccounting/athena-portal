@@ -37,6 +37,7 @@ import BillingEmailReconciliationPage from './modules/billing/BillingEmailReconc
 import BillingAddNewPage from './modules/billing/BillingAddNewPage';
 import FeeEarnerBookPage from './modules/billing/FeeEarnerBookPage';
 import FeeEngineGapsPage from './modules/billing/FeeEngineGapsPage';
+import DebtChasingPage from './modules/billing/DebtChasingPage';
 import WorkPlannerModule from './modules/work-planner/WorkPlannerModule';
 import TimesheetModule from './modules/timesheets/TimesheetModule';
 import BillingPage from './modules/billing/BillingPage';
@@ -149,6 +150,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/manage/billing/fee-earners" element={<FeeEarnerBookPage />} />
           {/* Clients with live work but no mapped fee — self-gates on can_view_client_fees. */}
           <Route path="/manage/billing/gaps" element={<FeeEngineGapsPage />} />
+          {/* Debt chasing (sql/371) — self-gates on fee or billing-approval access. */}
+          <Route path="/manage/billing/debt" element={<DebtChasingPage />} />
           <Route path="/clients/:id" element={<ClientDetailView />} />
           {/* Setup must come before /planner/* wildcard so it matches first. */}
           <Route path="/planner/setup/*" element={<SetupModule />} />

@@ -422,7 +422,7 @@ export default function ClientDetailView() {
             <span style={{ textTransform: 'capitalize' }}>{entity.type?.replace('_', ' ')}</span>
             {entity.company_number && <span>· {entity.company_number}</span>}
             {entity.manager && <span>· Managed by {entity.manager}</span>}
-            {entity.grade && <span>· Grade {entity.grade}</span>}
+            <GradePicker entity={entity} setEntity={setEntity} profile={profile} />
             {entity.expedite && <Badge bg="#fef3c7" color="#b45309">Expedite</Badge>}
             {entity.cadence_preference && entity.cadence_preference !== 'normal' && (
               <Badge bg="#f1f5f9" color="#475569">Scheduled {entity.cadence_preference}</Badge>
@@ -799,6 +799,37 @@ function PeopleList({ people, isLtd }) {
         );
       })}
     </div>
+  );
+}
+
+// Client grade (A+ to F). Comes from BrightManager; an Athena-set grade is
+// held in grade_override and wins over every later BM import (sql/371). It
+// picks the debt-chasing tone, so it is set by those who chase debt, through
+// the debt-chase edge function.
+const GRADES = ['A+', 'A', 'B', 'C', 'D', 'E', 'F'];
+function GradePicker({ entity, setEntity, profile }) {
+  const canSet = !!(profile?.can_view_client_fees || profile?.can_approve_billing || profile?.is_portal_admin);
+  const [busy, setBusy] = useState(false);
+  if (!canSet) return entity.grade ? <span>· Grade {entity.grade}</span> : null;
+  const change = async (value) => {
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('debt-chase', {
+        body: { action: 'set_grade', entity_id: entity.id, grade: value || null },
+      });
+      if (error || data?.success === false) throw new Error(data?.error || error?.message || 'Could not save the grade');
+      setEntity((e) => ({ ...e, grade: data.grade, grade_override: data.grade_override }));
+    } catch (e) { alert(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <span title={entity.grade_override ? 'Set in Athena: BrightManager’s grade is ignored' : 'From BrightManager'}>
+      · Grade{' '}
+      <select value={entity.grade_override || entity.grade || ''} disabled={busy} onChange={(e) => change(e.target.value)}
+        style={{ fontSize: 13, padding: '1px 4px', border: '1px solid #cbd5e1', borderRadius: 6, color: '#334155', fontWeight: entity.grade_override ? 700 : 400 }}>
+        <option value="">{entity.grade_override ? 'Back to BrightManager’s' : 'None'}</option>
+        {GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
+      </select>
+    </span>
   );
 }
 
