@@ -22,7 +22,7 @@ function json(data: unknown, status = 200) {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CHECKS = ["loe", "ct", "sa", "vat", "paye", "bp", "tc", "qbo", "fee"];
+const CHECKS = ["loe", "ct", "sa", "vat", "paye", "bp", "tc", "qbo", "fee", "billing"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });

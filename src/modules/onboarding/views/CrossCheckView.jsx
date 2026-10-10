@@ -124,12 +124,6 @@ function taxCell(r, tax) {
       issues.push({ type: 'code', text: `${name} is a service but there is no reference in BrightManager yet` });
     }
   }
-  if (inList(r.billing_missing_taxes, tax)) {
-    issues.push({ type: 'billing', text: `BrightManager has ${name} scheduled but no fee line bills it` });
-  }
-  if (tax === 'paye' && r.payroll_unbilled) {
-    issues.push({ type: 'billing', text: 'We run this payroll on BrightPay and nothing bills it' });
-  }
   if (inList(r.bm_wrong_taxes, tax)) {
     issues.push({ type: 'other', text: `HMRC shows us as ${name} agent but BrightManager says we are not — update BrightManager` });
   }
@@ -150,7 +144,7 @@ function taxCell(r, tax) {
   }
   const does = { ct: r.does_accounts_ct, sa: r.does_sa, vat: r.does_vat, paye: r.does_payroll }[tax];
   if (!does) return null;
-  return { state: 'ok', types: [], title: `${name}: authorised at HMRC, reference on record, billed` };
+  return { state: 'ok', types: [], title: `${name}: authorised at HMRC and the reference is on record` };
 }
 
 function loeCell(r) {
@@ -165,12 +159,8 @@ function loeCell(r) {
 }
 
 function bpCell(r) {
-  if (!r.does_payroll) {
-    if (r.brightpay_without_payroll_service) {
-      return finding([{ type: 'billing', text: `BrightPay runs a payroll for this client (${r.brightpay_employer || 'employer'}) but no fee or scheduled work covers it` }]);
-    }
-    return null;
-  }
+  // A BrightPay payroll with no payroll service is a billing question — see billingCell.
+  if (!r.does_payroll) return null;
   if (!r.paye_registered) {
     return { state: 'awaiting', types: [], title: 'No PAYE reference yet — BrightPay set-up waits for it (see PAYE)' };
   }
@@ -195,12 +185,27 @@ function qboCell(r) {
   return { state: 'ok', types: [], title: 'QuickBooks connected' };
 }
 
+// Billing has its own mark, so it is overridden on its own (e.g. billed
+// through another company in the group) without hiding an agent or code finding.
+function billingCell(r) {
+  const issues = (r.billing_missing_taxes ? r.billing_missing_taxes.split(', ') : [])
+    .map((t) => ({ type: 'billing', text: `BrightManager has ${TAX_LABELS[t] || t} scheduled but no fee line bills it` }));
+  if (r.payroll_unbilled) issues.push({ type: 'billing', text: 'We run this payroll on BrightPay and nothing bills it' });
+  if (r.brightpay_without_payroll_service) {
+    issues.push({ type: 'billing', text: `BrightPay runs a payroll for this client (${r.brightpay_employer || 'employer'}) but no fee or scheduled work covers it` });
+  }
+  if (issues.length) return finding(issues);
+  if (!(r.does_accounts_ct || r.does_sa || r.does_vat || r.does_payroll)) return null;
+  return { state: 'ok', types: [], title: 'Every service BrightManager schedules has a fee line' };
+}
+
 const CELLS = [
   { key: 'loe',  label: 'Engagement',  get: loeCell },
   { key: 'ct',   label: 'CT',   tax: 'ct',   get: (r) => taxCell(r, 'ct') },
   { key: 'sa',   label: 'SA',   tax: 'sa',   get: (r) => taxCell(r, 'sa') },
   { key: 'vat',  label: 'VAT',  tax: 'vat',  get: (r) => taxCell(r, 'vat') },
   { key: 'paye', label: 'PAYE', tax: 'paye', get: (r) => taxCell(r, 'paye') },
+  { key: 'billing', label: 'Billing', get: billingCell },
   { key: 'bp',   label: 'BrightPay', get: bpCell },
   { key: 'tc',   label: 'TaxCalc', get: tcCell },
   { key: 'qbo',  label: 'QBO',  get: qboCell },
