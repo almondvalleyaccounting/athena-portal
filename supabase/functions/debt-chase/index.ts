@@ -211,7 +211,9 @@ async function render(db: Db, staffId: string, entityId: string, stageIn: number
     chase_count: String(Math.max(stage - 1, 1)),
   };
   const subject = fillText(tpl.subject, { ...vars, invoice_table: "" });
-  const body = fill(tpl.body_html, vars, new Set(["invoice_table"]));
+  // Inline paragraph margins, as DCM had: some mail clients (and the
+  // contentEditable preview) drop default <p> spacing.
+  const body = fill(tpl.body_html, vars, new Set(["invoice_table"])).replace(/<p>/g, '<p style="margin:0 0 14px 0;">');
   const sig = await signatureHtml(db, staffId, mailbox);
   return {
     entity_id: e.id, client_name: e.name, grade: e.grade, tone, stage, template_kind: kind,
