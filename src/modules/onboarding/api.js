@@ -1210,6 +1210,37 @@ export async function listCrossCheckOrphans() {
   return data || [];
 }
 
+// Per client, the taxes BrightManager schedules that no fee line bills (sql/368).
+export async function listCrossCheckBillingMissing() {
+  const { data, error } = await supabase
+    .from('v_onboarding_crosscheck_billing_missing')
+    .select('entity_id, billing_missing_taxes');
+  if (error) throw error;
+  return data || [];
+}
+
+// Marks a person has reviewed and explained (sql/367). An override applies only
+// while the check still reads exactly as it did — a changed issue resurfaces.
+export async function listCrossCheckOverrides() {
+  const { data, error } = await supabase
+    .from('onboarding_crosscheck_overrides')
+    .select('entity_id, check_key, issue, comment, created_at');
+  if (error) throw error;
+  return data || [];
+}
+
+async function crosscheckOverride(body) {
+  const { data, error } = await supabase.functions.invoke('crosscheck-override', { body });
+  if (error) throw new Error(data?.error || error.message);
+  if (data && data.success === false) throw new Error(data.error);
+}
+
+export const setCrossCheckOverride = (entityId, checkKey, issue, comment) =>
+  crosscheckOverride({ action: 'set', entity_id: entityId, check_key: checkKey, issue, comment });
+
+export const clearCrossCheckOverride = (entityId, checkKey) =>
+  crosscheckOverride({ action: 'clear', entity_id: entityId, check_key: checkKey });
+
 /* ─── Row actions: email, call, park, reply findings (sql/359) ─────────────
    Every write goes through the onboarding-actions edge function; the browser
    reads the timeline and findings directly. */

@@ -1,24 +1,30 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { X } from 'lucide-react';
 import { tones, chipStyle } from '../../../lib/tokens';
 import { BTN } from '../../../lib/buttonStyles';
 import ViewTabs from '../components/ViewTabs';
 import {
   listCrossCheck, listCrossCheckTaxes, getCrossCheckCoverage, listCrossCheckOrphans,
   listCrossCheckLinkConflicts, listDirectorSa, setPersonUtr,
-  CROSSCHECK_VERDICTS, crosscheckVerdictMeta, TAX_LABELS, ONBOARDING_STATUSES,
+  listCrossCheckOverrides, setCrossCheckOverride, clearCrossCheckOverride,
+  listCrossCheckBillingMissing, TAX_LABELS, ONBOARDING_STATUSES,
 } from '../api';
 
 /*
   Cross-check — the sense check on the onboarding board.
 
-  The whole page is one matrix: a row per client, a mark per check. Five marks
-  tell the story — ✓ verified, ✕ mismatch, ○ in progress, ~ unverifiable while
-  the SA scrape is partial, ? no feed. Everything behind a mark is on its hover
-  title, and the full evidence (per-tax comparison, directors' SA with inline
-  UTR capture) opens on click. Only clients with something to look at show by
-  default.
+  The whole page is one matrix: a row per client, a mark per check. Every ✕
+  is one of three findings — Agent missing, Code missing, Billing missing — or
+  Other (2026-10-10: the eight verdicts it replaced were too many to act on).
+  Other marks: ✓ verified, ○ in progress, ~ unverifiable while the SA scrape
+  is partial, ? no feed. Clicking a mark opens a modal with the evidence
+  (per-tax comparison, directors' SA with inline UTR capture). There a person can
+  override a mark they have looked into, with a comment (sql/367) — e.g. the
+  payroll is billed through another company in the group. An override holds
+  only while the check reads the same; if the issue changes, the mark returns.
+  A client whose every flagged mark is overridden reads "Explained" and leaves
+  "Needs a look". Only clients with something to look at show by default.
 
   The one thing this screen must never do is turn missing evidence into a
   finding: a leg with no feed reads ?, never ✕. See sql/243–253.
@@ -39,144 +45,192 @@ const MARK = {
   unverified:{ glyph: '~', bg: '#fafaf9', fg: '#a8a29e', border: '#e7e5e4' },
   nodata:    { glyph: '?', bg: '#f8fafc',        fg: '#94a3b8',        border: '#e2e8f0' },
   info:      { glyph: 'i', bg: tones.info.bg,    fg: tones.info.fg,    border: tones.info.border },
+  // Looked into and explained by a person — quiet, but not the green of a verified check.
+  overridden:{ glyph: '✓', bg: '#f1f5f9', fg: '#64748b', border: '#cbd5e1' },
 };
 
-function Dot({ cell }) {
+// ── The finding types ──────────────────────────────────────────────────────
+// Three questions, one per type, plus "Other" for the checks that answer none
+// of them (engagement letter, BrightPay set-up, TaxCalc, QuickBooks, BM saying
+// we are not the agent when HMRC says we are).
+const FINDING_TYPES = [
+  { key: 'agent',   label: 'Agent missing',   tone: 'danger',
+    hint: 'A reference (PAYE, VAT, UTR) is on record but the client is not on our HMRC agent list' },
+  { key: 'code',    label: 'Code missing',    tone: 'warning',
+    hint: 'The service is on but its reference is not in BrightManager yet (or the one there is wrong)' },
+  { key: 'billing', label: 'Billing missing', tone: 'accent',
+    hint: 'BrightManager has the service scheduled but no fee line bills it' },
+  { key: 'other',   label: 'Other',           tone: 'neutral',
+    hint: 'Engagement letter, BrightPay, TaxCalc, QuickBooks and BrightManager mismatches' },
+];
+const TYPE_LABEL = Object.fromEntries(FINDING_TYPES.map((t) => [t.key, t.label]));
+
+function Dot({ cell, onClick }) {
   if (!cell) {
     // Not a service for this client — a faint dash, so the eye skips it.
     return <span style={{ color: '#e2e8f0', fontSize: 13 }}>–</span>;
   }
-  const m = MARK[cell.state] || MARK.nodata;
+  const m = MARK[cell.override ? 'overridden' : cell.state] || MARK.nodata;
   return (
-    <span
-      title={cell.title}
+    <button
+      type="button"
+      onClick={onClick}
+      title={cell.override ? `Overridden: ${cell.override.comment}` : cell.title}
       style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 20, height: 20, borderRadius: 6, fontSize: 12.5, fontWeight: 700,
-        background: m.bg, color: m.fg, border: `1px solid ${m.border}`,
-        cursor: cell.title ? 'help' : 'default',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+        width: 20, height: 20, borderRadius: 6, fontSize: 12.5, fontWeight: 700, fontFamily: font,
+        background: m.bg, color: m.fg, border: `1px solid ${m.border}`, cursor: 'pointer',
       }}
     >
       {m.glyph}
-    </span>
+    </button>
   );
 }
 
 // ── Deriving each cell from the board row ──────────────────────────────────
+// A cell is { state, title, types }. `types` lists the findings it carries;
+// a cell with none is not a finding (in progress, unverified, no feed, fine).
 const inList = (csv, tax) => Boolean(csv) && csv.split(', ').includes(tax);
 
-// HMRC authorisation per tax. For a company, the SA cell carries the
-// directors' returns we bill through it — the company itself never holds SA.
+function finding(issues) {
+  return {
+    state: 'bad',
+    types: [...new Set(issues.map((i) => i.type))],
+    title: issues.map((i) => `${TYPE_LABEL[i.type]}: ${i.text}`).join(' · '),
+  };
+}
+
 function taxCell(r, tax) {
-  if (tax === 'sa' && r.entity_type === 'limited_company') {
+  const name = TAX_LABELS[tax];
+  const issues = [];
+  const companySa = tax === 'sa' && r.entity_type === 'limited_company';
+
+  if (companySa) {
     if (!r.directors_billed_for_sa) return null;
     if (r.directors_sa_not_authorised > 0) {
-      return { state: 'bad', title: `Directors' SA: ${r.directors_sa_not_authorised} director(s) we bill for whom HMRC has never shown us as agent` };
+      issues.push({ type: 'agent', text: `${r.directors_sa_not_authorised} director(s) we bill SA for are not on our HMRC agent list` });
     }
     if (r.directors_sa_no_utr > 0) {
-      return { state: 'awaiting', title: `Directors' SA: ${r.directors_sa_no_utr} director(s) without a UTR on record — click the row to add one, the check runs immediately` };
+      issues.push({ type: 'code', text: `${r.directors_sa_no_utr} director(s) have no UTR on record — add it here` });
     }
-    if (r.directors_sa_unverified > 0) {
-      return { state: 'unverified', title: `Directors' SA: ${r.directors_sa_unverified} not yet confirmed (HMRC check incomplete)` };
+  } else {
+    if (tax === 'vat' && r.vat_ref_flag && r.vat_ref_flag !== 'aliased') {
+      issues.push({ type: 'code', text: r.vat_ref_note });
     }
-    if (r.directors_sa_authorised > 0) {
-      return { state: 'ok', title: `Directors' SA: all ${r.directors_sa_authorised} confirmed against HMRC on the director's own UTR` };
+    if (inList(r.unauthorised_taxes, tax)) {
+      issues.push({ type: 'agent', text: `${name} reference is on record but the client is not on our HMRC agent list` });
     }
-    return { state: 'nodata', title: "Directors' SA: no directors recorded for this company" };
+    if (inList(r.awaiting_taxes, tax)) {
+      issues.push({ type: 'code', text: `${name} is a service but there is no reference in BrightManager yet` });
+    }
   }
-
-  if (tax === 'vat' && r.vat_ref_flag) {
-    if (r.vat_ref_flag === 'aliased') return { state: 'unverified', title: r.vat_ref_note };
-    return { state: 'bad', title: r.vat_ref_note };
+  if (inList(r.billing_missing_taxes, tax)) {
+    issues.push({ type: 'billing', text: `BrightManager has ${name} scheduled but no fee line bills it` });
+  }
+  if (tax === 'paye' && r.payroll_unbilled) {
+    issues.push({ type: 'billing', text: 'We run this payroll on BrightPay and nothing bills it' });
   }
   if (inList(r.bm_wrong_taxes, tax)) {
-    return { state: 'bad', title: `${TAX_LABELS[tax]}: HMRC shows us as agent. Update BrightManager.` };
+    issues.push({ type: 'other', text: `HMRC shows us as ${name} agent but BrightManager says we are not — update BrightManager` });
   }
-  if (inList(r.unauthorised_taxes, tax)) {
-    return { state: 'bad', title: `${TAX_LABELS[tax]}: we do this work but have no HMRC authorisation` };
+  if (issues.length) return finding(issues);
+
+  if (companySa) {
+    if (r.directors_sa_unverified > 0) {
+      return { state: 'unverified', types: [], title: `Directors' SA: ${r.directors_sa_unverified} not yet confirmed (HMRC check incomplete)` };
+    }
+    if (r.directors_sa_authorised > 0) {
+      return { state: 'ok', types: [], title: `Directors' SA: all ${r.directors_sa_authorised} confirmed against HMRC` };
+    }
+    return { state: 'nodata', types: [], title: "Directors' SA: no directors recorded for this company" };
   }
-  if (inList(r.awaiting_taxes, tax)) {
-    return { state: 'awaiting', title: `${TAX_LABELS[tax]}: no reference on record yet, so there is nothing to be authorised for — a registration in progress` };
-  }
+  if (tax === 'vat' && r.vat_ref_flag === 'aliased') return { state: 'unverified', types: [], title: r.vat_ref_note };
   if (inList(r.unverified_taxes, tax)) {
-    return { state: 'unverified', title: `${TAX_LABELS[tax]}: not on HMRC's agent list, but the HMRC check is incomplete — proves nothing yet` };
+    return { state: 'unverified', types: [], title: `${name}: not on HMRC's agent list, but the HMRC check is incomplete — proves nothing yet` };
   }
-  const does = {
-    ct: r.does_accounts_ct, sa: r.does_sa, vat: r.does_vat, paye: r.does_payroll,
-  }[tax];
+  const does = { ct: r.does_accounts_ct, sa: r.does_sa, vat: r.does_vat, paye: r.does_payroll }[tax];
   if (!does) return null;
-  return { state: 'ok', title: `${TAX_LABELS[tax]}: authorised at HMRC and the service is switched on` };
+  return { state: 'ok', types: [], title: `${name}: authorised at HMRC, reference on record, billed` };
 }
 
 function loeCell(r) {
   if (r.loe_signed) {
     return {
-      state: 'ok',
-      title: `Letter of engagement signed${r.loe_signed_at ? ` ${new Date(r.loe_signed_at).toLocaleDateString('en-GB')}` : ''}`
-        + (r.loe_from_bm_only ? ' — recorded in BrightManager; Athena’s checklist step was never ticked' : ''),
+      state: 'ok', types: [],
+      title: `Letter of engagement signed${r.loe_signed_at ? ` ${new Date(r.loe_signed_at).toLocaleDateString('en-GB')}` : ''}`,
     };
   }
-  if (r.has_onboarding) {
-    return { state: 'bad', title: 'No letter of engagement signed — in Athena or BrightManager. The client stays on the board.' };
-  }
-  return { state: 'nodata', title: 'No onboarding record, so no engagement letter is tracked for this client' };
+  if (r.has_onboarding) return finding([{ type: 'other', text: 'No letter of engagement signed — in Athena or BrightManager' }]);
+  return { state: 'nodata', types: [], title: 'No onboarding record, so no engagement letter is tracked for this client' };
 }
 
 function bpCell(r) {
   if (!r.does_payroll) {
     if (r.brightpay_without_payroll_service) {
-      return { state: 'info', title: `BrightPay runs a payroll for this client (${r.brightpay_employer || 'employer'}) but no fee or scheduled work covers it` };
+      return finding([{ type: 'billing', text: `BrightPay runs a payroll for this client (${r.brightpay_employer || 'employer'}) but no fee or scheduled work covers it` }]);
     }
     return null;
   }
   if (!r.paye_registered) {
-    return { state: 'awaiting', title: 'Payroll is a service but there is no PAYE reference yet — BrightPay set-up waits for the registration' };
+    return { state: 'awaiting', types: [], title: 'No PAYE reference yet — BrightPay set-up waits for it (see PAYE)' };
   }
   if (r.brightpay_missing) {
-    return { state: 'bad', title: 'Payroll is a service and the PAYE scheme exists, but no BrightPay employer matches this client' };
+    return finding([{ type: 'other', text: 'Payroll is a service and the PAYE scheme exists, but no BrightPay employer matches this client' }]);
   }
-  return { state: 'ok', title: `On BrightPay as ${r.brightpay_employer || 'a matched employer'}` };
+  return { state: 'ok', types: [], title: `On BrightPay as ${r.brightpay_employer || 'a matched employer'}` };
 }
 
 function tcCell(r) {
   if (!r.does_accounts_ct && !r.does_sa) return null;
   if (r.missing_from_taxcalc === null || r.missing_from_taxcalc === undefined) {
-    return { state: 'nodata', title: 'No TaxCalc data yet' };
+    return { state: 'nodata', types: [], title: 'No TaxCalc data yet' };
   }
-  if (r.taxcalc_missing) {
-    return { state: 'bad', title: 'Accounts / SA work is on, the UTR exists, and the client is not in TaxCalc' };
-  }
-  return { state: 'ok', title: 'In TaxCalc' };
+  if (r.taxcalc_missing) return finding([{ type: 'other', text: 'Accounts / SA work is on, the UTR exists, and the client is not in TaxCalc' }]);
+  return { state: 'ok', types: [], title: 'In TaxCalc' };
 }
 
 function qboCell(r) {
   if (!r.does_software) return null;
-  if (r.software_without_qbo) {
-    return { state: 'bad', title: 'Software is billed but no QuickBooks company is connected' };
-  }
-  return { state: 'ok', title: 'QuickBooks connected' };
-}
-
-function feeCell(r) {
-  const issues = [];
-  if (r.billed_vat_not_registered) issues.push('billed a VAT product while not VAT registered by any record');
-  if (r.billed_ct_not_a_company) issues.push('billed a Corporation Tax product but not a limited company');
-  if (r.payroll_unbilled) issues.push('we run the payroll on BrightPay and nothing bills it');
-  if (!issues.length) return null;
-  return { state: 'bad', title: `Fees: ${issues.join('; ')}` };
+  if (r.software_without_qbo) return finding([{ type: 'other', text: 'Software is billed but no QuickBooks company is connected' }]);
+  return { state: 'ok', types: [], title: 'QuickBooks connected' };
 }
 
 const CELLS = [
   { key: 'loe',  label: 'Engagement',  get: loeCell },
-  { key: 'ct',   label: 'CT',   get: (r) => taxCell(r, 'ct') },
-  { key: 'sa',   label: 'SA',   get: (r) => taxCell(r, 'sa') },
-  { key: 'vat',  label: 'VAT',  get: (r) => taxCell(r, 'vat') },
-  { key: 'paye', label: 'PAYE', get: (r) => taxCell(r, 'paye') },
+  { key: 'ct',   label: 'CT',   tax: 'ct',   get: (r) => taxCell(r, 'ct') },
+  { key: 'sa',   label: 'SA',   tax: 'sa',   get: (r) => taxCell(r, 'sa') },
+  { key: 'vat',  label: 'VAT',  tax: 'vat',  get: (r) => taxCell(r, 'vat') },
+  { key: 'paye', label: 'PAYE', tax: 'paye', get: (r) => taxCell(r, 'paye') },
   { key: 'bp',   label: 'BrightPay', get: bpCell },
   { key: 'tc',   label: 'TaxCalc', get: tcCell },
   { key: 'qbo',  label: 'QBO',  get: qboCell },
-  { key: 'fee',  label: 'Fees', get: feeCell },
 ];
+
+// Every cell of a row with its override attached. An override counts only
+// while the check reads exactly as it did when it was made.
+function rowCells(r, overrides) {
+  const out = {};
+  for (const c of CELLS) {
+    const cell = c.get(r);
+    if (!cell) { out[c.key] = null; continue; }
+    const o = overrides[`${r.entity_id}:${c.key}`];
+    const live = o && cell.types.length && o.issue === cell.title ? o : null;
+    out[c.key] = { ...cell, override: live, staleOverride: o && !live ? o : null };
+  }
+  return out;
+}
+
+// Open findings (not overridden) and whether anything was overridden.
+function rowSummary(cells) {
+  const open = new Set();
+  let explained = false;
+  for (const cell of Object.values(cells)) {
+    if (!cell || !cell.types.length) continue;
+    if (cell.override) explained = true;
+    else cell.types.forEach((t) => open.add(t));
+  }
+  return { open, explained };
+}
 
 // ── Small pieces ───────────────────────────────────────────────────────────
 function Tile({ label, count, tone, active, onClick, hint }) {
@@ -203,12 +257,14 @@ const detailsSummaryStyle = {
   padding: '10px 16px', userSelect: 'none',
 };
 
-function TaxDetail({ entityId }) {
+function TaxDetail({ entityId, tax }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   useEffect(() => {
-    listCrossCheckTaxes(entityId).then(setRows).catch((e) => setError(e.message));
-  }, [entityId]);
+    listCrossCheckTaxes(entityId)
+      .then((d) => setRows(tax ? d.filter((x) => x.tax === tax) : d))
+      .catch((e) => setError(e.message));
+  }, [entityId, tax]);
 
   if (error) return <div style={{ fontSize: 13.5, color: tones.danger.fg }}>{error}</div>;
   if (!rows) return <div style={{ fontSize: 13.5, color: '#94a3b8' }}>Loading…</div>;
@@ -377,6 +433,121 @@ function DirectorSa({ companyId }) {
   );
 }
 
+// ── The mark modal ─────────────────────────────────────────────────────────
+// One mark, its evidence, and the override. Kept to what a person needs to
+// decide: what the check says, why, and "this is fine because…".
+function MarkModal({ row, check, cell, onClose, onChanged }) {
+  const [comment, setComment] = useState(cell.staleOverride?.comment || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const isFinding = cell.types.length > 0;
+  const m = MARK[cell.override ? 'overridden' : cell.state] || MARK.nodata;
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function run(fn) {
+    setBusy(true);
+    setError(null);
+    try { await fn(); onChanged(); onClose(); }
+    catch (e) { setError(e.message); setBusy(false); }
+  }
+
+  const companySa = check.key === 'sa' && row.entity_type === 'limited_company';
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.35)', zIndex: 1000,
+               display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '8vh 16px', overflow: 'auto' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ ...card, width: '100%', maxWidth: check.tax ? 760 : 520, padding: 20, fontFamily: font,
+                 boxShadow: '0 20px 50px rgba(15,23,42,0.18)' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, color: '#94a3b8', fontWeight: 600 }}>{row.entity_name}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>
+              {check.tax ? TAX_LABELS[check.tax] : check.label}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4 }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 14 }}>
+          <span style={{
+            flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 22, height: 22, borderRadius: 6, fontSize: 13, fontWeight: 700,
+            background: m.bg, color: m.fg, border: `1px solid ${m.border}`,
+          }}>{m.glyph}</span>
+          <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.5 }}>
+            {cell.title.split(' · ').map((line) => <div key={line}>{line}</div>)}
+          </div>
+        </div>
+
+        {check.tax && !companySa && (
+          <div style={{ marginTop: 16 }}><TaxDetail entityId={row.entity_id} tax={check.tax} /></div>
+        )}
+        {companySa && <DirectorSa companyId={row.entity_id} />}
+
+        {isFinding && (
+          <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #f1f5f9' }}>
+            {cell.override ? (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
+                  Overridden {new Date(cell.override.created_at).toLocaleDateString('en-GB')}
+                </div>
+                <div style={{ fontSize: 14, color: '#334155', marginTop: 4, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {cell.override.comment}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                  <button disabled={busy} onClick={() => run(() => clearCrossCheckOverride(row.entity_id, check.key))} style={BTN.secondary.md}>
+                    {busy ? 'Removing…' : 'Remove override'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {cell.staleOverride && (
+                  <div style={{ fontSize: 13, color: '#92400e', background: tones.warning.bg, border: `1px solid ${tones.warning.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 10, lineHeight: 1.45 }}>
+                    An earlier override no longer applies — the check now says something different. Its comment is below.
+                  </div>
+                )}
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#475569', marginBottom: 6 }}>Override — this is fine because…</div>
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Billed through the parent company's fee"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 14, fontFamily: font,
+                           border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <button
+                    disabled={busy || !comment.trim()}
+                    onClick={() => run(() => setCrossCheckOverride(row.entity_id, check.key, cell.title, comment))}
+                    style={{ ...BTN.primary.md, opacity: busy || !comment.trim() ? 0.5 : 1 }}
+                  >
+                    {busy ? 'Saving…' : 'Override'}
+                  </button>
+                </div>
+              </>
+            )}
+            {error && <div style={{ color: tones.danger.fg, fontSize: 13.5, marginTop: 8 }}>{error}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── The page ───────────────────────────────────────────────────────────────
 export default function CrossCheckView() {
   const navigate = useNavigate();
@@ -384,41 +555,69 @@ export default function CrossCheckView() {
   const [coverage, setCoverage] = useState([]);
   const [orphans, setOrphans] = useState([]);
   const [conflicts, setConflicts] = useState([]);
+  const [overrideRows, setOverrideRows] = useState([]);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('issues'); // issues | <verdict> | all
+  const [filter, setFilter] = useState('issues'); // issues | <finding type> | explained | all
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState({});
+  const [open, setOpen] = useState(null); // { entityId, key }
+
+  const loadOverrides = useCallback(() => {
+    listCrossCheckOverrides().then(setOverrideRows).catch((e) => setError(e.message));
+  }, []);
 
   const load = useCallback(() => {
-    listCrossCheck().then(setRows).catch((e) => setError(e.message));
+    Promise.all([listCrossCheck(), listCrossCheckBillingMissing()])
+      .then(([board, billing]) => {
+        const byEntity = Object.fromEntries(billing.map((b) => [b.entity_id, b.billing_missing_taxes]));
+        setRows(board.map((r) => ({ ...r, billing_missing_taxes: byEntity[r.entity_id] || null })));
+      })
+      .catch((e) => setError(e.message));
+    loadOverrides();
     getCrossCheckCoverage().then(setCoverage).catch(() => {});
     listCrossCheckOrphans().then(setOrphans).catch(() => {});
     listCrossCheckLinkConflicts().then(setConflicts).catch(() => {});
-  }, []);
+  }, [loadOverrides]);
   useEffect(() => { load(); }, [load]);
 
+  const overrides = useMemo(
+    () => Object.fromEntries(overrideRows.map((o) => [`${o.entity_id}:${o.check_key}`, o])),
+    [overrideRows],
+  );
+
+  // Each row with its cells and summary, open findings first.
+  const derived = useMemo(() => (rows || [])
+    .map((r) => {
+      const cells = rowCells(r, overrides);
+      return { r, cells, ...rowSummary(cells) };
+    })
+    .sort((a, b) => (b.open.size > 0) - (a.open.size > 0) || a.r.entity_name.localeCompare(b.r.entity_name)),
+  [rows, overrides]);
+
   const counts = useMemo(() => {
-    const c = { issues: 0, all: 0 };
-    (rows || []).forEach((r) => {
-      c.all += 1;
-      if (r.verdict !== 'clean') c.issues += 1;
-      c[r.verdict] = (c[r.verdict] || 0) + 1;
+    const c = { issues: 0, explained: 0, all: derived.length };
+    FINDING_TYPES.forEach((t) => { c[t.key] = 0; });
+    derived.forEach((d) => {
+      if (d.open.size) c.issues += 1;
+      else if (d.explained) c.explained += 1;
+      d.open.forEach((t) => { c[t] += 1; });
     });
     return c;
-  }, [rows]);
+  }, [derived]);
 
-  const filtered = useMemo(() => {
-    if (!rows) return [];
-    return rows.filter((r) => {
-      if (filter === 'issues' && r.verdict === 'clean') return false;
-      if (filter !== 'issues' && filter !== 'all' && r.verdict !== filter) return false;
-      if (search && !r.entity_name?.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
-  }, [rows, filter, search]);
+  const filtered = useMemo(() => derived.filter((d) => {
+    if (filter === 'issues' && !d.open.size) return false;
+    if (filter === 'explained' && (d.open.size || !d.explained)) return false;
+    if (TYPE_LABEL[filter] && !d.open.has(filter)) return false;
+    if (search && !d.r.entity_name?.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  }), [derived, filter, search]);
 
   const saCover = coverage.find((c) => c.tax === 'sa');
   const partial = coverage.filter((c) => c.scrape_looks_partial);
+
+  const openRow = open && derived.find((d) => d.r.entity_id === open.entityId);
+  const openCheck = open && CELLS.find((c) => c.key === open.key);
+  const openCell = openRow && openRow.cells[open.key];
 
   return (
     <div style={{ padding: '24px 28px', fontFamily: font }}>
@@ -426,7 +625,7 @@ export default function CrossCheckView() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Cross-check</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
-            Where the onboarding board disagrees with BrightManager, HMRC, BrightPay, TaxCalc and QuickBooks.
+            Where BrightManager, HMRC, billing, BrightPay, TaxCalc and QuickBooks disagree — click a mark to look into it.
           </p>
         </div>
         <ViewTabs active="Cross-check" />
@@ -436,17 +635,17 @@ export default function CrossCheckView() {
 
       {/* One row of numbers. Each is a filter; the hover carries the meaning. */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'stretch' }}>
-        <Tile label="Needs a look" count={counts.issues || 0} tone="danger"
+        <Tile label="Needs a look" count={counts.issues} tone="danger"
               active={filter === 'issues'} onClick={() => setFilter('issues')}
-              hint="Every client where at least one check disagrees" />
-        {CROSSCHECK_VERDICTS.filter((v) => v.value !== 'clean' && counts[v.value]).map((v) => (
-          <Tile key={v.value} label={v.label} count={counts[v.value]} tone={v.tone}
-                active={filter === v.value} onClick={() => setFilter(v.value)} hint={v.blurb} />
+              hint="Every client with at least one finding not yet overridden" />
+        {FINDING_TYPES.map((t) => (
+          <Tile key={t.key} label={t.label} count={counts[t.key]} tone={t.tone}
+                active={filter === t.key} onClick={() => setFilter(t.key)} hint={t.hint} />
         ))}
-        <Tile label="Verified" count={counts.clean || 0} tone="success"
-              active={filter === 'clean'} onClick={() => setFilter('clean')}
-              hint={crosscheckVerdictMeta('clean').blurb} />
-        <Tile label="All" count={counts.all || 0} tone="neutral"
+        <Tile label="Explained" count={counts.explained} tone="neutral"
+              active={filter === 'explained'} onClick={() => setFilter('explained')}
+              hint="Every finding on these clients has been overridden with a comment" />
+        <Tile label="All" count={counts.all} tone="neutral"
               active={filter === 'all'} onClick={() => setFilter('all')}
               hint="Every active client" />
         <input
@@ -460,7 +659,7 @@ export default function CrossCheckView() {
         <div
           style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}
           title={saCover
-            ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the HMRC check reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Publishing the whole client list (already built — needs one full HMRC check) closes this. Until then absence proves nothing, so those marks read ~ instead of ✕.`
+            ? `The Self Assessment run only keeps clients HMRC flags as having a statement, so the HMRC check reached ${saCover.hmrc_clients} of ${saCover.we_do_clients} registered clients. Until it covers them all, absence proves nothing, so those marks read ~ instead of ✕.`
             : undefined}
         >
           {partial.map((c) => TAX_LABELS[c.tax] || c.tax).join(' and ')} HMRC check incomplete — ~ means not yet confirmed.
@@ -471,80 +670,57 @@ export default function CrossCheckView() {
         <div style={{ fontSize: 14, color: '#94a3b8' }}>Loading…</div>
       ) : filtered.length === 0 ? (
         <div style={{ ...card, padding: '28px 20px', textAlign: 'center', fontSize: 14.5, color: '#64748b' }}>
-          Nothing here — every check that can be answered for these clients answers yes.
+          Nothing here.
         </div>
       ) : (
         <div style={{ ...card, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#fbfcfd', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={{ padding: '9px 6px 9px 14px', width: 24 }} />
-                <th style={{ padding: '9px 8px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b' }}>Client</th>
+                <th style={{ padding: '9px 8px 9px 14px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#64748b' }}>Client</th>
                 {CELLS.map((c) => (
-                  <th key={c.key} style={{ padding: '9px 4px', width: 44, textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#64748b' }}>
+                  <th key={c.key} style={{ padding: '9px 4px', width: 64, textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#64748b' }}>
                     {c.label}
                   </th>
                 ))}
-                <th style={{ padding: '9px 14px 9px 8px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#64748b' }}>Verdict</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => {
-                const meta = crosscheckVerdictMeta(r.verdict);
-                const isOpen = expanded[r.entity_id];
-                return (
-                  <React.Fragment key={r.entity_id}>
-                    <tr
-                      onClick={() => setExpanded((x) => ({ ...x, [r.entity_id]: !x[r.entity_id] }))}
-                      style={{ borderTop: '1px solid #f1f5f9', cursor: 'pointer', background: isOpen ? '#fbfcfd' : '#fff' }}
+              {filtered.map(({ r, cells }) => (
+                <tr key={r.entity_id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '7px 8px 7px 14px' }}>
+                    <span
+                      onClick={() => navigate(r.onboarding_id ? `/onboarding/${r.onboarding_id}` : `/clients/${r.entity_id}`)}
+                      title={r.has_onboarding ? `On the board · ${ONBOARDING_STATUSES.find((s) => s.value === r.onboarding_status)?.label || r.onboarding_status} — click to open` : 'No onboarding record — click to open the client'}
+                      style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}
                     >
-                      <td style={{ padding: '7px 6px 7px 14px', color: '#94a3b8' }}>
-                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </td>
-                      <td style={{ padding: '7px 8px' }}>
-                        <span
-                          onClick={(e) => { e.stopPropagation(); navigate(r.onboarding_id ? `/onboarding/${r.onboarding_id}` : `/clients/${r.entity_id}`); }}
-                          title={r.has_onboarding ? `On the board · ${ONBOARDING_STATUSES.find((s) => s.value === r.onboarding_status)?.label || r.onboarding_status} — click to open` : 'No onboarding record — click to open the client'}
-                          style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}
-                        >
-                          {r.entity_name}
-                        </span>
-                        {r.wrongly_closed && (
-                          <span
-                            title="Marked complete without an engagement letter or an HMRC authorisation"
-                            style={{ marginLeft: 6, fontSize: 12 }}
-                          >
-                            ⚠
-                          </span>
-                        )}
-                      </td>
-                      {CELLS.map((c) => (
-                        <td key={c.key} style={{ padding: '7px 4px', textAlign: 'center' }}>
-                          <Dot cell={c.get(r)} />
-                        </td>
-                      ))}
-                      <td style={{ padding: '7px 14px 7px 8px', textAlign: 'right' }}>
-                        <span style={chipStyle(meta.tone)} title={meta.blurb}>{meta.label}</span>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr>
-                        <td colSpan={CELLS.length + 3} style={{ padding: '4px 14px 16px 44px', background: '#fbfcfd' }}>
-                          <TaxDetail entityId={r.entity_id} />
-                          {r.directors_billed_for_sa > 0 && <DirectorSa companyId={r.entity_id} />}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
+                      {r.entity_name}
+                    </span>
+                  </td>
+                  {CELLS.map((c) => (
+                    <td key={c.key} style={{ padding: '7px 4px', textAlign: 'center' }}>
+                      <Dot cell={cells[c.key]} onClick={() => setOpen({ entityId: r.entity_id, key: c.key })} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
             </tbody>
           </table>
           <div style={{ padding: '8px 14px', borderTop: '1px solid #f1f5f9', fontSize: 12.5, color: '#94a3b8' }}>
-            ✓ verified · ✕ mismatch · ○ in progress · ~ unverified while the HMRC check is incomplete · ? no feed · – not a service
-            &nbsp;— hover a mark for the story, click a row for the evidence
+            ✕ finding · ✓ verified · grey ✓ overridden · ○ in progress · ~ unverified while the HMRC check is incomplete · ? no feed · – not a service
+            &nbsp;— click a mark to look into it
           </div>
         </div>
+      )}
+
+      {openRow && openCheck && openCell && (
+        <MarkModal
+          row={openRow.r}
+          check={openCheck}
+          cell={openCell}
+          onClose={() => setOpen(null)}
+          onChanged={loadOverrides}
+        />
       )}
 
       {/* The side-lists, folded away until wanted. */}
